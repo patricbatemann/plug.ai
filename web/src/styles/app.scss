@@ -1,0 +1,77 @@
+@use '@carbon/react/scss/config' with ($font-path: '@ibm/plex');
+@use '@carbon/react/scss/themes';
+@use '@carbon/react/scss/theme' with ($theme: themes.$g10);
+@use '@carbon/react';
+@use '@carbon/react/scss/spacing' as *;
+@use '@carbon/react/scss/type' as *;
+
+:root {
+  @include theme.theme();
+}
+
+body {
+  background: theme.$background;
+}
+
+.page {
+  max-width: 99rem;
+  margin: 0 auto;
+  padding: calc(3rem + #{$spacing-07}) $spacing-07 $spacing-09;
+}
+
+.page-title {
+  @include type-style('heading-04');
+  margin: $spacing-05 0 $spacing-03;
+}
+
+.page-meta {
+  @include type-style('body-compact-01');
+  color: theme.$text-secondary;
+  margin-bottom: $spacing-05;
+}
+
+.tag-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: $spacing-03;
+  margin-bottom: $spacing-06;
+}
+
+.card-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(16rem, 1fr));
+  gap: $spacing-05;
+  margin-bottom: $spacing-07;
+}
+
+.stat-label {
+  @include type-style('label-01');
+  color: theme.$text-secondary;
+}
+
+.stat-value {
+  @include type-style('heading-04');
+  margin-top: $spacing-02;
+}
+
+.card-title {
+  @include type-style('heading-compact-02');
+  margin-bottom: $spacing-05;
+}
+
+.page-state {
+  padding: calc(3rem + #{$spacing-07}) $spacing-07;
+}
+
+.auth-wrap {
+  display: grid;
+  place-items: center;
+  min-height: 100vh;
+  padding: $spacing-07;
+}
+
+.auth-card {
+  width: min(28rem, 100%);
+  display: grid;
+  gap: $spacing-06;
+}

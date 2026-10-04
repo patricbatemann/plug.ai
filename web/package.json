@@ -6,9 +6,13 @@
   "scripts": {
     "dev": "vite",
     "build": "tsc -b && vite build",
-    "preview": "vite preview"
+    "preview": "vite preview",
+    "check:colors": "node scripts/check-colors.mjs"
   },
   "dependencies": {
+    "@carbon/icons-react": "11.89.0",
+    "@carbon/react": "1.117.0",
+    "@tanstack/react-query": "5.104.1",
     "react": "19.1.0",
     "react-dom": "19.1.0",
     "react-router-dom": "7.18.4"
@@ -17,6 +21,7 @@
     "@types/react": "19.1.6",
     "@types/react-dom": "19.1.6",
     "@vitejs/plugin-react": "4.5.1",
+    "sass-embedded": "1.105.1",
     "typescript": "5.8.3",
     "vite": "6.4.3"
   }

@@ -1,33 +1,44 @@
-import { Link, NavLink, Outlet } from 'react-router-dom'
+import { Link, Outlet, useLocation } from 'react-router-dom'
+import {
+  Header,
+  HeaderGlobalAction,
+  HeaderGlobalBar,
+  HeaderMenuItem,
+  HeaderName,
+  HeaderNavigation,
+} from '@carbon/react'
+import { Logout } from '@carbon/icons-react'
 import { useAuth } from '../auth/AuthContext'
+import { PRODUCT_NAME } from '../format'
 
 export function Layout() {
   const { user, signOut } = useAuth()
+  const { pathname } = useLocation()
 
   return (
-    <div className="app-shell">
-      <header className="topbar">
-        <Link className="brand" to="/">
-          <span className="brand-mark">A</span>
-          <span>AI Energy</span>
-        </Link>
-        <nav aria-label="Main navigation">
-          <NavLink to="/" end>Home</NavLink>
-          {user ? (
-            <>
-              <NavLink to="/dashboard">Dashboard</NavLink>
-              <button className="nav-button" onClick={signOut}>Sign out</button>
-            </>
-          ) : (
-            <>
-              <NavLink to="/login">Sign in</NavLink>
-              <Link className="button button-small" to="/register">Get started</Link>
-            </>
-          )}
-        </nav>
-      </header>
-      <main><Outlet /></main>
-      <footer>Built for a brighter, more thoughtful energy future.</footer>
-    </div>
+    <>
+      <Header aria-label={PRODUCT_NAME}>
+        <HeaderName as={Link} to="/portfolio" prefix="">
+          {PRODUCT_NAME}
+        </HeaderName>
+        <HeaderNavigation aria-label="Main navigation">
+          <HeaderMenuItem
+            as={Link}
+            to="/portfolio"
+            isActive={pathname.startsWith('/portfolio') || pathname.startsWith('/sites')}
+          >
+            Portfolio
+          </HeaderMenuItem>
+        </HeaderNavigation>
+        <HeaderGlobalBar>
+          <HeaderGlobalAction aria-label={`Sign out ${user?.email ?? ''}`} onClick={signOut}>
+            <Logout size={20} />
+          </HeaderGlobalAction>
+        </HeaderGlobalBar>
+      </Header>
+      <main className="page">
+        <Outlet />
+      </main>
+    </>
   )
 }

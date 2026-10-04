@@ -9,6 +9,49 @@ export interface AuthResponse {
   user: User
 }
 
+export interface SiteSummary {
+  code: string
+  name: string
+  kind: string
+  location: string
+  generation_mw: number
+  battery_mwh: number
+  asset_kinds: string[]
+}
+
+export interface Portfolio {
+  name: string
+  tz: string
+  mode_code: string
+  totals: {
+    solar_mw: number
+    wind_mw: number
+    battery_mw: number
+    battery_mwh: number
+    demand_mw: number
+  }
+  sites: SiteSummary[]
+}
+
+export interface Asset {
+  code: string
+  name: string
+  kind: string
+  capacity_mw: number
+  params: Record<string, unknown>
+  active: boolean
+}
+
+export interface SiteDetail {
+  code: string
+  name: string
+  kind: string
+  location: string
+  commissioned_on: string
+  mode_code: string
+  assets: Asset[]
+}
+
 export class ApiError extends Error {
   constructor(message: string, readonly status: number) {
     super(message)
@@ -16,13 +59,23 @@ export class ApiError extends Error {
   }
 }
 
+const TOKEN_KEY = 'bob.accessToken'
+
+export const tokenStore = {
+  get: () => localStorage.getItem(TOKEN_KEY),
+  set: (token: string) => localStorage.setItem(TOKEN_KEY, token),
+  clear: () => localStorage.removeItem(TOKEN_KEY),
+}
+
 const apiUrl = (import.meta.env.VITE_API_URL || 'http://localhost:8000').replace(/\/$/, '')
 
 async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
+  const token = tokenStore.get()
   const response = await fetch(`${apiUrl}${path}`, {
     ...init,
     headers: {
       'Content-Type': 'application/json',
+      ...(token ? { Authorization: `Bearer ${token}` } : {}),
       ...init.headers,
     },
   })
@@ -54,8 +107,10 @@ export const authApi = {
       method: 'POST',
       body: JSON.stringify({ email, password }),
     }),
-  me: (token: string) =>
-    request<User>('/api/auth/me', {
-      headers: { Authorization: `Bearer ${token}` },
-    }),
+  me: () => request<User>('/api/auth/me'),
+}
+
+export const portfolioApi = {
+  get: () => request<Portfolio>('/api/portfolio'),
+  site: (code: string) => request<SiteDetail>(`/api/sites/${encodeURIComponent(code)}`),
 }

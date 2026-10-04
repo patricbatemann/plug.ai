@@ -1,103 +1,70 @@
-# AI Energy Starter
+# PLUG.AI — Renewable Energy Orchestrator
 
-A small full-stack starter with a React + TypeScript client and a FastAPI + SQLite API. The code is divided into presentation/routing, services, and persistence layers without introducing a larger framework than the project needs.
+A demo of BOB, an AI agent that orchestrates a renewable energy portfolio (solar, wind, batteries, industrial demand, grid and market) in 15-minute blocks. The client is React + TypeScript with IBM Carbon; the API is FastAPI on PostgreSQL.
 
 ## Requirements
 
 - Node.js 20.19+ or 22.12+ and npm
 - Python 3.11+
+- Docker (for PostgreSQL)
 
 ## Run locally
 
-With GNU Make installed, create local environment files and install both sets of dependencies:
+With GNU Make installed, from the repository root:
 
 ```sh
-make setup
+make setup      # .env files from the examples, npm install, Python venv
+make db-up      # PostgreSQL 16 in Docker (databases bob and bob_test)
+make migrate    # apply database migrations
+make seed       # demo portfolio: 9 sites, 18 assets in Andhra Pradesh
 ```
 
-Start the client and API in separate terminals from the repository root:
+Then start the client and API in separate terminals:
 
 ```sh
 make web-dev
 make server-dev
 ```
 
-The API runs at `http://localhost:8000`; interactive documentation is at `http://localhost:8000/docs`. Vite serves the client at `http://localhost:5173`.
+The API runs at `http://localhost:8000` (interactive docs at `/docs`); Vite serves the client at `http://localhost:5173`. Create an account on the sign-up page, then open the portfolio.
 
-Useful targets: `make env` creates local `.env` files from the examples without overwriting existing ones; `make install-web` and `make install-server` install dependencies separately; `make test` runs backend tests; `make build` builds the client; `make clean` removes the generated web build.
-
-## Manual setup
-
-Alternatively, follow these steps without GNU Make. Open two terminals from the repository root.
-
-### API
-
-```sh
-cd server
-python -m venv .venv
-# Windows: .venv\Scripts\activate
-# macOS/Linux: source .venv/bin/activate
-python -m pip install -r requirements.txt
-copy .env.example .env
-# macOS/Linux: cp .env.example .env
-uvicorn app.main:app --reload
-```
-
-On first startup, SQLAlchemy creates `server/aienergy.db`. The SQLite file is local, ignored by git, and can be removed to reset local data.
-
-### Web client
-
-```sh
-cd web
-npm install
-copy .env.example .env
-# macOS/Linux: cp .env.example .env
-npm run dev
-```
-
-Set `VITE_API_URL` in `web/.env` if the API runs somewhere other than `http://localhost:8000`.
+Other targets: `make test` runs backend tests (needs `make db-up`) and the colour-token check; `make build` builds the client; `make db-down` stops PostgreSQL; `make clean` removes the web build.
 
 ## Configuration
 
-- `server/.env.example` documents API settings. The API generates a random signing key when `SECRET_KEY` is omitted, which invalidates existing tokens when the process restarts. Set a stable, unique `SECRET_KEY` outside local development; never commit `.env`.
-- `DATABASE_URL` accepts a SQLAlchemy URL. SQLite is the default.
+- `server/.env.example` documents API settings. With `ENV=local` and no `SECRET_KEY`, the API generates a signing key per process, so tokens stop working after a restart. Any other `ENV` requires a stable `SECRET_KEY` of at least 32 characters.
+- `DATABASE_URL` is a SQLAlchemy URL for PostgreSQL (`postgresql+psycopg://…`). Tests use `TEST_DATABASE_URL`, defaulting to the `bob_test` database.
 - `CORS_ORIGINS` is a comma-separated list of browser origins, defaulting to `http://localhost:5173`.
-- `web/.env.example` configures the API base URL.
+- `web/.env.example` sets `VITE_API_URL`.
 
 ## API
 
-All authentication endpoints are under `/api/auth`:
-
 | Method | Path | Purpose |
 | --- | --- | --- |
-| `POST` | `/register` | Create an account; returns an access token and user |
-| `POST` | `/login` | Validate email/password; returns an access token and user |
-| `GET` | `/me` | Return the authenticated user (`Authorization: Bearer <token>`) |
+| `POST` | `/api/auth/register` | Create an account; returns an access token and user |
+| `POST` | `/api/auth/login` | Validate email/password; returns an access token and user |
+| `GET` | `/api/auth/me` | The authenticated user |
+| `GET` | `/api/portfolio` | Portfolio totals and site summaries |
+| `GET` | `/api/sites/{code}` | One site with its assets and parameters |
 
-Passwords are hashed with Argon2. Access tokens are signed JWTs with an expiry and are sent as bearer tokens. This starter keeps the token in browser local storage for a straightforward client flow; production applications should evaluate their threat model and may prefer secure, HTTP-only cookies and a CSRF strategy.
+All endpoints except register and login need `Authorization: Bearer <token>`.
 
 ## Project layout
 
 ```text
 web/
-  src/api/           Typed API client and auth contract
+  src/api/           Typed API client and token store
   src/auth/          Auth state and protected-route guard
-  src/components/    Shared application layout
-  src/pages/         Public and authenticated pages
+  src/components/    Carbon app shell
+  src/pages/         Portfolio, site and sign-in pages
+  src/styles/        Carbon theme (g10) and page layout
 server/
-  app/api/           HTTP routers/controllers and auth dependencies
-  app/core/          Settings, database, and security primitives
+  app/api/           HTTP routes and auth dependencies
+  app/core/          Settings, database and security
   app/models/        SQLAlchemy entities
-  app/schemas/       Request and response models
-  app/services/      Authentication business logic
-  tests/             API and persistence tests
-```
-
-## Checks
-
-```sh
-cd server
-python -m pytest
-cd ../web
-npm run build
+  app/schemas/       Request/response models and asset parameter validation
+  app/services/      Business logic
+  app/seed.py        Demo portfolio seed
+  migrations/        Alembic migrations
+  tests/             API tests against PostgreSQL
 ```

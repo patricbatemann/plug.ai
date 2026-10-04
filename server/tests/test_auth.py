@@ -1,40 +1,7 @@
-from collections.abc import Generator
-
 from fastapi.testclient import TestClient
-from sqlalchemy import create_engine
-from sqlalchemy.orm import Session, sessionmaker
-from sqlalchemy.pool import StaticPool
-
-from app.core.database import Base, get_db
-from app.main import app
-from app.models.user import User  # noqa: F401
-
-test_engine = create_engine(
-    "sqlite://",
-    connect_args={"check_same_thread": False},
-    poolclass=StaticPool,
-)
-TestingSessionLocal = sessionmaker(bind=test_engine, autoflush=False, autocommit=False)
 
 
-def override_get_db() -> Generator[Session, None, None]:
-    db = TestingSessionLocal()
-    try:
-        yield db
-    finally:
-        db.close()
-
-
-app.dependency_overrides[get_db] = override_get_db
-
-
-def setup_function() -> None:
-    Base.metadata.drop_all(bind=test_engine)
-    Base.metadata.create_all(bind=test_engine)
-
-
-def test_register_login_and_current_user() -> None:
-    client = TestClient(app)
+def test_register_login_and_current_user(client: TestClient) -> None:
     registered = client.post(
         "/api/auth/register",
         json={"email": "starter@example.com", "password": "safe-password"},
@@ -61,8 +28,7 @@ def test_register_login_and_current_user() -> None:
     assert me.json()["email"] == "starter@example.com"
 
 
-def test_rejects_invalid_credentials_and_protected_request() -> None:
-    client = TestClient(app)
+def test_rejects_invalid_credentials_and_protected_request(client: TestClient) -> None:
     bad_login = client.post(
         "/api/auth/login",
         json={"email": "missing@example.com", "password": "not-a-password"},

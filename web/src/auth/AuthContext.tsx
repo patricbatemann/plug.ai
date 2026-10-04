@@ -1,5 +1,5 @@
 import { createContext, useContext, useEffect, useMemo, useState, type ReactNode } from 'react'
-import { ApiError, authApi, type User } from '../api/client'
+import { ApiError, authApi, tokenStore, type User } from '../api/client'
 
 interface AuthContextValue {
   user: User | null
@@ -11,7 +11,6 @@ interface AuthContextValue {
 }
 
 const AuthContext = createContext<AuthContextValue | null>(null)
-const TOKEN_KEY = 'aienergy.accessToken'
 
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<User | null>(null)
@@ -19,17 +18,16 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [authCheckError, setAuthCheckError] = useState<string | null>(null)
 
   useEffect(() => {
-    const token = localStorage.getItem(TOKEN_KEY)
-    if (!token) {
+    if (!tokenStore.get()) {
       setLoading(false)
       return
     }
     authApi
-      .me(token)
+      .me()
       .then(setUser)
       .catch((error: unknown) => {
         if (error instanceof ApiError && error.status === 401) {
-          localStorage.removeItem(TOKEN_KEY)
+          tokenStore.clear()
           return
         }
         setAuthCheckError('Could not verify your session. Check your connection and reload.')
@@ -39,13 +37,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   async function establishSession(operation: Promise<{ access_token: string; user: User }>) {
     const result = await operation
-    localStorage.setItem(TOKEN_KEY, result.access_token)
+    tokenStore.set(result.access_token)
     setUser(result.user)
     setAuthCheckError(null)
   }
 
   function signOut() {
-    localStorage.removeItem(TOKEN_KEY)
+    tokenStore.clear()
     setUser(null)
   }
 
