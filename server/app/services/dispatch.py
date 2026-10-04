@@ -76,7 +76,8 @@ def _send(db: Session, run: Run, policy: str, cycle_id: int | None, block: int, 
           asset_id: int | None, code: str, mw: float, reason: str | None, tier: str = "auto",
           deadline=None) -> None:
     """Record an action; automatic ones go straight to the downstream system."""
-    key = f"{run.id}:{policy}:{block}:{kind}:{code}:{cycle_id or 0}"
+    # A gated action and the fallback's automatic one of the same kind are different instructions.
+    key = f"{run.id}:{policy}:{block}:{kind}:{code}:{cycle_id or 0}" + ("" if tier == "auto" else f":{tier}")
     status = {"auto": "acked", "approval": "awaiting_approval", "recommend": "recommended", "prohibited": "rejected"}
     action = Action(run_id=run.id, policy=policy, cycle_id=cycle_id, block=block, kind=kind, asset_id=asset_id,
                     mw=round(mw, 3), idempotency_key=key, status=status[tier], tier=tier, reason=reason,
@@ -279,7 +280,8 @@ def _items(h, inputs: Inputs, ctx, t0: int) -> list[dict]:
 
 def _dispatch(db: Session, ctx, run: Run, cycle_id: int, t0: int, chosen, inputs: Inputs, decided_at) -> None:
     """Send the chosen plan's automatic actions. Gated ones wait for approval (or are only
-    recommended) while a fallback plan without them runs; execution never waits for a person."""
+    recommended) while a fallback plan runs that does only what BOB may do alone; execution never
+    waits for a person. An approval later replaces the fallback's action of the same kind."""
     items = _items(here_and_now(chosen, inputs), inputs, ctx, t0)
     for item in items:
         item["tier"], item["why"] = (("prohibited", item["safety"]) if item["safety"] else
@@ -287,10 +289,9 @@ def _dispatch(db: Session, ctx, run: Run, cycle_id: int, t0: int, chosen, inputs
                                                  inputs.protected))
     gated = [i for i in items if i["tier"] in ("approval", "recommend")]
     if gated:
-        fallback = plan(inputs, forbid=frozenset(policy.key(i["kind"], i["code"]) for i in gated))
-        blocked = {(i["kind"], i["code"]) for i in gated}
-        runs_now = [i for i in _items(here_and_now(fallback, inputs), inputs, ctx, t0)
-                    if (i["kind"], i["code"]) not in blocked] if fallback.battery else []
+        fallback = plan(inputs, most={policy.key(i["kind"], i["code"]): policy.authority(
+            i["kind"], i["code"], inputs.allowed, inputs.protected) for i in gated})
+        runs_now = _items(here_and_now(fallback, inputs), inputs, ctx, t0) if fallback.battery else []
         for i in runs_now:
             i["tier"], i["why"] = (("prohibited", i["safety"]) if i["safety"] else
                                    policy.tier(i["kind"], i["code"], i["size"], inputs.allowed, inputs.protected))

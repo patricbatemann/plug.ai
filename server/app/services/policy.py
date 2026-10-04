@@ -19,7 +19,8 @@ MARKET = ("grid_import", "grid_export")
 WORK_ORDERS = ("maintenance_schedule", "inspection_dispatch")
 # Kinds that set the same thing on the same asset: an approved action replaces its stand-in.
 SAME_DECISION = {"bess_charge": ("bess_charge", "bess_discharge"), "bess_discharge": ("bess_charge", "bess_discharge"),
-                 "rtm_buy": ("rtm_buy", "rtm_sell"), "rtm_sell": ("rtm_buy", "rtm_sell")}
+                 "rtm_buy": ("rtm_buy", "rtm_sell"), "rtm_sell": ("rtm_buy", "rtm_sell"),
+                 "dr_call": ("dr_call",), "curtail": ("curtail",), "load_shift": ("load_shift",)}
 
 
 def allowed(db: Session, portfolio_id: int) -> dict[str, dict[str, Any]]:
@@ -56,6 +57,14 @@ def tier(kind: str, code: str, amount_mw: float, configs: dict, protected: dict)
     if "auto_max_mw" in config and amount_mw > config["auto_max_mw"]:
         return "approval", f"Above the {config['auto_max_mw']:g} MW automatic limit"
     return "auto", None
+
+
+def authority(kind: str, code: str, configs: dict, protected: dict) -> float:
+    """The largest action of this kind BOB may take without a person, in MW."""
+    config = configs.get(key(kind, code))
+    if config is None or config["autonomy"] != "auto":
+        return 0.0
+    return min(config.get("auto_max_mw", float("inf")), protected.get("approval_above_mw", float("inf")))
 
 
 def expire(db: Session, run: Run, sim_now: datetime) -> None:

@@ -3,7 +3,7 @@ from datetime import datetime, timezone
 import numpy as np
 from sqlalchemy.orm import Session
 
-from app.optimize.dispatch import DT, plan
+from app.optimize.dispatch import DT, here_and_now, plan
 from app.optimize.profiles import PROFILES
 from app.optimize.robust import choose_option
 from app.optimize.situation import Signal, apply_floors, choose_mode
@@ -89,13 +89,19 @@ def test_tiers_follow_config_and_protected_limits() -> None:
     assert "approval ceiling" in policy.tier("bess_discharge", "BESS-01", 150, configs, protected)[1]
 
 
-def test_unconfigured_actions_are_never_planned(db: Session) -> None:
+def test_unconfigured_actions_are_never_planned_and_fallbacks_keep_automatic_authority(db: Session) -> None:
     seed(db)
     run = create_run(db, get_portfolio(db), "evening_spike", NOW)
     ctx = RunContext.load(db, run)
     # The first block's 24-hour plan reaches the evening, when discharging pays.
     inputs = bob_inputs(db, ctx, ctx.world(), run, 0, latest_forecasts(db, ctx, run, 0))
     assert plan(inputs).battery["BESS-01"].max() > 0
+    # A price spike now makes discharging pay now. A fallback for a gated discharge still
+    # discharges up to what BOB may do alone, not nothing.
+    inputs.price[0] *= 20
+    assert here_and_now(plan(inputs), inputs).battery["BESS-01"] > 2
+    capped = here_and_now(plan(inputs, most={"battery_discharge:BESS-01": 2}), inputs).battery["BESS-01"]
+    assert 0 < capped <= 2 + 1e-6
     del inputs.allowed["battery_discharge:BESS-01"]
     assert plan(inputs).battery["BESS-01"].max() <= 1e-6
 

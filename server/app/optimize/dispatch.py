@@ -117,10 +117,10 @@ def _cap(inp: Inputs, key: str, rating: float | np.ndarray) -> float | np.ndarra
 
 
 def plan(inp: Inputs, fixed: HereAndNow | None = None, single_stage: bool = False,
-         forbid: frozenset[str] = frozenset()) -> Plan:
+         most: dict[str, float] | None = None) -> Plan:
     """Two-stage plan; or, for stress tests, one solve of reliability plus cost, optionally
-    with another plan's here-and-now decisions fixed. `forbid` holds "family:code" decisions that
-    must not be taken now (e.g. gated actions, to build the fallback plan)."""
+    with another plan's here-and-now decisions fixed. `most` caps "family:code" decisions taken
+    now, in MW (0 forbids them): the fallback plan does only what BOB may do without a person."""
     H = len(inp.price)
     gate = inp.market["gate_blocks"]
     prof = inp.profile
@@ -250,21 +250,22 @@ def plan(inp: Inputs, fixed: HereAndNow | None = None, single_stage: bool = Fals
             m.fix(buy[gate], max(fixed.rtm, 0.0))
             m.fix(sell[gate], max(-fixed.rtm, 0.0))
 
-    for key in forbid:
+    for key, mw in (most or {}).items():
         family, code = key.split(":")
         if family in ("battery_charge", "battery_discharge"):
-            m.fix((ch if family == "battery_charge" else dis)[code][0], 0.0)
-        elif family == "curtail":
-            m.fix(g[code][0], float(inp.available[code][0]))
+            m.fix((ch if family == "battery_charge" else dis)[code][0], 0.0, mw)
+        elif family == "curtail":  # curtail at most `mw` of what is available
+            available = float(inp.available[code][0])
+            m.fix(g[code][0], max(available - mw, 0.0), available)
         elif family == "demand_response":
             notice = next(a.params["dr_notice_blocks"] for a in consumers if a.code == code)
             if notice < H:
-                m.fix(dr[code][notice], 0.0)
+                m.fix(dr[code][notice], 0.0, mw)
         elif family == "load_shift":
-            m.fix(out[code][0], 0.0)
-            m.fix(back[code][0], 0.0)
+            m.fix(out[code][0], 0.0, mw)
+            m.fix(back[code][0], 0.0, mw)
         elif gate < H:
-            m.fix((buy if family == "grid_import" else sell)[gate], 0.0)
+            m.fix((buy if family == "grid_import" else sell)[gate], 0.0, mw)
 
     reliability = np.zeros(m.n)
     for a in consumers:
