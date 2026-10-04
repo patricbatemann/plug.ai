@@ -7,7 +7,7 @@ import numpy as np
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from app.models.portfolio import Asset, Site
+from app.models.portfolio import Site
 from app.models.run import AssetBlock, Cycle, Forecast, Plan, Run, WorldEvent
 from app.schemas.runs import (
     Alert, BatteryCard, ChartPoint, FlowItem, GenerationCard, SiteLive, Weather,

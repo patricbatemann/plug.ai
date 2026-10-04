@@ -331,3 +331,28 @@ body {
   border-left: 3px solid theme.$border-strong-01;
   font-style: italic;
 }
+
+.simulation__panel {
+  display: grid;
+  gap: $spacing-05;
+  justify-items: start;
+  margin-bottom: $spacing-07;
+}
+
+.simulation__form {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(12rem, 1fr));
+  gap: $spacing-05;
+  width: 100%;
+  align-items: end;
+}
+
+.simulation__result {
+  display: grid;
+  gap: $spacing-05;
+  width: 100%;
+}
+
+.simulation__chart {
+  min-width: 0;
+}

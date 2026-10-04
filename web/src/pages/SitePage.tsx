@@ -54,7 +54,10 @@ export function SitePage() {
         <h1 className="page-title">
           {data.name} · {data.code}
         </h1>
-        <Button kind="tertiary" onClick={() => navigate(`/sites/${data.code}/bob`)}>Configure BOB</Button>
+        <div className="tag-row">
+          <Button kind="ghost" onClick={() => navigate('/simulation')}>Run simulation</Button>
+          <Button kind="tertiary" onClick={() => navigate(`/sites/${data.code}/bob`)}>Configure BOB</Button>
+        </div>
       </div>
       <p className="page-meta">
         {data.location} · Commissioned {data.commissioned_on.slice(0, 4)}

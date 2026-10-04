@@ -5,9 +5,10 @@ import {
   Button, IconButton, InlineLoading, InlineNotification, OverflowMenu, OverflowMenuItem, Tag, TextArea, Tile,
 } from '@carbon/react'
 import { Attachment, Close, Locked, Send } from '@carbon/icons-react'
-import { documentApi, runApi, type ChatCard, type WhatIfPlan } from '../api/client'
-import { AUTONOMY, configKindLabel, limitsSummary, mwh, netCost } from '../format'
+import { documentApi, runApi, type ChatCard } from '../api/client'
+import { AUTONOMY, configKindLabel, limitsSummary } from '../format'
 import { useCurrentRun } from './useCurrentRun'
+import { WhatIfTable } from './WhatIfTable'
 
 const SUGGESTIONS = [
   'What is happening right now, and what needs my attention?',
@@ -189,30 +190,15 @@ function CardView({ card, last }: { card: ChatCard; last: boolean }) {
     )
   }
   if (card.type === 'what_if') {
-    const rows: Array<[string, (p: WhatIfPlan) => string]> = [
-      ['Net cost (24 h)', (p) => netCost(p.net_cost_inr ?? 0)],
-      ['Carbon', (p) => `${p.carbon_t} t`],
-      ['Curtailed', (p) => mwh(p.curtailed_mwh ?? 0)],
-      ['Unserved', (p) => mwh(p.unserved_mwh ?? 0)],
-    ]
     return (
       <Tile className="chat-card">
         <div className="card-title">What-if, not executed</div>
-        <table className="chat-card__table">
-          <thead><tr><th /><th>Now</th><th>What-if</th></tr></thead>
-          <tbody>
-            {rows.map(([label, value]) => (
-              <tr key={label}>
-                <td>{label}</td>
-                {[card.current, card.what_if].map((p, i) => <td key={i}>{p.feasible ? value(p) : 'No feasible plan'}</td>)}
-              </tr>
-            ))}
-          </tbody>
-        </table>
+        <WhatIfTable current={card.current} whatIf={card.what_if} />
         <p className="stat-label">What-if actions: {card.what_if.actions?.join('; ') ?? '—'}</p>
       </Tile>
     )
   }
+
   const link = `/sites/${card.site}/bob/setup?asset=${card.asset}&kind=${card.kind}&draft=${card.config_id}`
   return (
     <Tile className="chat-card">

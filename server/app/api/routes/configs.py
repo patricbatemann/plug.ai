@@ -31,10 +31,6 @@ def _config(config_id: int, db: Session = Depends(get_db)) -> ActionConfig:
     return config
 
 
-def _latest_run(db: Session) -> Run | None:
-    return db.scalar(select(Run).order_by(Run.id.desc()).limit(1))
-
-
 def _values(c: ActionConfig) -> ConfigValues:
     return ConfigValues(name=c.name, autonomy=c.autonomy, limits=c.limits, approval=c.approval, watch=c.watch)
 
@@ -53,7 +49,7 @@ def _out(db: Session, c: ActionConfig, asset: Asset, actions_today: int = 0) -> 
 @router.get("/sites/{code}/configs", response_model=list[ConfigOut])
 def list_configs(site: Site = Depends(_site), db: Session = Depends(get_db)) -> list[ConfigOut]:
     return [_out(db, row["config"], row["asset"], row["actions_today"])
-            for row in configs.site_configs(db, site, _latest_run(db))]
+            for row in configs.site_configs(db, site, runs.latest_live(db))]
 
 
 @router.get("/sites/{code}/config-options", response_model=ConfigOptions)
@@ -89,7 +85,7 @@ def save_draft(payload: ConfigDraft, site: Site = Depends(_site), db: Session = 
 @router.post("/configs/{config_id}/test", response_model=ConfigOut)
 def test_config(config: ActionConfig = Depends(_config), db: Session = Depends(get_db)) -> ConfigOut:
     try:
-        runs.test_config(db, _latest_run(db), config)
+        runs.test_config(db, runs.latest_live(db), config)
     except ValueError as error:
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(error)) from None
     db.commit()

@@ -367,6 +367,50 @@ export const documentApi = {
     ),
 }
 
+export interface WhatIfChange {
+  assets_out: string[]
+  demand_pct: number | null
+  renewables_pct: number | null
+  price_pct: number | null
+  line_limits: Array<{ line: string; limit_mw: number }>
+  mode: string | null
+}
+
+export interface Study {
+  id: number
+  preset: string
+  created_at: string
+  created_by: string
+  metrics: Record<string, string>
+  seeds: Array<{
+    seed: number
+    progress: number
+    done: boolean
+    bob: PolicyTotals | null
+    baseline: PolicyTotals | null
+    saving_inr: number | null
+    violations: string[]
+  }>
+  reliability: {
+    replays_done: number
+    hard_limit_violations: number
+    unserved_mwh: Record<'bob' | 'baseline', number>
+    safe_holds: number
+    approvals_expired: number
+  }
+}
+
+export const simulationApi = {
+  whatIf: (runId: number, change: WhatIfChange) =>
+    post<{ current: WhatIfPlan; what_if: WhatIfPlan }>(`/api/runs/${runId}/what-if`, change),
+  studies: () => request<Array<{ id: number; preset: string; seeds: number; created_at: string }>>('/api/studies'),
+  study: (id: number) => request<Study>(`/api/studies/${id}`),
+  createStudy: (preset: string, seeds: number) => post<Study>('/api/studies', { preset, seeds }),
+  bobCalls: () =>
+    request<{ calls: number; ok: number; by_purpose: Record<string, number>; failures: Record<string, number>
+      median_ms: number | null }>('/api/bob-calls'),
+}
+
 export interface ConfigValues {
   name: string
   autonomy: 'auto' | 'approval' | 'recommend'

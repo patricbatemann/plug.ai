@@ -15,6 +15,19 @@ RUN_STATUSES = ("running", "paused", "done")
 POLICIES = ("bob", "baseline")
 
 
+class Study(Base):
+    """A replay of one preset over several seeds: BOB and today's practice on the same worlds."""
+
+    __tablename__ = "study"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    portfolio_id: Mapped[int] = mapped_column(ForeignKey("portfolio.id", ondelete="CASCADE"))
+    preset: Mapped[str] = mapped_column(String(32))
+    seeds: Mapped[int] = mapped_column(Integer)
+    created_by: Mapped[str] = mapped_column(String(320))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+
 class Run(Base):
     __tablename__ = "run"
     __table_args__ = (
@@ -24,6 +37,8 @@ class Run(Base):
 
     id: Mapped[int] = mapped_column(primary_key=True)
     portfolio_id: Mapped[int] = mapped_column(ForeignKey("portfolio.id", ondelete="CASCADE"))
+    # A replay belongs to a study; the live demo run has none.
+    study_id: Mapped[int | None] = mapped_column(ForeignKey("study.id", ondelete="CASCADE"), index=True)
     preset: Mapped[str] = mapped_column(String(32))
     config: Mapped[dict[str, Any]] = mapped_column(JSONB)
     status: Mapped[str] = mapped_column(String(16), default="running")

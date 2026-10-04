@@ -304,3 +304,51 @@ class TaskOut(BaseModel):
 class MaintenanceOut(BaseModel):
     tasks: list[TaskOut]
     proposals: list[ActionOut]
+
+
+class StudyCreate(BaseModel):
+    preset: str
+    seeds: int = Field(ge=1, le=20)
+
+
+class SeedResult(BaseModel):
+    seed: int
+    progress: float
+    done: bool
+    bob: PolicyTotals | None = None
+    baseline: PolicyTotals | None = None
+    saving_inr: float | None = None
+    violations: list[str] = []
+
+
+class Reliability(BaseModel):
+    replays_done: int
+    hard_limit_violations: int
+    unserved_mwh: dict[str, float]
+    safe_holds: int
+    approvals_expired: int
+
+
+class StudyOut(BaseModel):
+    id: int
+    preset: str
+    created_at: datetime
+    created_by: str
+    seeds: list[SeedResult]
+    metrics: dict[str, str]
+    reliability: Reliability
+
+
+class StudyItem(BaseModel):
+    id: int
+    preset: str
+    seeds: int
+    created_at: datetime
+
+
+class BobCalls(BaseModel):
+    calls: int
+    ok: int
+    by_purpose: dict[str, int]
+    failures: dict[str, int]
+    median_ms: int | None

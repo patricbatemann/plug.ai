@@ -300,3 +300,28 @@ def test_storm_bulletin_moves_maintenance_and_brings_an_inspection(
     inspections = [a for a in client.get(f"{url}/actions?status=awaiting_approval", headers=auth_headers).json()
                    if a["kind"] == "inspection_dispatch"]
     assert [a["asset"] for a in inspections] == ["Gooty wind farm"]
+
+
+def test_what_if_and_replay_study_leave_the_live_run_alone(
+    client: TestClient, db: Session, auth_headers: dict[str, str]
+) -> None:
+    seed(db)
+    run = client.post("/api/runs", json={"preset": "calm_day"}, headers=auth_headers).json()
+    url = f"/api/runs/{run['id']}"
+    client.post(f"{url}/pause", headers=auth_headers)
+    client.post(f"{url}/step", headers=auth_headers)
+    change = {"assets_out": ["BESS-01", "BESS-02"], "demand_pct": 10, "renewables_pct": None, "price_pct": None,
+              "line_limits": [], "mode": None}
+    compared = client.post(f"{url}/what-if", json=change, headers=auth_headers).json()
+    assert compared["current"]["feasible"] and compared["what_if"]["feasible"]
+    assert not any(a.startswith("Battery") for a in compared["what_if"]["actions"])
+    assert compared["what_if"]["net_cost_inr"] > compared["current"]["net_cost_inr"]
+    bad = client.post(f"{url}/what-if", json={**change, "assets_out": ["IC-NORTH"]}, headers=auth_headers)
+    assert bad.status_code == 422
+
+    study = client.post("/api/studies", json={"preset": "calm_day", "seeds": 2}, headers=auth_headers).json()
+    assert [s["seed"] for s in study["seeds"]] == [42, 43] and not any(s["done"] for s in study["seeds"])
+    assert client.get("/api/runs/current", headers=auth_headers).json()["id"] == run["id"]
+    assert client.post("/api/studies", json={"preset": "calm_day", "seeds": 19}, headers=auth_headers).status_code == 409
+    assert client.delete(f"/api/studies/{study['id']}", headers=auth_headers).status_code == 204
+    assert db.scalar(select(func.count()).select_from(Run).where(Run.study_id.isnot(None))) == 0

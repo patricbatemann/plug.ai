@@ -39,6 +39,9 @@ export function Layout() {
           <HeaderMenuItem as={Link} to="/actions" isActive={pathname.startsWith('/actions')}>
             Actions{pending > 0 && ` (${pending})`}
           </HeaderMenuItem>
+          <HeaderMenuItem as={Link} to="/simulation" isActive={pathname.startsWith('/simulation')}>
+            Simulation
+          </HeaderMenuItem>
           <HeaderMenuItem as={Link} to="/assistant" isActive={pathname.startsWith('/assistant')}>
             Assistant
           </HeaderMenuItem>

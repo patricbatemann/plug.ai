@@ -60,7 +60,7 @@ def list_presets() -> list[PresetInfo]:
 
 @router.get("/current", response_model=RunState)
 def current_run(db: Session = Depends(get_db)) -> RunState:
-    run = db.scalar(select(Run).order_by(Run.id.desc()).limit(1))
+    run = runs.latest_live(db)
     if run is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="No run yet")
     return _state(run)

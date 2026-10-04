@@ -1,6 +1,7 @@
 import { Link } from 'react-router-dom'
 import { useQuery } from '@tanstack/react-query'
 import {
+  Button,
   InlineNotification,
   SkeletonText,
   Table,
@@ -41,7 +42,10 @@ export function PortfolioPage() {
 
   return (
     <>
-      <h1 className="page-title">Portfolio overview</h1>
+      <div className="page-head">
+        <h1 className="page-title">Portfolio overview</h1>
+        <Button kind="ghost" as={Link} to="/simulation">Run simulation</Button>
+      </div>
       <p className="page-meta">{data.name}</p>
       <div className="tag-row">
         <ModeTag defaultMode={data.mode_code} />

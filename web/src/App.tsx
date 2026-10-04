@@ -7,6 +7,7 @@ import { ConfigureBobPage } from './pages/ConfigureBobPage'
 import { DecisionPage } from './pages/DecisionPage'
 import { PortfolioPage } from './pages/PortfolioPage'
 import { SetupWizardPage } from './pages/SetupWizardPage'
+import { SimulationPage } from './pages/SimulationPage'
 import { SitePage } from './pages/SitePage'
 import { RequireAuth } from './auth/RequireAuth'
 
@@ -24,6 +25,7 @@ export function App() {
           <Route path="decisions/:id" element={<DecisionPage />} />
           <Route path="actions" element={<ActionsPage />} />
           <Route path="assistant" element={<AssistantPage />} />
+          <Route path="simulation" element={<SimulationPage />} />
         </Route>
       </Route>
       <Route path="*" element={<Navigate to="/portfolio" replace />} />

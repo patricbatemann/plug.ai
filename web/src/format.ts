@@ -20,6 +20,8 @@ const KIND_LABELS: Record<string, string> = {
 
 export const kindLabel = (kind: string) => KIND_LABELS[kind] ?? kind
 
+export const MODES = ['balanced', 'economic', 'clean', 'resilience', 'grid_support']
+
 export const modeLabel = (code: string) => {
   const words = code.replace(/_/g, ' ')
   return words.charAt(0).toUpperCase() + words.slice(1)

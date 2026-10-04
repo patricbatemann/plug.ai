@@ -9,7 +9,7 @@ from sqlalchemy import delete, select, update
 from sqlalchemy.orm import Session
 
 from app.models.portfolio import ActionConfig, Asset, Line, Node, Portfolio
-from app.models.run import POLICIES, Forecast, MaintenanceTask, Run, WorldEvent
+from app.models.run import POLICIES, Forecast, MaintenanceTask, Run, Study, WorldEvent
 from app.sim import forecast
 from app.services import configs, policy
 from app.services.dispatch import bob_inputs, latest_forecasts, plan_block, plan_bob, settle_block
@@ -25,15 +25,20 @@ def _at(config: dict[str, Any], hhmm: str) -> datetime:
     return datetime.fromisoformat(f"{config['date']}T{hhmm}").replace(tzinfo=IST)
 
 
-def create_run(db: Session, portfolio: Portfolio, preset: str, now: datetime) -> Run:
-    """Start a run from a preset; the demo drives one run at a time, so others are ended."""
-    db.execute(update(Run).where(Run.status != "done").values(status="done"))
+def create_run(db: Session, portfolio: Portfolio, preset: str, now: datetime, study: Study | None = None,
+               seed: int | None = None) -> Run:
+    """Start a run from a preset. The demo drives one live run at a time, so other live runs end. A
+    replay (part of a study) runs on its own seed with every block fast-forwarded."""
+    if study is None:
+        db.execute(update(Run).where(Run.status != "done", Run.study_id.is_(None)).values(status="done"))
     config = copy.deepcopy(PRESETS[preset])
+    config["seed"] = config["seed"] if seed is None else seed
     start = _at(config, config["start"])
+    total = config["days"] * BLOCKS_PER_DAY
     run = Run(
-        portfolio_id=portfolio.id, preset=preset, config=config, status="running", speed=config["speed"],
-        sim_start_at=start, total_blocks=config["days"] * BLOCKS_PER_DAY,
-        live_from_block=(_at(config, config["live_from"]) - start) // BLOCK,
+        portfolio_id=portfolio.id, study_id=study.id if study else None, preset=preset, config=config,
+        status="running", speed=config["speed"], sim_start_at=start, total_blocks=total,
+        live_from_block=total if study else (_at(config, config["live_from"]) - start) // BLOCK,
         current_block=-1, block_started_at=now, next_due_at=now, dam_schedule=[],
     )
     db.add(run)
@@ -245,6 +250,11 @@ def tick(db: Session, now: datetime) -> bool:
     advance(db, run, now)
     db.commit()
     return True
+
+
+def latest_live(db: Session) -> Run | None:
+    """The demo's run: the latest one that is not a replay."""
+    return db.scalar(select(Run).where(Run.study_id.is_(None)).order_by(Run.id.desc()).limit(1))
 
 
 def lock_run(db: Session, run_id: int) -> Run | None:
