@@ -50,17 +50,18 @@ export function SetupWizardPage() {
   const queryClient = useQueryClient()
   const options = useQuery({ queryKey: ['config-options', code], queryFn: () => configApi.options(code) })
   const configs = useQuery({ queryKey: ['configs', code], queryFn: () => configApi.list(code) })
-  const [step, setStep] = useState(params.get('asset') ? 1 : 0)
+  const fromChat = Number(params.get('draft'))  // a draft BOB made in chat opens at its tests
+  const [step, setStep] = useState(fromChat ? 2 : params.get('asset') ? 1 : 0)
   const [asset, setAsset] = useState(params.get('asset') ?? '')
   const [kind, setKind] = useState(params.get('kind') ?? '')
   const [values, setValues] = useState<ConfigValues | null>(null)
-  const [draft, setDraft] = useState<ConfigOut | null>(null)
+  const [saved, setSaved] = useState<ConfigOut | null>(null)
 
   const save = useMutation({
     mutationFn: () => configApi.save(code, { ...values!, asset, kind }),
-    onSuccess: (saved) => { setDraft(saved); setStep(2) },
+    onSuccess: (out) => { setSaved(out); setStep(2) },
   })
-  const test = useMutation({ mutationFn: () => configApi.test(draft!.id), onSuccess: setDraft })
+  const test = useMutation({ mutationFn: () => configApi.test(draft!.id), onSuccess: setSaved })
   const activate = useMutation({
     mutationFn: () => configApi.activate(draft!.id),
     onSuccess: () => {
@@ -72,6 +73,7 @@ export function SetupWizardPage() {
   if (!options.data || !configs.data) return <SkeletonText paragraph lineCount={6} />
   const chosen = options.data.assets.find((a) => a.code === asset)
   const existing = configs.data.find((c) => c.asset === asset && c.kind === kind)
+  const draft = saved ?? (existing && existing.id === fromChat ? existing : null)
   // Start from what is configured now, or from sensible defaults for a new action.
   const form: ConfigValues = values ?? existing ?? {
     name: chosen && kind ? `${configKindLabel(kind)}: ${chosen.name}` : '',

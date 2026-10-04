@@ -21,6 +21,11 @@ KINDS_FOR = {
     "consumer": ("demand_response", "load_shift"),
     "interconnection": ("grid_import", "grid_export"),
 }
+LIMITS_FOR = {
+    "battery_charge": ("max_mw", "auto_max_mw"), "battery_discharge": ("max_mw", "auto_max_mw", "reserve_pct"),
+    "curtail": ("auto_max_mw",), "demand_response": ("max_mw", "auto_max_mw"), "load_shift": ("max_mw",),
+    "grid_import": ("max_mw", "auto_max_mw"), "grid_export": ("max_mw", "auto_max_mw", "min_price_inr_mwh"),
+}
 WATCH_METRICS = {
     "bess": ("soc_below_pct", "State of charge below (%)"),
     "solar": ("output_below_forecast_mw", "Output below forecast by (MW)"),
@@ -38,6 +43,8 @@ class ProtectedLimit(ValueError):
 def validate(asset: Asset, kind: str, limits: dict[str, Any], protected: dict[str, Any]) -> None:
     if kind not in KINDS_FOR.get(asset.kind, ()):
         raise ValueError(f"{asset.name} does not support {kind.replace('_', ' ')}")
+    if unknown := set(limits) - set(LIMITS_FOR[kind]):
+        raise ValueError(f"{', '.join(sorted(unknown))} does not apply to {kind.replace('_', ' ')}")
     floor = protected.get("battery_soc_floor_pct")
     if "reserve_pct" in limits and floor is not None and limits["reserve_pct"] < floor:
         raise ProtectedLimit(f"Battery reserve must stay at or above the organisation floor of {floor} % "
@@ -48,6 +55,8 @@ def validate(asset: Asset, kind: str, limits: dict[str, Any], protected: dict[st
                              f"(allowed 0–{ceiling:g} MW).")
     if limits.get("max_mw", 0) > asset.capacity_mw:
         raise ValueError(f"Maximum above {asset.name}'s {asset.capacity_mw:g} MW rating")
+    if "max_mw" in limits and limits.get("auto_max_mw", 0) > limits["max_mw"]:
+        raise ValueError("The automatic limit cannot exceed the maximum")
 
 
 def site_configs(db: Session, site: Site, run: Run | None) -> list[dict]:

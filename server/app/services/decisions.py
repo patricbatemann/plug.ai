@@ -8,24 +8,8 @@ from app.models.run import Cycle, Plan, Run
 from app.optimize.profiles import VARIANT_LABELS
 from app.optimize.robust import SCENARIO_LABELS
 from app.schemas.runs import DecisionDetail, DecisionSummary, OptionOut, SignalOut, StressResult
-from app.services.runs import BLOCK, IST
-
-
-def _actions(here_and_now: dict, names: dict[str, str], notice: dict[str, int], gate: int, start) -> list[str]:
-    at = lambda blocks: (start + blocks * BLOCK).astimezone(IST).strftime("%H:%M")  # noqa: E731
-    out = []
-    for code, mw in here_and_now["battery"].items():
-        out.append(f"{names[code]}: {'discharge' if mw > 0 else 'charge'} {abs(mw):.1f} MW")
-    for code, cap in here_and_now["output_cap"].items():
-        out.append(f"{names[code]}: limit output to {cap:.1f} MW")
-    for code, mw in here_and_now["demand_response"].items():
-        out.append(f"{names[code]}: demand response {mw:.1f} MW at {at(notice[code])}")
-    for code, mw in here_and_now["shift"].items():
-        out.append(f"{names[code]}: move {abs(mw):.1f} MW of load {'out of' if mw > 0 else 'into'} this block")
-    if here_and_now["rtm"]:
-        side = "buy" if here_and_now["rtm"] > 0 else "sell"
-        out.append(f"Market: {side} {abs(here_and_now['rtm']):.1f} MW for {at(gate)}")
-    return out or ["Hold: no change this block"]
+from app.services.deliberation import describe
+from app.services.runs import BLOCK
 
 
 def _summary(run: Run, cycle: Cycle, plans: list[Plan]) -> dict:
@@ -34,7 +18,8 @@ def _summary(run: Run, cycle: Cycle, plans: list[Plan]) -> dict:
     return dict(
         id=cycle.id, time=run.sim_start_at + cycle.block * BLOCK, mode=cycle.mode, mode_by=cycle.mode_by,
         mode_reason=cycle.mode_reason, chosen=VARIANT_LABELS[chosen.variant] if chosen else None,
-        rationale=cycle.rationale, holds=sum(s["holds"] for s in stress.values()), tests=len(stress),
+        selected_by=cycle.selected_by, agent=cycle.timings.get("agent"), rationale=cycle.rationale,
+        holds=sum(s["holds"] for s in stress.values()), tests=len(stress),
     )
 
 
@@ -59,7 +44,7 @@ def detail(db: Session, cycle: Cycle) -> DecisionDetail:
         regrets = [r.regret_inr for r in stress.values() if r.regret_inr is not None]
         options.append(OptionOut(
             variant=p.variant, label=VARIANT_LABELS[p.variant], chosen=p.role == "selected",
-            actions=_actions(p.schedule["here_and_now"], names, notice, gate, start),
+            actions=describe(p.schedule["here_and_now"], names, notice, gate, start),
             cost_inr=round(p.kpis["cost_inr"]), carbon_t=round(p.kpis["carbon_t"], 1),
             curtailed_mwh=round(p.kpis["curtailed_mwh"], 1), deviation_mwh=round(p.kpis["deviation_mwh"], 1),
             worst_regret_inr=max(regrets) if regrets else None, stress=stress,

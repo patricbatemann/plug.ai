@@ -10,8 +10,8 @@ from app.models.run import AssetBlock, Run
 from app.schemas.configs import (
     AssetOption, ConfigDraft, ConfigOptions, ConfigOut, ConfigValues, StatusUpdate, WatchStatus,
 )
-from app.services import configs
-from app.services.dispatch import bob_inputs, latest_forecasts
+from app.services import configs, runs
+from app.services.dispatch import latest_forecasts
 from app.services.runs import RunContext
 
 router = APIRouter(dependencies=[Depends(get_current_user)])
@@ -88,17 +88,12 @@ def save_draft(payload: ConfigDraft, site: Site = Depends(_site), db: Session = 
 
 @router.post("/configs/{config_id}/test", response_model=ConfigOut)
 def test_config(config: ActionConfig = Depends(_config), db: Session = Depends(get_db)) -> ConfigOut:
-    run = _latest_run(db)
-    if run is None or run.current_block < 0:
-        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Start a run to test against live conditions")
-    ctx = RunContext.load(db, run)
-    t0 = min(run.current_block + 1, run.total_blocks - 1)
-    forecasts = latest_forecasts(db, ctx, run, t0)
-    asset = db.get(Asset, config.asset_id)
-    spec = next(a for a in ctx.assets if a.code == asset.code)
-    configs.test(config, spec, bob_inputs(db, ctx, ctx.world(), run, t0, forecasts), forecasts)
+    try:
+        runs.test_config(db, _latest_run(db), config)
+    except ValueError as error:
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(error)) from None
     db.commit()
-    return _out(db, config, asset)
+    return _out(db, config, db.get(Asset, config.asset_id))
 
 
 @router.post("/configs/{config_id}/activate", response_model=ConfigOut)

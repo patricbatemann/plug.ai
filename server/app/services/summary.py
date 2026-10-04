@@ -26,13 +26,16 @@ def summary(db: Session, run: Run) -> RunSummary:
 
 
 def recent_actions(db: Session, run: Run, limit: int, status: list[str] | None = None, site: str | None = None,
-                   block: int | None = None) -> list[ActionOut]:
+                   block: int | None = None, cycle_id: int | None = None,
+                   action_id: int | None = None) -> list[ActionOut]:
     query = (
         select(Action, Asset.name, Site.name)
         .outerjoin(Asset, Asset.id == Action.asset_id).outerjoin(Site, Site.id == Asset.site_id)
         .where(Action.run_id == run.id, Action.policy == "bob")
     )
-    if status:
+    if action_id is not None:
+        query = query.where(Action.id == action_id)
+    elif status:
         query = query.where(Action.status.in_(status))
     else:  # history leaves out decisions that were replaced before they took effect
         query = query.where(Action.status != "superseded")
@@ -40,6 +43,8 @@ def recent_actions(db: Session, run: Run, limit: int, status: list[str] | None =
         query = query.where(Site.code == site)
     if block is not None:
         query = query.where(Action.block == block)
+    if cycle_id is not None:
+        query = query.where(Action.cycle_id == cycle_id)
     rows = db.execute(query.order_by(Action.block.desc(), Action.id.desc()).limit(limit)).all()
     return [
         ActionOut(id=a.id, block=a.block, time=run.sim_start_at + a.block * BLOCK, cycle_id=a.cycle_id, tier=a.tier,

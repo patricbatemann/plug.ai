@@ -78,6 +78,7 @@ export interface RunState {
   live: boolean
   mode: string
   mode_by: string
+  bob_online: boolean
 }
 
 export interface Alert {
@@ -161,6 +162,8 @@ export interface DecisionSummary {
   mode_by: string
   mode_reason: string
   chosen: string | null
+  selected_by: 'bob' | 'rule'
+  agent: string | null
   rationale: string
   holds: number
   tests: number
@@ -278,8 +281,34 @@ export const runApi = {
     ),
   latestDecision: (id: number) => request<DecisionSummary>(`/api/runs/${id}/decisions/latest`),
   decision: (cycleId: number) => request<DecisionDetail>(`/api/runs/decisions/${cycleId}`),
+  chat: (id: number) => request<ChatItem[]>(`/api/runs/${id}/chat`),
+  ask: (id: number, message: string, context?: string) => post<ChatItem[]>(`/api/runs/${id}/chat`, { message, context }),
   siteLive: (id: number, code: string) =>
     request<SiteLive>(`/api/runs/${id}/sites/${encodeURIComponent(code)}/live`),
+}
+
+export type ChatCard =
+  | { type: 'blocked'; asset_name: string; kind: string; text: string }
+  | { type: 'draft'; config_id: number; site: string; asset: string; asset_name: string; kind: string; version: number
+      autonomy: ConfigValues['autonomy']; limits: Record<string, number>; watch: ConfigValues['watch'] }
+  | { type: 'tests'; config_id: number; site: string; asset: string; asset_name: string; kind: string
+      tests: ConfigOut['tests'] }
+  | { type: 'what_if'; changes: Record<string, unknown>; current: WhatIfPlan; what_if: WhatIfPlan }
+
+export interface WhatIfPlan {
+  feasible: boolean
+  net_cost_inr?: number
+  carbon_t?: number
+  curtailed_mwh?: number
+  unserved_mwh?: number
+  actions?: string[]
+}
+
+export interface ChatItem {
+  id: number
+  role: 'user' | 'assistant'
+  text: string
+  cards: ChatCard[]
 }
 
 export interface ConfigValues {

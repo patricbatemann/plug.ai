@@ -37,13 +37,19 @@ export function DecisionPage() {
       <h1 className="page-title">Decision for the block starting {simTime(data.time)} IST</h1>
       <div className="tag-row">
         <Tag type="purple">Mode: {modeLabel(data.mode)}</Tag>
-        <Tag type="gray">{data.mode_by === 'operator' ? 'Operator default' : `Chosen by ${data.mode_by}`}</Tag>
+        <Tag type="gray">{data.mode_by === 'operator' ? 'Operator default' : `Mode set by ${data.mode_by === 'bob' ? 'BOB' : 'rule'}`}</Tag>
+        <Tag type="gray">{data.selected_by === 'bob' ? 'Option chosen by BOB' : 'Option chosen by rule'}</Tag>
         <Tag type="gray">{data.trigger === 'tick' ? 'Scheduled block' : `Re-planned: ${data.trigger_detail}`}</Tag>
       </div>
 
       <Tile className="decision__why">
-        <div className="card-title">Why BOB chose “{data.chosen ?? 'nothing'}”</div>
+        <div className="card-title">
+          Why {data.selected_by === 'bob' ? 'BOB' : 'the rule'} chose “{data.chosen ?? 'nothing'}”
+        </div>
         <p>{data.rationale}</p>
+        {data.agent?.startsWith('fallback') && (
+          <p className="stat-label">BOB was asked but could not decide ({data.agent.replace('fallback: ', '')}); rules decided.</p>
+        )}
         <p className="page-meta">Mode: {data.mode_reason}</p>
         {data.floors.map((f) => (
           <p key={f} className="stat-label">Guard floor: {f}</p>

@@ -26,6 +26,19 @@ class RunState(BaseModel):
     live: bool
     mode: str
     mode_by: str
+    bob_online: bool  # the model is configured and switched on; otherwise rules decide
+
+
+class ChatAsk(BaseModel):
+    message: str = Field(min_length=1, max_length=2000)
+    context: str | None = Field(default=None, max_length=300)  # what the operator is looking at
+
+
+class ChatItem(BaseModel):
+    id: int
+    role: Literal["user", "assistant"]
+    text: str
+    cards: list[dict]
 
 
 class SpeedUpdate(BaseModel):
@@ -232,6 +245,8 @@ class DecisionSummary(BaseModel):
     mode_by: str
     mode_reason: str
     chosen: str | None
+    selected_by: str
+    agent: str | None  # how BOB's turn ended, when it was asked
     rationale: str
     holds: int
     tests: int

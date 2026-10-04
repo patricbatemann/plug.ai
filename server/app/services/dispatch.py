@@ -1,7 +1,7 @@
 """Per-block decisions and settlement for both policies: BOB (optimiser) and today's practice."""
 
 import time
-from dataclasses import asdict, replace
+from dataclasses import asdict
 from datetime import timedelta
 from zoneinfo import ZoneInfo
 
@@ -9,15 +9,15 @@ import numpy as np
 from sqlalchemy import func, select, update
 from sqlalchemy.orm import Session
 
-from app.core.config import settings
+from app.agent import cycle as agent_cycle, llm
 from app.models.run import Action, AssetBlock, Cycle, Forecast, LineBlock, Plan, Run, SystemBlock
 from app.optimize import baseline
 from app.optimize.dispatch import MIN_MW, Inputs, here_and_now, plan
-from app.optimize.profiles import BALANCED, PROFILES, VARIANT_LABELS, VARIANTS, variant
-from app.optimize.robust import choose_option, evaluate, scenarios, solve_all
-from app.optimize.situation import apply_floors, assess, choose_mode, to_json
+from app.optimize.profiles import BALANCED
+from app.optimize.situation import assess, choose_mode, to_json
 from app.optimize.validator import check
 from app.services import configs, policy
+from app.services.deliberation import Deliberation
 from app.sim.adapters import deliver
 from app.sim.market import dsm_inr
 from app.sim.plant import Setpoints, settle
@@ -165,65 +165,44 @@ def plan_bob(db: Session, ctx, truth: World, run: Run, t0: int, forecasts: dict,
     horizon = len(inputs.price)
     storm = _storm_ahead(ctx, run, t0, horizon)
     # Day-ahead prices are known once the day-ahead market clears.
-    dam = truth.dam[t0:t0 + horizon]
-    signals = assess(inputs, ctx.line_limits, dam, storm is not None and storm[1] < STORM_LEAD_BLOCKS,
-                     _spike_ahead(ctx, run, t0))
-    mode, mode_reason = choose_mode(signals, ctx.default_mode)
-    params, floors = apply_floors(PROFILES[mode], signals)
-    inputs = replace(inputs, profile=params)
-
-    # Live blocks weigh five options under stress; fast-forwarded blocks plan one.
-    live = t0 >= run.live_from_block
-    names = list(VARIANTS) if live else ["profile"]
-    jobs = [] if settings.solver_disabled else [(replace(inputs, profile=variant(params, n)), None, False) for n in names]
-    solved = dict(zip(names, solve_all(jobs)))
-    options, seen = {}, set()
-    for name, result in solved.items():
-        if np.isnan(result.objective):
-            continue
-        key = repr(here_and_now(result, inputs))
-        if key not in seen:  # options that commit to the same actions are one option
-            seen.add(key)
-            options[name] = result
-
-    robust, chosen = None, None
-    rationale = "Safe hold: no feasible plan, so batteries stay idle and no new trades or calls are made."
-    if options and live:
-        material = {sig.code for sig in signals if sig.material}
-        cases = scenarios(inputs, {c: np.array(forecasts[("re_avail", c)].p10[:horizon]) for c in inputs.available
-                                   if ("re_avail", c) in forecasts},
-                          {c: np.array(forecasts[("load", c)].p90[:horizon]) for c in inputs.available
-                           if ("load", c) in forecasts},
-                          storm, "corridor" in material)
-        robust = evaluate(options, inputs, cases)
-        chosen = choose_option(robust, {n: p.kpis["cost_inr"] for n, p in options.items()})
-        rationale = _rationale(chosen, robust)
-    elif options:
-        chosen = next(iter(options))
-        rationale = "Fast-forward block: one option planned for the active mode."
+    signals = assess(inputs, ctx.line_limits, truth.dam[t0:t0 + horizon],
+                     storm is not None and storm[1] < STORM_LEAD_BLOCKS, _spike_ahead(ctx, run, t0))
+    d = Deliberation(inputs, signals, forecasts, storm, live=t0 >= run.live_from_block)
+    previous = db.scalar(select(Cycle).where(Cycle.run_id == run.id).order_by(Cycle.id.desc()).limit(1))
+    seen = {s["code"] for s in previous.situation if s["material"]} if previous else None
+    if previous and previous.mode_by == "bob" and seen == d.material:
+        d.set_mode(previous.mode, "bob", previous.mode_reason)  # BOB's call stands until the situation changes
+    else:
+        mode, reason = choose_mode(signals, ctx.default_mode)
+        d.set_mode(mode, "rule" if mode != ctx.default_mode else "operator", reason)
 
     seq = db.scalar(select(func.count()).select_from(Cycle).where(Cycle.run_id == run.id, Cycle.block == t0))
-    cycle = Cycle(
-        run_id=run.id, block=t0, seq=seq, trigger=trigger, trigger_detail=detail,
-        status="planned" if chosen else "safe_hold",
-        timings={"solve_ms": round((time.perf_counter() - started) * 1000)}, situation=to_json(signals),
-        mode=mode, mode_by="rule" if mode != ctx.default_mode else "operator", mode_reason=mode_reason,
-        floors=floors, scenarios=list(robust[chosen]) if robust else [], rationale=rationale,
-    )
+    cycle = Cycle(run_id=run.id, block=t0, seq=seq, trigger=trigger, trigger_detail=detail, status="planned",
+                  situation=to_json(signals), mode=d.mode, mode_by=d.mode_by, timings={})
     db.add(cycle)
     db.flush()
+    timings = {}
+    # BOB is asked when something material happens: an event, a watch hit or a changed situation.
+    if d.live and (trigger != "tick" or seen != d.material) and llm.ready():
+        timings["agent"] = agent_cycle.decide(db, ctx, run, t0, cycle.id, d, trigger, detail)
+    d.finish()
+    timings["solve_ms"] = round((time.perf_counter() - started) * 1000)
+    cycle.status = "planned" if d.chosen else "safe_hold"
+    cycle.mode, cycle.mode_by, cycle.mode_reason, cycle.floors = d.mode, d.mode_by, d.mode_reason, d.floors
+    cycle.scenarios = list(d.robust[d.chosen]) if d.robust and d.chosen else []
+    cycle.rationale, cycle.selected_by, cycle.timings = d.rationale, d.selected_by, timings
     rounded = lambda arrays: {k: np.round(v, 2).tolist() for k, v in arrays.items()}  # noqa: E731
     db.add_all(
-        Plan(cycle_id=cycle.id, variant=name, role="selected" if name == chosen else "candidate", kpis=p.kpis,
+        Plan(cycle_id=cycle.id, variant=name, role="selected" if name == d.chosen else "candidate", kpis=p.kpis,
              schedule={"start_block": t0, "generation": rounded(p.generation), "battery": rounded(p.battery),
                        "soc": rounded(p.soc), "demand_response": rounded(p.demand_response),
                        "shift": rounded(p.shift), "rtm": np.round(p.rtm, 2).tolist(),
-                       "here_and_now": asdict(here_and_now(p, inputs))},
+                       "here_and_now": asdict(here_and_now(p, d.inputs))},
              solver={"status": p.status, "objective": p.objective, "gap": p.gap},
-             robust=robust[name] if robust else None)
-        for name, p in options.items()
+             robust=d.robust[name] if d.robust else None)
+        for name, p in d.options.items()
     )
-    run.mode_code, run.mode_by = mode, cycle.mode_by
+    run.mode_code, run.mode_by = d.mode, d.mode_by
     # A re-plan replaces earlier cycles' decisions for this block that are not commitments yet:
     # setpoints for the block, and anything still awaiting approval or only recommended.
     # Trades and demand-response calls already sent stay; they are commitments.
@@ -233,18 +212,8 @@ def plan_bob(db: Session, ctx, truth: World, run: Run, t0: int, forecasts: dict,
         ((Action.block == t0) & Action.kind.in_(("bess_charge", "bess_discharge", "curtail", "load_shift"))
          & (Action.status == "acked")) | Action.status.in_(("awaiting_approval", "recommended")),
     ).values(status="superseded"))
-    if chosen:
-        _dispatch(db, ctx, run, cycle.id, t0, options[chosen], inputs, decided_at)
-
-
-def _rationale(chosen: str, robust: dict) -> str:
-    worst = lambda name: max(s["regret_inr"] or 0 for s in robust[name].values())  # noqa: E731
-    holds = sum(s["holds"] for s in robust[chosen].values())
-    others = sorted(worst(n) for n in robust if n != chosen)
-    runner_up = f"; next best ₹{others[0]:,.0f}" if others else ""
-    return (f"Chose “{VARIANT_LABELS[chosen]}”: the smallest worst-case regret, ₹{worst(chosen):,.0f}, across "
-            f"{len(robust[chosen])} stress tests{runner_up}. Keeps all load served in {holds} of "
-            f"{len(robust[chosen])}.")
+    if d.chosen:
+        _dispatch(db, ctx, run, cycle.id, t0, d.options[d.chosen], d.inputs, decided_at)
 
 
 def _items(h, inputs: Inputs, ctx, t0: int) -> list[dict]:

@@ -2,11 +2,13 @@ import { Link } from 'react-router-dom'
 import { Button, InlineNotification, Tag, Tile } from '@carbon/react'
 import type { ActionOut, RunState } from '../api/client'
 import { actionLabel, mw, simTime } from '../format'
+import { useAskBob } from './AskBob'
 import { useDecide } from './useActions'
 
 /** One gated or recommended action, with the reason it needs a person and its deadline. */
 export function ActionCard({ action, run }: { action: ActionOut; run: RunState }) {
   const decide = useDecide(run)
+  const ask = useAskBob()
   const minutesLeft = action.deadline_at
     ? Math.max(0, Math.round((Date.parse(action.deadline_at) - Date.parse(run.sim_time)) / 60000))
     : null
@@ -39,6 +41,9 @@ export function ActionCard({ action, run }: { action: ActionOut; run: RunState }
             View evidence
           </Link>
         )}
+        <Button kind="ghost" size="sm" onClick={() => ask(`Explain action ${action.id}: why is it needed now?`)}>
+          Ask BOB
+        </Button>
         {minutesLeft !== null && <span className="stat-label">Respond within {minutesLeft} min (sim time)</span>}
         {action.tier === 'approval' && (
           <>

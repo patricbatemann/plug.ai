@@ -8,11 +8,11 @@ import numpy as np
 from sqlalchemy import delete, select, update
 from sqlalchemy.orm import Session
 
-from app.models.portfolio import Asset, Line, Node, Portfolio
+from app.models.portfolio import ActionConfig, Asset, Line, Node, Portfolio
 from app.models.run import POLICIES, Forecast, Run, WorldEvent
 from app.sim import forecast
-from app.services import policy
-from app.services.dispatch import latest_forecasts, plan_block, plan_bob, settle_block
+from app.services import configs, policy
+from app.services.dispatch import bob_inputs, latest_forecasts, plan_block, plan_bob, settle_block
 from app.sim.plant import LineSpec
 from app.sim.presets import PRESETS
 from app.sim.world import BLOCK_MIN, BLOCKS_PER_DAY, AssetSpec, EventSpec, World
@@ -124,6 +124,7 @@ class RunContext:
     run: Run
     assets: list[AssetSpec]
     asset_ids: dict[str, int]
+    names: dict[str, str]
     lines: list[LineSpec]
     line_limits: dict[str, float]
     line_ids: dict[str, int]
@@ -143,6 +144,7 @@ class RunContext:
             run=run,
             assets=[AssetSpec(a.code, a.kind, nodes[a.node_id], a.capacity_mw, a.params) for a in assets],
             asset_ids={a.code: a.id for a in assets},
+            names={a.code: a.name for a in assets},
             lines=[LineSpec(l.code, nodes[l.from_node_id], nodes[l.to_node_id]) for l in lines],
             line_limits={l.code: l.limit_mw for l in lines},
             line_ids={l.code: l.id for l in lines},
@@ -257,6 +259,18 @@ def inject(db: Session, run: Run, kind: str, payload: dict[str, Any], now: datet
     db.flush()
     replan_for_events(db, run, fire_events(db, run, event.sim_at + timedelta(microseconds=1), now), now)
     return event
+
+
+def test_config(db: Session, run: Run | None, config: ActionConfig) -> dict[str, dict]:
+    """Run a draft's tests against the block in progress of the latest run."""
+    if run is None or run.current_block < 0:
+        raise ValueError("Start a run to test against live conditions")
+    ctx = RunContext.load(db, run)
+    t0 = min(run.current_block + 1, run.total_blocks - 1)
+    forecasts = latest_forecasts(db, ctx, run, t0)
+    code = next(c for c, i in ctx.asset_ids.items() if i == config.asset_id)
+    spec = next(a for a in ctx.assets if a.code == code)
+    return configs.test(config, spec, bob_inputs(db, ctx, ctx.world(), run, t0, forecasts), forecasts)
 
 
 def check_references(db: Session, run: Run, payload: dict[str, Any]) -> None:

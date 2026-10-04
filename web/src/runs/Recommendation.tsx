@@ -1,8 +1,9 @@
 import { Link } from 'react-router-dom'
 import { useQuery } from '@tanstack/react-query'
-import { Tag, Tile } from '@carbon/react'
+import { Button, Tag, Tile } from '@carbon/react'
 import { runApi, type RunState } from '../api/client'
 import { modeLabel, simTime } from '../format'
+import { useAskBob } from './AskBob'
 
 /** BOB's latest decision, as on the Monitor Sites screen, with a link to its evidence. */
 export function Recommendation({ run }: { run: RunState }) {
@@ -10,6 +11,7 @@ export function Recommendation({ run }: { run: RunState }) {
     queryKey: ['decision', run.id, run.block],
     queryFn: () => runApi.latestDecision(run.id),
   })
+  const ask = useAskBob()
   if (!data) return null
   return (
     <Tile className="recommendation">
@@ -28,6 +30,9 @@ export function Recommendation({ run }: { run: RunState }) {
             Load served in {data.holds}/{data.tests} stress tests
           </Tag>
         )}
+        <Button kind="ghost" size="sm" onClick={() => ask(`Explain the decision for ${simTime(data.time)}.`)}>
+          Ask BOB
+        </Button>
         <Link className="cds--link" to={`/decisions/${data.id}`}>
           View evidence
         </Link>

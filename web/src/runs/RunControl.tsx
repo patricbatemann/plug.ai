@@ -36,7 +36,7 @@ export function RunControl() {
         <InlineLoading description="Fast-forwarding" />
       ) : (
         <Tag size="sm" type={STATUS_TAG[run.status]}>
-          {run.status}
+          {run.status} · {run.bob_online ? 'BOB' : 'rules only'}
         </Tag>
       )}
       {run.status !== 'done' && (

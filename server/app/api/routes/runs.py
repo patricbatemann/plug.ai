@@ -4,6 +4,7 @@ from fastapi import APIRouter, Body, Depends, HTTPException, Query, status
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
+from app.agent import chat, llm
 from app.api.dependencies import get_current_user
 from app.api.routes.portfolio import current_portfolio
 from app.core.database import get_db
@@ -11,7 +12,7 @@ from app.models.portfolio import Portfolio
 from app.models.run import Action, Cycle, Run, WorldEvent
 from app.models.user import User
 from app.schemas.runs import (
-    ActionOut, DecisionDetail, DecisionSummary, EventOut, InjectEvent, PresetInfo, RunCreate, RunState, RunSummary, SiteLive,
+    ActionOut, ChatAsk, ChatItem, DecisionDetail, DecisionSummary, EventOut, InjectEvent, PresetInfo, RunCreate, RunState, RunSummary, SiteLive,
     SpeedUpdate,
 )
 from app.services import runs
@@ -31,7 +32,7 @@ def _state(run: Run) -> RunState:
     return RunState(
         id=run.id, preset=run.preset, name=run.config["name"], status=run.status, speed=run.speed,
         sim_time=runs.sim_now(run, _now()), block=run.current_block, total_blocks=run.total_blocks,
-        live=runs.is_live(run), mode=run.mode_code, mode_by=run.mode_by,
+        live=runs.is_live(run), mode=run.mode_code, mode_by=run.mode_by, bob_online=llm.ready(),
     )
 
 
@@ -195,3 +196,17 @@ def decision(cycle_id: int, db: Session = Depends(get_db)) -> DecisionDetail:
     if cycle is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Decision not found")
     return decisions.detail(db, cycle)
+
+
+@router.get("/{run_id}/chat", response_model=list[ChatItem])
+def chat_history(run: Run = Depends(_run), db: Session = Depends(get_db),
+                 user: User = Depends(get_current_user)) -> list[dict]:
+    return chat.display(chat.history(db, run, user))
+
+
+@router.post("/{run_id}/chat", response_model=list[ChatItem])
+def ask_bob(payload: ChatAsk, run: Run = Depends(_run), db: Session = Depends(get_db),
+            user: User = Depends(get_current_user)) -> list[dict]:
+    chat.ask(db, run, user, payload.message, payload.context)
+    db.commit()
+    return chat.display(chat.history(db, run, user))

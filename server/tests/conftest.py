@@ -9,6 +9,7 @@ from fastapi.testclient import TestClient
 from sqlalchemy import create_engine, text
 from sqlalchemy.orm import Session, sessionmaker
 
+from app.core.config import settings
 from app.core.database import Base, get_db
 from app.main import app
 
@@ -25,6 +26,12 @@ def migrated_schema() -> None:
     config.set_main_option("sqlalchemy.url", TEST_DATABASE_URL)
     command.downgrade(config, "base")
     command.upgrade(config, "head")
+
+
+@pytest.fixture(autouse=True)
+def rules_only(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Tests never call the model; those that need BOB mock it."""
+    monkeypatch.setattr(settings, "bob_enabled", False)
 
 
 @pytest.fixture

@@ -144,6 +144,7 @@ class Cycle(Base):
     scenarios: Mapped[list[str]] = mapped_column(JSONB, server_default="[]")
     rationale: Mapped[str] = mapped_column(String(600), server_default="")
     trigger_detail: Mapped[str] = mapped_column(String(200), server_default="")
+    selected_by: Mapped[str] = mapped_column(String(16), server_default="rule")
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 
 
@@ -185,4 +186,38 @@ class Action(Base):
     deadline_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     decided_by: Mapped[str | None] = mapped_column(String(320))
     decided_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+
+class AgentCall(Base):
+    """One agent turn (a cycle decision, a chat reply or an extraction), for cost and reliability."""
+
+    __tablename__ = "agent_call"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    run_id: Mapped[int | None] = mapped_column(ForeignKey("run.id", ondelete="CASCADE"), index=True)
+    cycle_id: Mapped[int | None] = mapped_column(ForeignKey("cycle.id", ondelete="CASCADE"))
+    purpose: Mapped[str] = mapped_column(String(16))
+    deployment: Mapped[str] = mapped_column(String(64))
+    input_tokens: Mapped[int] = mapped_column(Integer, default=0)
+    output_tokens: Mapped[int] = mapped_column(Integer, default=0)
+    cached_tokens: Mapped[int] = mapped_column(Integer, default=0)
+    latency_ms: Mapped[int] = mapped_column(Integer, default=0)
+    tool_calls: Mapped[int] = mapped_column(Integer, default=0)
+    outcome: Mapped[str] = mapped_column(String(16))  # ok | fallback | error
+    error: Mapped[str | None] = mapped_column(String(300))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+
+class ChatMessage(Base):
+    """Ask BOB: the conversation, stored as API messages so it can be replayed."""
+
+    __tablename__ = "chat_message"
+    __table_args__ = (Index("ix_chat_message_run_user", "run_id", "user_id", "id"),)
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    run_id: Mapped[int] = mapped_column(ForeignKey("run.id", ondelete="CASCADE"))
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"))
+    role: Mapped[str] = mapped_column(String(16))
+    content: Mapped[dict[str, Any]] = mapped_column(JSONB)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())

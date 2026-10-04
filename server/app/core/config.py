@@ -12,6 +12,14 @@ class Settings(BaseSettings):
     cors_origins: str = "http://localhost:5173"
     solver_processes: int = Field(default=4, ge=0)  # 0 or 1 solves in-process
     solver_disabled: bool = False  # demo switch: no plans, so BOB falls back to safe hold
+    # BOB's language model (Azure OpenAI). Without an endpoint and key, every decision uses the rules.
+    microsoft_azure_openai_endpoint: str | None = None
+    microsoft_azure_openai_key: str | None = None
+    microsoft_azure_openai_deployment_name: str | None = None
+    bob_enabled: bool = True
+    bob_timeout_s: float = Field(default=20.0, gt=0)  # a cycle turn
+    bob_chat_timeout_s: float = Field(default=60.0, gt=0)
+    bob_max_tool_calls: int = Field(default=8, gt=0)
 
     model_config = SettingsConfigDict(
         env_file=".env", env_file_encoding="utf-8", env_ignore_empty=True, extra="ignore"
