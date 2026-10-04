@@ -1,12 +1,15 @@
+from datetime import datetime, timezone
+
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.api.dependencies import get_current_user
-from app.api.routes.portfolio import current_portfolio
+from app.api.routes.portfolio import current_portfolio, current_site
 from app.core.database import get_db
 from app.models.portfolio import ActionConfig, Asset, Portfolio, Site
 from app.models.run import AssetBlock, Run
+from app.models.user import User
 from app.schemas.configs import (
     AssetOption, ConfigDraft, ConfigOptions, ConfigOut, ConfigValues, StatusUpdate, WatchStatus,
 )
@@ -15,13 +18,6 @@ from app.services.dispatch import latest_forecasts
 from app.services.runs import RunContext
 
 router = APIRouter(dependencies=[Depends(get_current_user)])
-
-
-def _site(code: str, portfolio: Portfolio = Depends(current_portfolio)) -> Site:
-    site = next((s for s in portfolio.sites if s.code == code), None)
-    if site is None:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Site not found")
-    return site
 
 
 def _config(config_id: int, db: Session = Depends(get_db)) -> ActionConfig:
@@ -47,13 +43,14 @@ def _out(db: Session, c: ActionConfig, asset: Asset, actions_today: int = 0) -> 
 
 
 @router.get("/sites/{code}/configs", response_model=list[ConfigOut])
-def list_configs(site: Site = Depends(_site), db: Session = Depends(get_db)) -> list[ConfigOut]:
+def list_configs(site: Site = Depends(current_site), db: Session = Depends(get_db)) -> list[ConfigOut]:
     return [_out(db, row["config"], row["asset"], row["actions_today"])
             for row in configs.site_configs(db, site, runs.latest_live(db))]
 
 
 @router.get("/sites/{code}/config-options", response_model=ConfigOptions)
-def config_options(site: Site = Depends(_site), portfolio: Portfolio = Depends(current_portfolio)) -> ConfigOptions:
+def config_options(site: Site = Depends(current_site),
+                   portfolio: Portfolio = Depends(current_portfolio)) -> ConfigOptions:
     return ConfigOptions(
         assets=[AssetOption(code=a.code, name=a.name, kind=a.kind, capacity_mw=a.capacity_mw,
                             actions=list(configs.KINDS_FOR.get(a.kind, ())),
@@ -65,7 +62,7 @@ def config_options(site: Site = Depends(_site), portfolio: Portfolio = Depends(c
 
 
 @router.post("/sites/{code}/configs", response_model=ConfigOut, status_code=status.HTTP_201_CREATED)
-def save_draft(payload: ConfigDraft, site: Site = Depends(_site), db: Session = Depends(get_db),
+def save_draft(payload: ConfigDraft, site: Site = Depends(current_site), db: Session = Depends(get_db),
                portfolio: Portfolio = Depends(current_portfolio)) -> ConfigOut:
     asset = next((a for a in site.assets if a.code == payload.asset), None)
     if asset is None:
@@ -93,9 +90,10 @@ def test_config(config: ActionConfig = Depends(_config), db: Session = Depends(g
 
 
 @router.post("/configs/{config_id}/activate", response_model=ConfigOut)
-def activate(config: ActionConfig = Depends(_config), db: Session = Depends(get_db)) -> ConfigOut:
+def activate(config: ActionConfig = Depends(_config), db: Session = Depends(get_db),
+             user: User = Depends(get_current_user)) -> ConfigOut:
     try:
-        configs.activate(db, config)
+        configs.activate(db, config, user.email, datetime.now(timezone.utc))
     except ValueError as error:
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(error)) from None
     db.commit()
@@ -112,7 +110,7 @@ def set_status(payload: StatusUpdate, config: ActionConfig = Depends(_config), d
 
 
 @router.get("/runs/{run_id}/sites/{code}/watch", response_model=list[WatchStatus])
-def watch_status(run_id: int, site: Site = Depends(_site), db: Session = Depends(get_db)) -> list[WatchStatus]:
+def watch_status(run_id: int, site: Site = Depends(current_site), db: Session = Depends(get_db)) -> list[WatchStatus]:
     run = db.get(Run, run_id)
     if run is None or run.current_block < 0:
         return []

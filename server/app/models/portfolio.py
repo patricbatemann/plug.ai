@@ -1,7 +1,10 @@
-from datetime import date
+from datetime import date, datetime
 from typing import Any
 
-from sqlalchemy import CheckConstraint, Date, Float, ForeignKey, Index, String, UniqueConstraint, text
+from sqlalchemy import (
+    CheckConstraint, Date, DateTime, Float, ForeignKey, Index, Integer, LargeBinary, String, UniqueConstraint, func,
+    text,
+)
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
@@ -121,3 +124,24 @@ class ActionConfig(Base):
     watch: Mapped[list[dict[str, Any]]] = mapped_column(JSONB, server_default="[]")
     # Last test results by scenario: {label, passed, detail}
     tests: Mapped[dict[str, Any]] = mapped_column(JSONB, server_default="{}")
+    activated_by: Mapped[str | None] = mapped_column(String(320))
+    activated_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+
+
+class DataSource(Base):
+    """A site's connected data (a mock): an imported CSV of telemetry history, or a live API that
+    the simulator answers for. The demo stores imports but plans only on simulated telemetry."""
+
+    __tablename__ = "data_source"
+    __table_args__ = (CheckConstraint("kind IN ('csv', 'api')", name="data_source_kind"),)
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    site_id: Mapped[int] = mapped_column(ForeignKey("site.id", ondelete="CASCADE"), index=True)
+    kind: Mapped[str] = mapped_column(String(8))
+    name: Mapped[str] = mapped_column(String(300))  # file name or endpoint URL
+    rows: Mapped[int | None] = mapped_column(Integer)
+    columns: Mapped[list[dict[str, str]]] = mapped_column(JSONB, server_default="[]")  # [{name, type}]
+    content: Mapped[bytes | None] = mapped_column(LargeBinary)
+    refresh_min: Mapped[int | None] = mapped_column(Integer)
+    created_by: Mapped[str] = mapped_column(String(320))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())

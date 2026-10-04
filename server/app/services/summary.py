@@ -6,6 +6,7 @@ from sqlalchemy.orm import Session
 from app.models.portfolio import Asset, Site
 from app.models.run import Action, Run, SystemBlock
 from app.schemas.runs import ActionOut, PolicyTotals, RunSummary
+from app.services.policy import WORK_ORDERS
 from app.services.runs import BLOCK
 
 SUMMED = ("cost_inr", "market_inr", "dsm_inr", "dr_inr", "wear_inr", "curtail_inr", "curtailed_mwh", "carbon_t",
@@ -26,8 +27,10 @@ def summary(db: Session, run: Run) -> RunSummary:
 
 
 def recent_actions(db: Session, run: Run, limit: int, status: list[str] | None = None, site: str | None = None,
-                   block: int | None = None, cycle_id: int | None = None,
-                   action_id: int | None = None) -> list[ActionOut]:
+                   block: int | None = None, cycle_id: int | None = None, action_id: int | None = None,
+                   notable: bool = False) -> list[ActionOut]:
+    """BOB's actions, newest first. `notable` keeps those a person should see in a log: anything not
+    automatic, calls on customers, and work orders."""
     query = (
         select(Action, Asset.name, Site.name)
         .outerjoin(Asset, Asset.id == Action.asset_id).outerjoin(Site, Site.id == Asset.site_id)
@@ -45,6 +48,8 @@ def recent_actions(db: Session, run: Run, limit: int, status: list[str] | None =
         query = query.where(Action.block == block)
     if cycle_id is not None:
         query = query.where(Action.cycle_id == cycle_id)
+    if notable:
+        query = query.where((Action.tier != "auto") | Action.kind.in_(("dr_call", *WORK_ORDERS)))
     rows = db.execute(query.order_by(Action.block.desc(), Action.id.desc()).limit(limit)).all()
     return [
         ActionOut(id=a.id, block=a.block, time=run.sim_start_at + a.block * BLOCK, cycle_id=a.cycle_id, tier=a.tier,

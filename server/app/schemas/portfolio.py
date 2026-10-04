@@ -1,5 +1,5 @@
 from datetime import date
-from typing import Any
+from typing import Any, Literal
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
@@ -115,11 +115,16 @@ class PortfolioResponse(BaseModel):
     name: str
     tz: str
     mode_code: str
+    protected: dict[str, Any]
     totals: PortfolioTotals
     sites: list[SiteSummary]
     nodes: list[NetworkItem]
     lines: list[NetworkItem]
     assets: list[AssetRef]
+
+
+class PortfolioSettings(BaseModel):
+    mode_code: Literal["balanced", "economic", "clean", "resilience", "grid_support"]
 
 
 class AssetResponse(BaseModel):

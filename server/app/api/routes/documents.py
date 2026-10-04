@@ -4,19 +4,15 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 from fastapi import APIRouter, Depends, HTTPException, status
-from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.agent import chat
 from app.api.dependencies import get_current_user
 from app.core.database import get_db
-from app.models.portfolio import Asset, Site
 from app.models.run import Constraint, Run
 from app.models.user import User
-from app.schemas.runs import ChatItem, DocumentUpload, MaintenanceOut, SampleOut, TaskOut
-from app.services import documents, maintenance, runs
-from app.services.policy import WORK_ORDERS
-from app.services.summary import recent_actions
+from app.schemas.runs import ChatItem, DocumentUpload, SampleOut
+from app.services import documents, runs
 
 router = APIRouter(dependencies=[Depends(get_current_user)])
 
@@ -72,21 +68,3 @@ def decide(run_id: int, constraint_id: int, decision: str, db: Session = Depends
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(error)) from None
     db.commit()
     return chat.display(db, run, chat.history(db, run, user.id))
-
-
-@router.get("/runs/{run_id}/sites/{code}/maintenance", response_model=MaintenanceOut)
-def site_maintenance(run_id: int, code: str, db: Session = Depends(get_db)) -> MaintenanceOut:
-    run = _run(run_id, db)
-    assets = {a.id: a for a in db.scalars(select(Asset).join(Site).where(Site.code == code))}
-    now = runs.sim_now(run, datetime.now(timezone.utc))
-    tasks = []
-    for t in maintenance.tasks(db, run):
-        if t.asset_id in assets:
-            end = t.scheduled_at + t.duration_blocks * runs.BLOCK
-            tasks.append(TaskOut(
-                id=t.id, asset=assets[t.asset_id].name, kind=t.kind, hours=t.duration_blocks / 4,
-                earliest_at=t.earliest_at, deadline_at=t.deadline_at, calendar_at=t.calendar_at,
-                scheduled_at=t.scheduled_at, safety_critical=t.safety_critical,
-                status="done" if end <= now else "in progress" if t.scheduled_at <= now else "planned"))
-    proposals = [a for a in recent_actions(db, run, 50, site=code) if a.kind in WORK_ORDERS]
-    return MaintenanceOut(tasks=tasks, proposals=proposals)

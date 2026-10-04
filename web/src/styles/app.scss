@@ -34,6 +34,7 @@ body {
 .tag-row {
   display: flex;
   flex-wrap: wrap;
+  align-items: center;
   gap: $spacing-03;
   margin-bottom: $spacing-06;
 }
@@ -355,4 +356,22 @@ body {
 
 .simulation__chart {
   min-width: 0;
+}
+
+.activity__entry {
+  display: grid;
+  grid-template-columns: 4rem 8rem 1fr;
+  gap: $spacing-04;
+  align-items: start;
+  padding: $spacing-04 0;
+  border-bottom: 1px solid theme.$border-subtle-01;
+}
+
+.page-banner {
+  max-width: none;
+  margin-bottom: $spacing-05;
+}
+
+.card-grid--two {
+  grid-template-columns: repeat(2, 1fr);
 }

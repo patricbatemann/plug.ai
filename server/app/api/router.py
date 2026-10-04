@@ -5,6 +5,7 @@ from app.api.routes.configs import router as configs_router
 from app.api.routes.documents import router as documents_router
 from app.api.routes.portfolio import router as portfolio_router
 from app.api.routes.runs import router as runs_router
+from app.api.routes.sites import router as sites_router
 from app.api.routes.studies import router as studies_router
 
 api_router = APIRouter()
@@ -14,3 +15,4 @@ api_router.include_router(runs_router, tags=["runs"])
 api_router.include_router(configs_router, tags=["configs"])
 api_router.include_router(documents_router, tags=["documents"])
 api_router.include_router(studies_router, tags=["simulation"])
+api_router.include_router(sites_router, tags=["sites"])

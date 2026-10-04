@@ -5,7 +5,7 @@ import {
   Button, IconButton, InlineLoading, InlineNotification, OverflowMenu, OverflowMenuItem, Tag, TextArea, Tile,
 } from '@carbon/react'
 import { Attachment, Close, Locked, Send } from '@carbon/icons-react'
-import { documentApi, runApi, type ChatCard } from '../api/client'
+import { documentApi, fileUpload, runApi, type ChatCard } from '../api/client'
 import { AUTONOMY, configKindLabel, limitsSummary } from '../format'
 import { useCurrentRun } from './useCurrentRun'
 import { WhatIfTable } from './WhatIfTable'
@@ -154,15 +154,10 @@ function Attach({ disabled, onPick }: {
 }) {
   const samples = useQuery({ queryKey: ['document-samples'], queryFn: documentApi.samples, staleTime: Infinity })
   const file = useRef<HTMLInputElement>(null)
-  const read = (f: File) => {
-    const reader = new FileReader()
-    reader.onload = () => onPick({ filename: f.name, data: String(reader.result).split(',')[1] })
-    reader.readAsDataURL(f)
-  }
   return (
     <>
       <input ref={file} type="file" hidden accept=".pdf,.txt,.png,.jpg,.jpeg"
-        onChange={(e) => { if (e.target.files?.[0]) read(e.target.files[0]); e.target.value = '' }} />
+        onChange={(e) => { if (e.target.files?.[0]) fileUpload(e.target.files[0]).then(onPick); e.target.value = '' }} />
       <OverflowMenu renderIcon={Attachment} iconDescription="Attach a document" disabled={disabled} flipped
         direction="top" aria-label="Attach a document">
         <OverflowMenuItem itemText="Upload a file…" onClick={() => file.current?.click()} />

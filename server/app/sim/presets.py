@@ -21,6 +21,19 @@ BASE: dict[str, Any] = {
 }
 
 
+# BOB learns of the storm only from the bulletin, once an operator uploads it. A wind job is
+# calendared inside the storm, and Gooty wind keeps damage after it.
+STORM_STORY: dict[str, Any] = {
+    "events": [
+        {"at": "11:20", "kind": "document_publish",
+         "payload": {"document": "storm_bulletin.pdf", "title": "Storm bulletin"}},
+        {"at": "14:30", "kind": "storm", "payload": {"node": "NORTH", "minutes": 180, "after_pct": {"WND-GTY": 60}}},
+    ],
+    "maintenance": [{"asset": "WND-TIR", "kind": "preventive", "duration_blocks": 16, "earliest": "10:00",
+                     "deadline": "23:45", "at": "14:00", "safety_critical": False}],
+}
+
+
 def preset(name: str, description: str, **overrides: Any) -> dict[str, Any]:
     return {**BASE, "name": name, "description": description, **overrides}
 
@@ -32,14 +45,17 @@ PRESETS: dict[str, dict[str, Any]] = {
     ),
     "demo_story": preset(
         "Demo story",
-        "Cloud bank over the south, evening price spike, Battery 2 trip, north corridor derate.",
+        "Cloud bank over the south, evening price spike, Battery 2 trip, north corridor derate, then a storm "
+        "bulletin for the afternoon with maintenance calendared in the storm.",
         events=[
             {"at": "11:07", "kind": "cloud_bank", "payload": {"node": "SOUTH", "depth": 0.3, "minutes": 60}},
             {"at": "11:07", "kind": "forecast_update", "payload": {}},
             {"at": "11:10", "kind": "price_spike", "payload": {"from_hh": 18, "to_hh": 22, "mult": 1.5, "reveal": True}},
             {"at": "11:12", "kind": "bess_trip", "payload": {"asset": "BESS-02", "minutes": 240}},
             {"at": "11:14", "kind": "line_derate", "payload": {"line": "L-NORTH-HUB", "limit_mw": 70, "minutes": 120}},
+            *STORM_STORY["events"],
         ],
+        maintenance=STORM_STORY["maintenance"],
     ),
     "evening_spike": preset(
         "Evening spike",
@@ -60,14 +76,6 @@ PRESETS: dict[str, dict[str, Any]] = {
         "Storm day",
         "A bulletin warns of an afternoon storm over the north wind sites, where maintenance is calendared.",
         weather={"cloud_mean": 0.35, "wind_mean_ms": 9.0},
-        events=[
-            # BOB learns of the storm only from the bulletin, once an operator uploads it.
-            {"at": "11:30", "kind": "document_publish",
-             "payload": {"document": "storm_bulletin.pdf", "title": "Storm bulletin"}},
-            {"at": "14:30", "kind": "storm", "payload": {"node": "NORTH", "minutes": 180,
-                                                         "after_pct": {"WND-GTY": 60}}},
-        ],
-        maintenance=[{"asset": "WND-TIR", "kind": "preventive", "duration_blocks": 16, "earliest": "10:00",
-                      "deadline": "23:45", "at": "14:00", "safety_critical": False}],
+        **STORM_STORY,
     ),
 }

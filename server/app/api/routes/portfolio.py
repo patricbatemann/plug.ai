@@ -3,8 +3,8 @@ from sqlalchemy.orm import Session
 
 from app.api.dependencies import get_current_user
 from app.core.database import get_db
-from app.models.portfolio import Portfolio
-from app.schemas.portfolio import PortfolioResponse, SiteDetail
+from app.models.portfolio import Portfolio, Site
+from app.schemas.portfolio import PortfolioResponse, PortfolioSettings, SiteDetail
 from app.services.portfolio import get_portfolio, portfolio_overview, site_detail
 
 router = APIRouter(dependencies=[Depends(get_current_user)])
@@ -20,10 +20,26 @@ def current_portfolio(db: Session = Depends(get_db)) -> Portfolio:
     return portfolio
 
 
+def current_site(code: str, portfolio: Portfolio = Depends(current_portfolio)) -> Site:
+    site = next((s for s in portfolio.sites if s.code == code), None)
+    if site is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Site not found")
+    return site
+
+
 @router.get("/portfolio", response_model=PortfolioResponse)
 def read_portfolio(
     db: Session = Depends(get_db), portfolio: Portfolio = Depends(current_portfolio)
 ) -> PortfolioResponse:
+    return portfolio_overview(db, portfolio)
+
+
+@router.patch("/portfolio", response_model=PortfolioResponse)
+def update_settings(payload: PortfolioSettings, db: Session = Depends(get_db),
+                    portfolio: Portfolio = Depends(current_portfolio)) -> PortfolioResponse:
+    """The operator's default operating mode; BOB and the rules use it from the next cycle."""
+    portfolio.mode_code = payload.mode_code
+    db.commit()
     return portfolio_overview(db, portfolio)
 
 

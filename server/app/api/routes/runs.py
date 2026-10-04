@@ -1,6 +1,6 @@
 import json
 from collections.abc import Iterator
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 
 from fastapi import APIRouter, Body, Depends, HTTPException, Query, status
 from fastapi.responses import StreamingResponse
@@ -27,6 +27,9 @@ from app.sim.presets import PRESETS
 router = APIRouter(prefix="/runs", dependencies=[Depends(get_current_user)])
 
 
+LAG = timedelta(seconds=10)
+
+
 def _now() -> datetime:
     return datetime.now(timezone.utc)
 
@@ -36,6 +39,7 @@ def _state(run: Run) -> RunState:
         id=run.id, preset=run.preset, name=run.config["name"], status=run.status, speed=run.speed,
         sim_time=runs.sim_now(run, _now()), block=run.current_block, total_blocks=run.total_blocks,
         live=runs.is_live(run), mode=run.mode_code, mode_by=run.mode_by, bob_online=llm.ready(),
+        lagging=run.status == "running" and _now() - run.next_due_at > LAG,
     )
 
 

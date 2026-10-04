@@ -27,8 +27,9 @@ import {
   Tile,
 } from '@carbon/react'
 import { Locked } from '@carbon/icons-react'
-import { configApi, type ConfigOut, type ConfigValues } from '../api/client'
-import { AUTONOMY, configKindLabel, limitsSummary } from '../format'
+import { configApi, portfolioApi, type ConfigOut, type ConfigValues } from '../api/client'
+import { useCurrentRun } from '../runs/useCurrentRun'
+import { AUTONOMY, configKindLabel, limitsSummary, modeLabel } from '../format'
 
 const LIMIT_FIELDS: Record<string, Array<[string, string]>> = {
   battery_charge: [['max_mw', 'Maximum charge (MW)'], ['auto_max_mw', 'Automatic up to (MW)']],
@@ -49,6 +50,9 @@ export function SetupWizardPage() {
   const navigate = useNavigate()
   const queryClient = useQueryClient()
   const options = useQuery({ queryKey: ['config-options', code], queryFn: () => configApi.options(code) })
+  const portfolio = useQuery({ queryKey: ['portfolio'], queryFn: portfolioApi.get })
+  const { data: run } = useCurrentRun()
+  const mode = run?.mode ?? portfolio.data?.mode_code ?? 'balanced'
   const configs = useQuery({ queryKey: ['configs', code], queryFn: () => configApi.list(code) })
   const fromChat = Number(params.get('draft'))  // a draft BOB made in chat opens at its tests
   const [step, setStep] = useState(fromChat ? 2 : params.get('asset') ? 1 : 0)
@@ -147,6 +151,11 @@ export function SetupWizardPage() {
                 )}
               </Stack>
             )}
+            <p className="stat-label">
+              What BOB prioritises comes from the portfolio mode: {modeLabel(mode)} ({run?.mode_by === 'bob'
+                ? 'set by BOB for the situation' : run?.mode_by === 'rule' ? 'set by rule for the situation'
+                : 'operator default'}). Change the default in Settings.
+            </p>
             <Tile className="wizard__protected">
               <div className="card-title"><Locked /> Protected limits (organisation, cannot be changed here)</div>
               {protectedLimits.battery_soc_floor_pct !== undefined && (

@@ -301,6 +301,21 @@ def test_storm_bulletin_moves_maintenance_and_brings_an_inspection(
                    if a["kind"] == "inspection_dispatch"]
     assert [a["asset"] for a in inspections] == ["Gooty wind farm"]
 
+    log = client.get(f"{url}/sites/TIR-WIND-003/activity", headers=auth_headers).json()
+    assert {"decisions", "maintenance", "events", "documents"} <= {e["category"] for e in log}
+    assert any(e["kind"] == "maintenance_schedule" and e["status"] == "verified" for e in log)  # the approved move
+    assert [e["at"] for e in log] == sorted((e["at"] for e in log), reverse=True)
+    only = client.get(f"{url}/sites/TIR-WIND-003/activity?category=documents", headers=auth_headers).json()
+    assert only and {e["category"] for e in only} == {"documents"}
+
+    csv = client.get(f"{url}/sites/TIR-WIND-003/telemetry.csv", headers=auth_headers).text
+    assert csv.startswith("timestamp,asset,power_mw") and "WND-TIR" in csv
+    tested = client.post("/api/sites/TIR-WIND-003/data-sources/api/test",
+                         json={"endpoint": "https://scada.example.invalid/v1", "refresh_min": 5}, headers=auth_headers)
+    assert tested.json()["problems"] == [] and tested.json()["rows"] == 1
+    assert client.post("/api/sites/TIR-WIND-003/data-sources/api/test", json={"endpoint": "ftp://x", "refresh_min": 5},
+                       headers=auth_headers).status_code == 422
+
 
 def test_what_if_and_replay_study_leave_the_live_run_alone(
     client: TestClient, db: Session, auth_headers: dict[str, str]
@@ -321,7 +336,8 @@ def test_what_if_and_replay_study_leave_the_live_run_alone(
 
     study = client.post("/api/studies", json={"preset": "calm_day", "seeds": 2}, headers=auth_headers).json()
     assert [s["seed"] for s in study["seeds"]] == [42, 43] and not any(s["done"] for s in study["seeds"])
-    assert client.get("/api/runs/current", headers=auth_headers).json()["id"] == run["id"]
+    current = client.get("/api/runs/current", headers=auth_headers).json()
+    assert current["id"] == run["id"] and not current["lagging"]  # paused: nothing is overdue
     assert client.post("/api/studies", json={"preset": "calm_day", "seeds": 19}, headers=auth_headers).status_code == 409
     assert client.delete(f"/api/studies/{study['id']}", headers=auth_headers).status_code == 204
     assert db.scalar(select(func.count()).select_from(Run).where(Run.study_id.isnot(None))) == 0

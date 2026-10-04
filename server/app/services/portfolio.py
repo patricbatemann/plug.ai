@@ -33,6 +33,7 @@ def portfolio_overview(db: Session, portfolio: Portfolio) -> PortfolioResponse:
         name=portfolio.name,
         tz=portfolio.tz,
         mode_code=portfolio.mode_code,
+        protected=portfolio.protected,
         totals=PortfolioTotals(
             solar_mw=_capacity(assets, "solar"),
             wind_mw=_capacity(assets, "wind"),

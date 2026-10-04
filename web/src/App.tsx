@@ -4,6 +4,7 @@ import { ActionsPage } from './pages/ActionsPage'
 import { AssistantPage } from './pages/AssistantPage'
 import { AuthPage } from './pages/AuthPage'
 import { ConfigureBobPage } from './pages/ConfigureBobPage'
+import { DataSourcePage } from './pages/DataSourcePage'
 import { DecisionPage } from './pages/DecisionPage'
 import { PortfolioPage } from './pages/PortfolioPage'
 import { SetupWizardPage } from './pages/SetupWizardPage'
@@ -22,6 +23,7 @@ export function App() {
           <Route path="sites/:code" element={<SitePage />} />
           <Route path="sites/:code/bob" element={<ConfigureBobPage />} />
           <Route path="sites/:code/bob/setup" element={<SetupWizardRoute />} />
+          <Route path="sites/:code/data" element={<DataSourcePage />} />
           <Route path="decisions/:id" element={<DecisionPage />} />
           <Route path="actions" element={<ActionsPage />} />
           <Route path="assistant" element={<AssistantPage />} />

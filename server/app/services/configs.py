@@ -1,6 +1,7 @@
 """Configured actions: list, draft, validate against protected limits, test in the simulator,
 activate (new version), pause. Watch conditions are checked at each block's end."""
 
+from datetime import datetime
 from typing import Any
 
 import numpy as np
@@ -142,14 +143,14 @@ def test(draft: ActionConfig, asset: AssetSpec, inputs: Inputs, forecasts: dict)
     return results
 
 
-def activate(db: Session, draft: ActionConfig) -> ActionConfig:
+def activate(db: Session, draft: ActionConfig, user: str, now: datetime) -> ActionConfig:
     if not draft.tests or not all(r["passed"] for r in draft.tests.values()):
         raise ValueError("Run the tests and pass all of them before activating")
     db.execute(update(ActionConfig).where(
         ActionConfig.asset_id == draft.asset_id, ActionConfig.kind == draft.kind, ActionConfig.current,
     ).values(current=False))
     db.flush()
-    draft.current, draft.status = True, "active"
+    draft.current, draft.status, draft.activated_by, draft.activated_at = True, "active", user, now
     return draft
 
 

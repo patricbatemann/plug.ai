@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { Link, useNavigate, useParams } from 'react-router-dom'
-import { useQuery } from '@tanstack/react-query'
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import {
   Breadcrumb,
   BreadcrumbItem,
@@ -20,11 +20,12 @@ import {
   Tabs,
   Tag,
 } from '@carbon/react'
-import { portfolioApi } from '../api/client'
+import { portfolioApi, siteApi } from '../api/client'
 import { assetSummary, kindLabel, mw } from '../format'
 import { LiveOverview } from '../runs/LiveOverview'
 import { ModeTag } from '../runs/ModeTag'
 import { SiteActions } from '../runs/SiteActions'
+import { SiteActivity } from '../runs/SiteActivity'
 import { SiteMaintenance } from '../runs/SiteMaintenance'
 import { useCurrentRun } from '../runs/useCurrentRun'
 
@@ -74,6 +75,7 @@ export function SitePage() {
           <Tab disabled={!run}>Live overview</Tab>
           <Tab disabled={!run}>AI Actions</Tab>
           <Tab disabled={!run}>Maintenance</Tab>
+          <Tab disabled={!run}>Activity log</Tab>
         </TabList>
         <TabPanels>
           <TabPanel>
@@ -100,6 +102,7 @@ export function SitePage() {
                 ))}
               </TableBody>
             </Table>
+            <DataSources site={data.code} />
           </TabPanel>
           <TabPanel>
             {run && (
@@ -112,8 +115,38 @@ export function SitePage() {
           </TabPanel>
           <TabPanel>{run && <SiteActions run={run} site={data.code} />}</TabPanel>
           <TabPanel>{run && <SiteMaintenance run={run} site={data.code} />}</TabPanel>
+          <TabPanel>{run && <SiteActivity run={run} site={data.code} />}</TabPanel>
         </TabPanels>
       </Tabs>
     </>
+  )
+}
+
+/** The site's connected data: simulated telemetry, plus any imports and APIs (a mock). */
+function DataSources({ site }: { site: string }) {
+  const queryClient = useQueryClient()
+  const { data } = useQuery({ queryKey: ['sources', site], queryFn: () => siteApi.sources(site) })
+  const remove = useMutation({
+    mutationFn: (id: number) => siteApi.removeSource(site, id),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['sources', site] }),
+  })
+  return (
+    <div className="live">
+      <div className="page-head">
+        <h2 className="section-title">Data sources</h2>
+        <Button kind="tertiary" size="md" as={Link} to={`/sites/${site}/data`}>Connect data source</Button>
+      </div>
+      <div className="action-card__head">
+        <Tag size="sm" type="green">Live</Tag>
+        <span>Simulated telemetry, every 15 minutes: what BOB plans on</span>
+      </div>
+      {data?.map((s) => (
+        <div key={s.id} className="action-card__head">
+          <Tag size="sm" type="gray">{s.kind === 'csv' ? 'Imported CSV' : `API, every ${s.refresh_min} min`}</Tag>
+          <span>{s.name}{s.rows !== null && ` · ${s.rows} rows`} · {s.columns.length} columns · by {s.created_by}</span>
+          <Button kind="ghost" size="sm" onClick={() => remove.mutate(s.id)}>Remove</Button>
+        </div>
+      ))}
+    </div>
   )
 }

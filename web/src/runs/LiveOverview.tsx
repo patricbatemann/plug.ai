@@ -8,7 +8,7 @@ import {
 } from '@carbon/charts-react'
 import { InlineNotification, ProgressBar, SkeletonText, Tile } from '@carbon/react'
 import type { RunState, SiteLive } from '../api/client'
-import { runApi } from '../api/client'
+import { runApi, siteApi } from '../api/client'
 import { batteryState, mw, simTime } from '../format'
 import { SERIES } from '../theme/tokens'
 
@@ -24,6 +24,7 @@ export function LiveOverview({ run, siteCode, generationSeries }: Props) {
     queryFn: () => runApi.siteLive(run.id, siteCode),
     enabled: run.block >= 0,
   })
+  const sources = useQuery({ queryKey: ['sources', siteCode], queryFn: () => siteApi.sources(siteCode) })
 
   if (run.block < 0) return <SkeletonText paragraph lineCount={4} />
   if (error) return <InlineNotification kind="error" title="Could not load live data" subtitle={error.message} hideCloseButton lowContrast />
@@ -107,6 +108,10 @@ export function LiveOverview({ run, siteCode, generationSeries }: Props) {
 
       <Tile>
         <div className="card-title">Energy flow · as of {simTime(data.as_of)} IST</div>
+        <p className="stat-label">
+          Data: simulated telemetry every 15 minutes
+          {sources.data?.length ? `, plus ${sources.data.length} connected source${sources.data.length > 1 ? 's' : ''}` : ''}.
+        </p>
         <div className="live__flow">
           <FlowList title="Sources" items={data.sources} />
           <FlowList title="Uses" items={data.uses} />

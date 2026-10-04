@@ -27,6 +27,47 @@ class RunState(BaseModel):
     mode: str
     mode_by: str
     bob_online: bool  # the model is configured and switched on; otherwise rules decide
+    lagging: bool  # running, but the clock is overdue: no worker is advancing it
+
+
+class ActivityOut(BaseModel):
+    at: datetime
+    category: str
+    title: str | None
+    detail: str
+    by: str | None
+    kind: str | None
+    mw: float | None
+    status: str | None
+    asset: str | None
+
+
+class CsvCheck(BaseModel):
+    rows: int
+    columns: list[dict]
+    preview: list[list[str]]
+    problems: list[str]
+
+
+class CsvUpload(BaseModel):
+    filename: str = Field(min_length=1, max_length=200)
+    data: str = Field(max_length=7_000_000)  # base64, 5 MB
+
+
+class ApiSource(BaseModel):
+    endpoint: str = Field(max_length=300)
+    refresh_min: int = Field(ge=1, le=60)
+
+
+class DataSourceOut(BaseModel):
+    id: int
+    kind: str
+    name: str
+    rows: int | None
+    columns: list[dict]
+    refresh_min: int | None
+    created_by: str
+    created_at: datetime
 
 
 class ChatAsk(BaseModel):

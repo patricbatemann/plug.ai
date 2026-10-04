@@ -23,6 +23,7 @@ export interface Portfolio {
   name: string
   tz: string
   mode_code: string
+  protected: { battery_soc_floor_pct?: number; approval_above_mw?: number }
   totals: {
     solar_mw: number
     wind_mw: number
@@ -79,6 +80,7 @@ export interface RunState {
   mode: string
   mode_by: string
   bob_online: boolean
+  lagging: boolean
 }
 
 export interface Alert {
@@ -234,8 +236,17 @@ async function send(path: string, init: RequestInit = {}): Promise<Response> {
 }
 
 async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
-  return (await send(path, init)).json() as Promise<T>
+  const response = await send(path, init)
+  return (response.status === 204 ? undefined : response.json()) as Promise<T>
 }
+
+/** A file as the API takes it: its name and its content in base64. */
+export const fileUpload = (file: File) => new Promise<{ filename: string; data: string }>((resolve, reject) => {
+  const reader = new FileReader()
+  reader.onload = () => resolve({ filename: file.name, data: String(reader.result).split(',')[1] })
+  reader.onerror = () => reject(reader.error)
+  reader.readAsDataURL(file)
+})
 
 export type ChatEvent =
   | { event: 'status'; data: string }
@@ -277,6 +288,8 @@ export const authApi = {
 
 export const portfolioApi = {
   get: () => request<Portfolio>('/api/portfolio'),
+  setMode: (mode_code: string) =>
+    request<Portfolio>('/api/portfolio', { method: 'PATCH', body: JSON.stringify({ mode_code }) }),
   site: (code: string) => request<SiteDetail>(`/api/sites/${encodeURIComponent(code)}`),
 }
 
@@ -409,6 +422,66 @@ export const simulationApi = {
   bobCalls: () =>
     request<{ calls: number; ok: number; by_purpose: Record<string, number>; failures: Record<string, number>
       median_ms: number | null }>('/api/bob-calls'),
+}
+
+export interface ActivityEntry {
+  at: string
+  category: string
+  title: string | null
+  detail: string
+  by: string | null
+  kind: string | null
+  mw: number | null
+  status: string | null
+  asset: string | null
+}
+
+export interface CsvCheck {
+  rows: number
+  columns: Array<{ name: string; type: string; known?: boolean }>
+  preview: string[][]
+  problems: string[]
+}
+
+export interface DataSource {
+  id: number
+  kind: 'csv' | 'api'
+  name: string
+  rows: number | null
+  columns: Array<{ name: string; type: string }>
+  refresh_min: number | null
+  created_by: string
+  created_at: string
+}
+
+const site = (code: string) => `/api/sites/${encodeURIComponent(code)}`
+
+export const siteApi = {
+  activity: (runId: number, code: string, categories: string[]) => {
+    const query = new URLSearchParams()
+    categories.forEach((c) => query.append('category', c))
+    return request<ActivityEntry[]>(`/api/runs/${runId}/sites/${encodeURIComponent(code)}/activity?${query}`)
+  },
+  /** The run's telemetry for the site as CSV, saved by the browser (a link cannot carry the token). */
+  downloadTelemetry: async (runId: number, code: string) => {
+    const response = await send(`/api/runs/${runId}/sites/${encodeURIComponent(code)}/telemetry.csv`)
+    const link = document.createElement('a')
+    link.href = URL.createObjectURL(await response.blob())
+    link.download = `${code.toLowerCase()}-telemetry.csv`
+    link.click()
+    URL.revokeObjectURL(link.href)
+  },
+  sources: (code: string) => request<DataSource[]>(`${site(code)}/data-sources`),
+  checkCsv: (code: string, file: { filename: string; data: string }) =>
+    post<CsvCheck>(`${site(code)}/data-sources/csv/check`, file),
+  importCsv: (code: string, file: { filename: string; data: string }) =>
+    post<DataSource>(`${site(code)}/data-sources/csv`, file),
+  testApi: (code: string, api: { endpoint: string; refresh_min: number }) =>
+    post<CsvCheck>(`${site(code)}/data-sources/api/test`, api),
+  connectApi: (code: string, api: { endpoint: string; refresh_min: number }) =>
+    post<DataSource>(`${site(code)}/data-sources/api`, api),
+  removeSource: (code: string, id: number) =>
+    request<void>(`${site(code)}/data-sources/${id}`, { method: 'DELETE' }),
 }
 
 export interface ConfigValues {
