@@ -19,14 +19,15 @@ make migrate    # apply database migrations
 make seed       # demo portfolio: 9 sites, 18 assets in Andhra Pradesh
 ```
 
-Then start the client and API in separate terminals:
+Then start the client, the API and the simulation worker in separate terminals:
 
 ```sh
 make web-dev
 make server-dev
+make worker
 ```
 
-The API runs at `http://localhost:8000` (interactive docs at `/docs`); Vite serves the client at `http://localhost:5173`. Create an account on the sign-up page, then open the portfolio.
+The API runs at `http://localhost:8000` (interactive docs at `/docs`); Vite serves the client at `http://localhost:5173`. Create an account on the sign-up page, then start a run from the header (**New run** → a preset). Runs fast-forward to 10:45, then advance one 15-minute block every 30 s at 30×. Open a site to see its Live overview; pause, step, change speed or inject events from the header. The worker can run as several processes; each block is settled exactly once.
 
 Other targets: `make test` runs backend tests (needs `make db-up`) and the colour-token check; `make build` builds the client; `make db-down` stops PostgreSQL; `make clean` removes the web build.
 
@@ -46,6 +47,12 @@ Other targets: `make test` runs backend tests (needs `make db-up`) and the colou
 | `GET` | `/api/auth/me` | The authenticated user |
 | `GET` | `/api/portfolio` | Portfolio totals and site summaries |
 | `GET` | `/api/sites/{code}` | One site with its assets and parameters |
+| `GET` | `/api/runs/presets` | Scenario presets |
+| `GET` / `POST` | `/api/runs/current`, `/api/runs` | Latest run; start a run from a preset |
+| `POST` | `/api/runs/{id}/pause`, `/play`, `/step` | Clock controls (step only while paused) |
+| `PATCH` | `/api/runs/{id}` | Speed (10, 30 or 60×) |
+| `POST` | `/api/runs/{id}/events` | Inject a world event |
+| `GET` | `/api/runs/{id}/sites/{code}/live` | Site live overview |
 
 All endpoints except register and login need `Authorization: Bearer <token>`.
 
@@ -65,6 +72,8 @@ server/
   app/schemas/       Request/response models and asset parameter validation
   app/services/      Business logic
   app/seed.py        Demo portfolio seed
+  app/sim/           Simulated world: presets, truth, forecasts, plant settlement
+  app/worker.py      Simulation clock worker
   migrations/        Alembic migrations
   tests/             API tests against PostgreSQL
 ```

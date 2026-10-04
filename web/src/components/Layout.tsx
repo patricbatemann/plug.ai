@@ -10,6 +10,7 @@ import {
 import { Logout } from '@carbon/icons-react'
 import { useAuth } from '../auth/AuthContext'
 import { PRODUCT_NAME } from '../format'
+import { RunControl } from '../runs/RunControl'
 
 export function Layout() {
   const { user, signOut } = useAuth()
@@ -31,6 +32,7 @@ export function Layout() {
           </HeaderMenuItem>
         </HeaderNavigation>
         <HeaderGlobalBar>
+          <RunControl />
           <HeaderGlobalAction aria-label={`Sign out ${user?.email ?? ''}`} onClick={signOut}>
             <Logout size={20} />
           </HeaderGlobalAction>

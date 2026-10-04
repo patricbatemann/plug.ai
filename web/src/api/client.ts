@@ -31,6 +31,14 @@ export interface Portfolio {
     demand_mw: number
   }
   sites: SiteSummary[]
+  nodes: NetworkItem[]
+  lines: NetworkItem[]
+  assets: Array<{ code: string; name: string; kind: string }>
+}
+
+export interface NetworkItem {
+  code: string
+  name: string
 }
 
 export interface Asset {
@@ -50,6 +58,60 @@ export interface SiteDetail {
   commissioned_on: string
   mode_code: string
   assets: Asset[]
+}
+
+export interface Preset {
+  code: string
+  name: string
+  description: string
+}
+
+export interface RunState {
+  id: number
+  preset: string
+  name: string
+  status: 'running' | 'paused' | 'done'
+  speed: number
+  sim_time: string
+  block: number
+  total_blocks: number
+  live: boolean
+}
+
+export interface Alert {
+  severity: 'info' | 'warning' | 'error'
+  title: string
+  detail: string
+}
+
+export interface ChartPoint {
+  group: string
+  time: string
+  value: number
+  low: number | null
+  high: number | null
+}
+
+export interface SiteLive {
+  sim_time: string
+  as_of: string
+  block: number
+  weather: {
+    condition: string
+    cloud_pct: number
+    irradiance_wm2: number
+    wind_ms: number
+    temperature_c: number
+    frequency_hz: number
+  }
+  generation: { actual_mw: number; forecast_mw: number | null; capacity_mw: number } | null
+  batteries: Array<{ code: string; name: string; soc_pct: number; energy_mwh: number; power_mw: number; available: boolean }>
+  demand_mw: number | null
+  grid_mw: number | null
+  alerts: Alert[]
+  chart: ChartPoint[]
+  sources: Array<{ label: string; mw: number }>
+  uses: Array<{ label: string; mw: number }>
 }
 
 export class ApiError extends Error {
@@ -113,4 +175,21 @@ export const authApi = {
 export const portfolioApi = {
   get: () => request<Portfolio>('/api/portfolio'),
   site: (code: string) => request<SiteDetail>(`/api/sites/${encodeURIComponent(code)}`),
+}
+
+const post = <T>(path: string, body?: unknown) =>
+  request<T>(path, { method: 'POST', body: body === undefined ? undefined : JSON.stringify(body) })
+
+export const runApi = {
+  presets: () => request<Preset[]>('/api/runs/presets'),
+  current: () => request<RunState>('/api/runs/current'),
+  create: (preset: string) => post<RunState>('/api/runs', { preset }),
+  pause: (id: number) => post<RunState>(`/api/runs/${id}/pause`),
+  play: (id: number) => post<RunState>(`/api/runs/${id}/play`),
+  step: (id: number) => post<RunState>(`/api/runs/${id}/step`),
+  speed: (id: number, speed: number) =>
+    request<RunState>(`/api/runs/${id}`, { method: 'PATCH', body: JSON.stringify({ speed }) }),
+  inject: (id: number, event: Record<string, unknown>) => post<RunState>(`/api/runs/${id}/events`, event),
+  siteLive: (id: number, code: string) =>
+    request<SiteLive>(`/api/runs/${id}/sites/${encodeURIComponent(code)}/live`),
 }

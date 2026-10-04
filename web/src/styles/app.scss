@@ -75,3 +75,47 @@ body {
   display: grid;
   gap: $spacing-06;
 }
+
+.run-control {
+  display: flex;
+  align-items: center;
+  gap: $spacing-03;
+  padding-right: $spacing-03;
+}
+
+.run-control__clock {
+  @include type-style('body-compact-01');
+  font-variant-numeric: tabular-nums;
+}
+
+.run-control__error {
+  @include type-style('helper-text-01');
+  color: theme.$text-error;
+}
+
+.live {
+  display: grid;
+  gap: $spacing-05;
+  padding-top: $spacing-05;
+}
+
+.live__weather {
+  display: grid;
+  grid-template-columns: repeat(6, 1fr);
+  gap: $spacing-05;
+}
+
+.live__weather-value {
+  @include type-style('heading-compact-01');
+  margin-top: $spacing-02;
+}
+
+.live__flow {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: $spacing-07;
+}
+
+.live .card-grid {
+  margin-bottom: 0;
+}

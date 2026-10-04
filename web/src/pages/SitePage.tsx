@@ -1,3 +1,4 @@
+import { useState } from 'react'
 import { Link, useParams } from 'react-router-dom'
 import { useQuery } from '@tanstack/react-query'
 import {
@@ -20,10 +21,14 @@ import {
 } from '@carbon/react'
 import { portfolioApi } from '../api/client'
 import { assetSummary, kindLabel, modeLabel, mw } from '../format'
+import { LiveOverview } from '../runs/LiveOverview'
+import { useCurrentRun } from '../runs/useCurrentRun'
 
 export function SitePage() {
   const { code = '' } = useParams()
   const { data, error } = useQuery({ queryKey: ['site', code], queryFn: () => portfolioApi.site(code) })
+  const { data: run } = useCurrentRun()
+  const [tab, setTab] = useState<number | null>(null)
 
   if (error) return <InlineNotification kind="error" title="Could not load the site" subtitle={error.message} hideCloseButton lowContrast />
   if (!data) return <SkeletonText paragraph lineCount={6} />
@@ -52,9 +57,10 @@ export function SitePage() {
         <Tag type="purple">Mode: {modeLabel(data.mode_code)}</Tag>
       </div>
 
-      <Tabs>
+      <Tabs selectedIndex={tab ?? (run ? 1 : 0)} onChange={({ selectedIndex }) => setTab(selectedIndex)}>
         <TabList aria-label="Site sections">
           <Tab>Site details</Tab>
+          <Tab disabled={!run}>Live overview</Tab>
         </TabList>
         <TabPanels>
           <TabPanel>
@@ -81,6 +87,15 @@ export function SitePage() {
                 ))}
               </TableBody>
             </Table>
+          </TabPanel>
+          <TabPanel>
+            {run && (
+              <LiveOverview
+                run={run}
+                siteCode={data.code}
+                generationSeries={data.assets.some((a) => a.kind === 'solar') ? 'solar' : 'wind'}
+              />
+            )}
           </TabPanel>
         </TabPanels>
       </Tabs>

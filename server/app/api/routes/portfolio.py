@@ -21,8 +21,10 @@ def current_portfolio(db: Session = Depends(get_db)) -> Portfolio:
 
 
 @router.get("/portfolio", response_model=PortfolioResponse)
-def read_portfolio(portfolio: Portfolio = Depends(current_portfolio)) -> PortfolioResponse:
-    return portfolio_overview(portfolio)
+def read_portfolio(
+    db: Session = Depends(get_db), portfolio: Portfolio = Depends(current_portfolio)
+) -> PortfolioResponse:
+    return portfolio_overview(db, portfolio)
 
 
 @router.get("/sites/{code}", response_model=SiteDetail)

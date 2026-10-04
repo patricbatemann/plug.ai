@@ -4,8 +4,9 @@ export const PRODUCT_NAME = 'PlugAI'
 
 const number = new Intl.NumberFormat('en-IN', { maximumFractionDigits: 1 })
 
-export const mw = (value: number) => `${number.format(value)} MW`
-export const mwh = (value: number) => `${number.format(value)} MWh`
+// `|| 0` turns -0 into 0 so idle flows never read "-0 MW".
+export const mw = (value: number) => `${number.format(value || 0)} MW`
+export const mwh = (value: number) => `${number.format(value || 0)} MWh`
 
 const KIND_LABELS: Record<string, string> = {
   solar: 'Solar',
@@ -41,3 +42,12 @@ export function assetSummary({ kind, params: p }: Asset): string {
       return ''
   }
 }
+
+const clock = new Intl.DateTimeFormat('en-IN', {
+  timeZone: 'Asia/Kolkata',
+  hour: '2-digit',
+  minute: '2-digit',
+  hour12: false,
+})
+
+export const simTime = (iso: string) => clock.format(new Date(iso))

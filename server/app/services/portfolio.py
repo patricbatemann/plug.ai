@@ -1,8 +1,10 @@
 from sqlalchemy import select
 from sqlalchemy.orm import Session, selectinload
 
-from app.models.portfolio import Asset, Portfolio, Site
-from app.schemas.portfolio import PortfolioResponse, PortfolioTotals, SiteDetail, SiteSummary
+from app.models.portfolio import Asset, Line, Node, Portfolio, Site
+from app.schemas.portfolio import (
+    AssetRef, NetworkItem, PortfolioResponse, PortfolioTotals, SiteDetail, SiteSummary,
+)
 
 
 def _capacity(assets: list[Asset], kind: str) -> float:
@@ -23,8 +25,10 @@ def get_portfolio(db: Session) -> Portfolio | None:
     )
 
 
-def portfolio_overview(portfolio: Portfolio) -> PortfolioResponse:
+def portfolio_overview(db: Session, portfolio: Portfolio) -> PortfolioResponse:
     assets = [a for site in portfolio.sites for a in site.assets]
+    nodes = db.scalars(select(Node).where(Node.portfolio_id == portfolio.id).order_by(Node.code)).all()
+    lines = db.scalars(select(Line).where(Line.portfolio_id == portfolio.id).order_by(Line.code)).all()
     return PortfolioResponse(
         name=portfolio.name,
         tz=portfolio.tz,
@@ -48,6 +52,9 @@ def portfolio_overview(portfolio: Portfolio) -> PortfolioResponse:
             )
             for site in portfolio.sites
         ],
+        nodes=[NetworkItem(code=n.code, name=n.name) for n in nodes],
+        lines=[NetworkItem(code=line.code, name=f"{line.code} ({line.limit_mw:g} MW)") for line in lines],
+        assets=[AssetRef(code=a.code, name=a.name, kind=a.kind) for a in assets],
     )
 
 

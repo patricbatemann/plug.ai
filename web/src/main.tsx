@@ -5,6 +5,7 @@ import { QueryCache, QueryClient, QueryClientProvider } from '@tanstack/react-qu
 import { ApiError, tokenStore } from './api/client'
 import { AuthProvider } from './auth/AuthContext'
 import { App } from './App'
+import '@carbon/charts-react/styles.css'
 import './styles/app.scss'
 
 const queryClient = new QueryClient({

@@ -7,7 +7,7 @@ else
 VENV_PYTHON := .venv/bin/python
 endif
 
-.PHONY: setup env install install-web install-server db-up db-down migrate seed web-dev server-dev test test-server check-colors build clean
+.PHONY: setup env install install-web install-server db-up db-down migrate seed web-dev server-dev worker test test-server check-colors build clean
 
 setup: env install
 
@@ -39,6 +39,9 @@ web-dev:
 
 server-dev:
 	cd server && $(VENV_PYTHON) -m uvicorn app.main:app --reload
+
+worker:
+	cd server && $(VENV_PYTHON) -m app.worker
 
 test: test-server check-colors
 

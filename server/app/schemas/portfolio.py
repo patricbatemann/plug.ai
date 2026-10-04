@@ -100,12 +100,26 @@ class SiteSummary(BaseModel):
     asset_kinds: list[str]
 
 
+class NetworkItem(BaseModel):
+    code: str
+    name: str
+
+
+class AssetRef(BaseModel):
+    code: str
+    name: str
+    kind: str
+
+
 class PortfolioResponse(BaseModel):
     name: str
     tz: str
     mode_code: str
     totals: PortfolioTotals
     sites: list[SiteSummary]
+    nodes: list[NetworkItem]
+    lines: list[NetworkItem]
+    assets: list[AssetRef]
 
 
 class AssetResponse(BaseModel):

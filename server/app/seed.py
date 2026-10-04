@@ -62,8 +62,8 @@ SITES = [
     ]),
     ("ATP-WIND-007", "Anantapur Wind Site", "wind", "Anantapur, Andhra Pradesh", date(2017, 9, 12), "NORTH", [
         ("WND-ATP", "Anantapur wind farm", "wind", 60, wind()),
-        ("IC-NORTH", "North grid interconnection", "interconnection", 120,
-         {"import_max_mw": 30, "export_max_mw": 120}),
+        ("IC-NORTH", "North grid interconnection", "interconnection", 40,
+         {"import_max_mw": 20, "export_max_mw": 40}),
     ]),
     ("GTY-WIND-008", "Gooty Wind Site", "wind", "Anantapur, Andhra Pradesh", date(2020, 4, 18), "NORTH", [
         ("WND-GTY", "Gooty wind farm", "wind", 55, wind()),
@@ -76,7 +76,7 @@ SITES = [
         ("IND-5", "Data centre", "consumer", 20, consumer("data_centre", 20)),
         ("IND-6", "Auto plant", "consumer", 30, consumer("automotive", 10, 8, 2, 12, 5000, 6, (10, 16))),
         ("IC-HUB", "Hub grid interconnection", "interconnection", 250,
-         {"import_max_mw": 250, "export_max_mw": 100}),
+         {"import_max_mw": 250, "export_max_mw": 150}),
     ]),
 ]
 
