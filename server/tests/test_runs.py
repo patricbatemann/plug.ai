@@ -2,11 +2,12 @@ from datetime import datetime, timezone
 
 import numpy as np
 from fastapi.testclient import TestClient
-from sqlalchemy import select
+from sqlalchemy import select, update
 from sqlalchemy.orm import Session
 
-from app.models.portfolio import Asset
-from app.models.run import AssetBlock
+from app.core.config import settings
+from app.models.portfolio import ActionConfig, Asset
+from app.models.run import Action, AssetBlock, Cycle
 from app.seed import seed
 from app.services.portfolio import get_portfolio
 from app.services.runs import RunContext, advance, claim_due_run, create_run
@@ -87,3 +88,37 @@ def test_run_controls_events_and_live_overview(
     actions = client.get(f"{url}/actions?limit=5", headers=auth_headers).json()
     assert len(actions) == 5
     assert {a["status"] for a in actions} <= {"acked", "verified", "rejected"}
+
+
+def test_events_replan_and_gated_actions_wait_for_approval(
+    client: TestClient, db: Session, auth_headers: dict[str, str], monkeypatch
+) -> None:
+    seed(db)
+    db.execute(update(ActionConfig).values(autonomy="approval"))  # every action needs a person
+    db.commit()
+    run = client.post("/api/runs", json={"preset": "calm_day"}, headers=auth_headers).json()
+    url = f"/api/runs/{run['id']}"
+    client.post(f"{url}/pause", headers=auth_headers)
+    for _ in range(22):
+        client.post(f"{url}/step", headers=auth_headers)
+
+    client.post(f"{url}/events", json={"kind": "bess_trip", "asset": "BESS-01", "minutes": 60}, headers=auth_headers)
+    cycle = db.scalar(select(Cycle).where(Cycle.trigger == "event"))
+    assert cycle is not None and "BESS-01 tripped" in cycle.trigger_detail
+
+    pending = client.get(f"{url}/actions?status=awaiting_approval", headers=auth_headers).json()
+    assert pending and all(a["deadline_at"] for a in pending)
+    first, *rest = pending
+    assert client.post(f"{url}/actions/{first['id']}/approve", headers=auth_headers).status_code == 200
+    assert db.get(Action, first["id"]).status == "acked"
+    assert client.post(f"{url}/actions/{first['id']}/approve", headers=auth_headers).status_code == 409
+
+    client.post(f"{url}/step", headers=auth_headers)  # the block ends: unanswered approvals lapse
+    db.expire_all()
+    assert all(db.get(Action, a["id"]).status in ("expired", "superseded") for a in rest)
+    assert any(e["kind"] == "bess_trip" for e in client.get(f"{url}/events", headers=auth_headers).json())
+
+    monkeypatch.setattr(settings, "solver_disabled", True)
+    client.post(f"{url}/step", headers=auth_headers)
+    latest = db.scalar(select(Cycle).where(Cycle.run_id == run["id"]).order_by(Cycle.id.desc()).limit(1))
+    assert latest.status == "safe_hold"

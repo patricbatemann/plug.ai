@@ -6,16 +6,18 @@ from datetime import timedelta
 from zoneinfo import ZoneInfo
 
 import numpy as np
-from sqlalchemy import select
+from sqlalchemy import func, select, update
 from sqlalchemy.orm import Session
 
+from app.core.config import settings
 from app.models.run import Action, AssetBlock, Cycle, Forecast, LineBlock, Plan, Run, SystemBlock
 from app.optimize import baseline
-from app.optimize.dispatch import MIN_MW, Inputs, here_and_now
+from app.optimize.dispatch import MIN_MW, Inputs, here_and_now, plan
 from app.optimize.profiles import BALANCED, PROFILES, VARIANT_LABELS, VARIANTS, variant
 from app.optimize.robust import choose_option, evaluate, scenarios, solve_all
 from app.optimize.situation import apply_floors, assess, choose_mode, to_json
 from app.optimize.validator import check
+from app.services import policy
 from app.sim.adapters import deliver
 from app.sim.market import dsm_inr
 from app.sim.plant import Setpoints, settle
@@ -70,13 +72,24 @@ def schedule(db: Session, run: Run, policy: str, start: int, length: int) -> np.
 
 
 def _send(db: Session, run: Run, policy: str, cycle_id: int | None, block: int, kind: str,
-          asset_id: int | None, code: str, mw: float, reason: str | None) -> None:
+          asset_id: int | None, code: str, mw: float, reason: str | None, tier: str = "auto",
+          deadline=None) -> None:
+    """Record an action; automatic ones go straight to the downstream system."""
     key = f"{run.id}:{policy}:{block}:{kind}:{code}:{cycle_id or 0}"
+    status = {"auto": "acked", "approval": "awaiting_approval", "recommend": "recommended", "prohibited": "rejected"}
     action = Action(run_id=run.id, policy=policy, cycle_id=cycle_id, block=block, kind=kind, asset_id=asset_id,
-                    mw=round(mw, 3), idempotency_key=key, status="rejected" if reason else "acked", reason=reason)
-    if reason is None:
+                    mw=round(mw, 3), idempotency_key=key, status=status[tier], tier=tier, reason=reason,
+                    deadline_at=deadline)
+    if tier == "auto":
         action.delivered_mw = round(deliver(kind, mw, key, run.config), 3)
     db.add(action)
+
+
+def _known_window(run: Run, event, t0: int, horizon: int) -> tuple[int, int]:
+    """Block indices (relative to t0) an event covers, clipped to the horizon."""
+    start = int((event.sim_at - run.sim_start_at) / BLOCK_SPAN) - t0
+    end = start + int(np.ceil(event.payload.get("minutes", 0) / 15))
+    return max(start, 0), min(end, horizon)
 
 
 def bob_inputs(db: Session, ctx, truth: World, run: Run, t0: int, forecasts: dict) -> Inputs:
@@ -88,16 +101,21 @@ def bob_inputs(db: Session, ctx, truth: World, run: Run, t0: int, forecasts: dic
     for action in _actions(db, run, "bob", (t0, t0 + horizon), ("dr_call",)):
         code = next(c for c, i in ctx.asset_ids.items() if i == action.asset_id)
         committed[code][action.block - t0] = action.mw
-    last_lines = {r.line_id: r.limit_mw for r in db.scalars(select(LineBlock).where(
-        LineBlock.run_id == run.id, LineBlock.policy == "bob", LineBlock.block == t0 - 1))}
+    # What BOB knows now: battery trips are telemetry and derates are grid-operator instructions,
+    # both known the moment they happen, with their expected duration.
+    bess_available = {a.code: np.ones(horizon) for a in of_kind("bess")}
+    line_limit = dict(ctx.line_limits)
+    for e in (e for e in ctx.events if e.fired_at is not None):
+        start, end = _known_window(run, e, t0, horizon)
+        if e.kind == "bess_trip" and start < end:
+            bess_available[e.payload["asset"]][start:end] = 0.0
+        elif e.kind == "line_derate" and start == 0 < end:
+            line_limit[e.payload["line"]] = e.payload["limit_mw"]
     return Inputs(
-        assets=ctx.assets, lines=ctx.lines,
-        line_limit={code: last_lines.get(ctx.line_ids[code], limit) for code, limit in ctx.line_limits.items()},
+        assets=ctx.assets, lines=ctx.lines, line_limit=line_limit,
         available={**{a.code: p50("re_avail", a.code) for a in of_kind("solar", "wind")},
                    **{a.code: p50("load", a.code) for a in of_kind("consumer")}},
-        bess_available={a.code: np.full(horizon, float(previous[ctx.asset_ids[a.code]].available_mw > 0
-                                                         if previous else 1.0))
-                        for a in of_kind("bess")},
+        bess_available=bess_available,
         soc_mwh={a.code: _soc(ctx, run, previous, a.code) for a in of_kind("bess")},
         price=p50("rtm_price"), emission=truth.emission_factor[t0:t0 + horizon],
         frequency=float(truth.frequency[max(t0 - 1, 0)]), hour=truth.hour[t0:t0 + horizon],
@@ -114,7 +132,7 @@ def bob_inputs(db: Session, ctx, truth: World, run: Run, t0: int, forecasts: dic
                              if x.asset_id == ctx.asset_ids[a.code])
             for a in of_kind("consumer")
         },
-        market=ctx.market, profile=BALANCED,
+        market=ctx.market, profile=BALANCED, allowed=policy.allowed(db, run.portfolio_id), protected=ctx.protected,
     )
 
 
@@ -140,7 +158,8 @@ def _spike_ahead(ctx, run: Run, t0: int) -> str | None:
     return None
 
 
-def plan_bob(db: Session, ctx, truth: World, run: Run, t0: int, forecasts: dict) -> None:
+def plan_bob(db: Session, ctx, truth: World, run: Run, t0: int, forecasts: dict, decided_at,
+             trigger: str = "tick", detail: str = "") -> None:
     started = time.perf_counter()
     inputs = bob_inputs(db, ctx, truth, run, t0, forecasts)
     horizon = len(inputs.price)
@@ -156,7 +175,8 @@ def plan_bob(db: Session, ctx, truth: World, run: Run, t0: int, forecasts: dict)
     # Live blocks weigh five options under stress; fast-forwarded blocks plan one.
     live = t0 >= run.live_from_block
     names = list(VARIANTS) if live else ["profile"]
-    solved = dict(zip(names, solve_all([(replace(inputs, profile=variant(params, n)), None, False) for n in names])))
+    jobs = [] if settings.solver_disabled else [(replace(inputs, profile=variant(params, n)), None, False) for n in names]
+    solved = dict(zip(names, solve_all(jobs)))
     options, seen = {}, set()
     for name, result in solved.items():
         if np.isnan(result.objective):
@@ -166,7 +186,8 @@ def plan_bob(db: Session, ctx, truth: World, run: Run, t0: int, forecasts: dict)
             seen.add(key)
             options[name] = result
 
-    robust, chosen, rationale = None, None, "No feasible plan; nothing was sent."
+    robust, chosen = None, None
+    rationale = "Safe hold: no feasible plan, so batteries stay idle and no new trades or calls are made."
     if options and live:
         material = {sig.code for sig in signals if sig.material}
         cases = scenarios(inputs, {c: np.array(forecasts[("re_avail", c)].p10[:horizon]) for c in inputs.available
@@ -181,8 +202,10 @@ def plan_bob(db: Session, ctx, truth: World, run: Run, t0: int, forecasts: dict)
         chosen = next(iter(options))
         rationale = "Fast-forward block: one option planned for the active mode."
 
+    seq = db.scalar(select(func.count()).select_from(Cycle).where(Cycle.run_id == run.id, Cycle.block == t0))
     cycle = Cycle(
-        run_id=run.id, block=t0, seq=0, trigger="tick", status="planned" if chosen else "failed",
+        run_id=run.id, block=t0, seq=seq, trigger=trigger, trigger_detail=detail,
+        status="planned" if chosen else "safe_hold",
         timings={"solve_ms": round((time.perf_counter() - started) * 1000)}, situation=to_json(signals),
         mode=mode, mode_by="rule" if mode != ctx.default_mode else "operator", mode_reason=mode_reason,
         floors=floors, scenarios=list(robust[chosen]) if robust else [], rationale=rationale,
@@ -201,8 +224,17 @@ def plan_bob(db: Session, ctx, truth: World, run: Run, t0: int, forecasts: dict)
         for name, p in options.items()
     )
     run.mode_code, run.mode_by = mode, cycle.mode_by
+    # A re-plan replaces earlier cycles' decisions for this block that are not commitments yet:
+    # setpoints for the block, and anything still awaiting approval or only recommended.
+    # Trades and demand-response calls already sent stay; they are commitments.
+    earlier = select(Cycle.id).where(Cycle.run_id == run.id, Cycle.block == t0, Cycle.id != cycle.id)
+    db.execute(update(Action).where(
+        Action.cycle_id.in_(earlier),
+        ((Action.block == t0) & Action.kind.in_(("bess_charge", "bess_discharge", "curtail", "load_shift"))
+         & (Action.status == "acked")) | Action.status.in_(("awaiting_approval", "recommended")),
+    ).values(status="superseded"))
     if chosen:
-        _send_plan(db, ctx, run, cycle.id, t0, here_and_now(options[chosen], inputs), inputs)
+        _dispatch(db, ctx, run, cycle.id, t0, options[chosen], inputs, decided_at)
 
 
 def _rationale(chosen: str, robust: dict) -> str:
@@ -215,26 +247,59 @@ def _rationale(chosen: str, robust: dict) -> str:
             f"{len(robust[chosen])}.")
 
 
-def _send_plan(db: Session, ctx, run: Run, cycle_id: int, t0: int, h, inputs: Inputs) -> None:
+def _items(h, inputs: Inputs, ctx, t0: int) -> list[dict]:
+    """The here-and-now decisions as actions: kind, asset, delivery block, MW, and the size the
+    policy limits apply to (for an output limit, the MW curtailed)."""
     assets = {a.code: a for a in ctx.assets}
+    out = []
     for code, mw in h.battery.items():
         kind = "bess_discharge" if mw > 0 else "bess_charge"
-        reason = check(kind, abs(mw), assets[code], soc_mwh=inputs.soc_mwh[code],
-                       available=bool(inputs.bess_available[code][0]))
-        _send(db, run, "bob", cycle_id, t0, kind, ctx.asset_ids[code], code, abs(mw), reason)
+        out.append(dict(kind=kind, code=code, block=t0, mw=abs(mw), size=abs(mw), safety=check(
+            kind, abs(mw), assets[code], soc_mwh=inputs.soc_mwh[code], available=bool(inputs.bess_available[code][0]))))
     for code, cap in h.output_cap.items():
-        _send(db, run, "bob", cycle_id, t0, "curtail", ctx.asset_ids[code], code, cap, check("curtail", cap, assets[code]))
+        out.append(dict(kind="curtail", code=code, block=t0, mw=cap, size=float(inputs.available[code][0]) - cap,
+                        safety=check("curtail", cap, assets[code])))
     for code, mw in h.demand_response.items():
         notice = assets[code].params["dr_notice_blocks"]
-        _send(db, run, "bob", cycle_id, t0 + notice, "dr_call", ctx.asset_ids[code], code, mw,
-              check("dr_call", mw, assets[code], lead_blocks=notice))
+        out.append(dict(kind="dr_call", code=code, block=t0 + notice, mw=mw, size=mw,
+                        safety=check("dr_call", mw, assets[code], lead_blocks=notice)))
     for code, mw in h.shift.items():
-        _send(db, run, "bob", cycle_id, t0, "load_shift", ctx.asset_ids[code], code, mw,
-              check("load_shift", abs(mw), assets[code]))
+        out.append(dict(kind="load_shift", code=code, block=t0, mw=mw, size=abs(mw),
+                        safety=check("load_shift", abs(mw), assets[code])))
     if h.rtm:
         kind = "rtm_buy" if h.rtm > 0 else "rtm_sell"
-        _send(db, run, "bob", cycle_id, t0 + ctx.market["gate_blocks"], kind, None, "portfolio", abs(h.rtm),
-              check(kind, abs(h.rtm), None, trade_cap_mw=_trade_cap(ctx)))
+        out.append(dict(kind=kind, code="portfolio", block=t0 + ctx.market["gate_blocks"], mw=abs(h.rtm),
+                        size=abs(h.rtm), safety=check(kind, abs(h.rtm), None, trade_cap_mw=_trade_cap(ctx))))
+    return out
+
+
+def _dispatch(db: Session, ctx, run: Run, cycle_id: int, t0: int, chosen, inputs: Inputs, decided_at) -> None:
+    """Send the chosen plan's automatic actions. Gated ones wait for approval (or are only
+    recommended) while a fallback plan without them runs; execution never waits for a person."""
+    items = _items(here_and_now(chosen, inputs), inputs, ctx, t0)
+    for item in items:
+        item["tier"], item["why"] = (("prohibited", item["safety"]) if item["safety"] else
+                                     policy.tier(item["kind"], item["code"], item["size"], inputs.allowed,
+                                                 inputs.protected))
+    gated = [i for i in items if i["tier"] in ("approval", "recommend")]
+    if gated:
+        fallback = plan(inputs, forbid=frozenset(policy.key(i["kind"], i["code"]) for i in gated))
+        blocked = {(i["kind"], i["code"]) for i in gated}
+        runs_now = [i for i in _items(here_and_now(fallback, inputs), inputs, ctx, t0)
+                    if (i["kind"], i["code"]) not in blocked] if fallback.battery else []
+        for i in runs_now:
+            i["tier"], i["why"] = (("prohibited", i["safety"]) if i["safety"] else
+                                   policy.tier(i["kind"], i["code"], i["size"], inputs.allowed, inputs.protected))
+        items = [i for i in items if i["tier"] != "auto"] + [i for i in runs_now if i["tier"] == "auto"]
+    block_end = run.sim_start_at + (t0 + 1) * BLOCK_SPAN
+    for i in items:
+        deadline = None
+        if i["tier"] == "approval":
+            response = inputs.allowed.get(policy.key(i["kind"], i["code"]), {}).get("response_min", 10)
+            deadline = min(block_end, decided_at + timedelta(minutes=response))
+        asset_id = ctx.asset_ids.get(i["code"])
+        _send(db, run, "bob", cycle_id, i["block"], i["kind"], asset_id, i["code"], i["mw"], i["why"], i["tier"],
+              deadline)
 
 
 def _trade_cap(ctx) -> float:
@@ -271,7 +336,7 @@ def latest_forecasts(db: Session, ctx, run: Run, t0: int) -> dict:
 
 def plan_block(db: Session, ctx, truth: World, run: Run, t0: int) -> None:
     forecasts = latest_forecasts(db, ctx, run, t0)
-    plan_bob(db, ctx, truth, run, t0, forecasts)
+    plan_bob(db, ctx, truth, run, t0, forecasts, run.sim_start_at + t0 * BLOCK_SPAN)
     plan_baseline(db, ctx, truth, run, t0, forecasts)
 
 

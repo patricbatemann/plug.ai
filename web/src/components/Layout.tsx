@@ -10,11 +10,16 @@ import {
 import { Logout } from '@carbon/icons-react'
 import { useAuth } from '../auth/AuthContext'
 import { PRODUCT_NAME } from '../format'
+import { EventToasts } from '../runs/EventToasts'
 import { RunControl } from '../runs/RunControl'
+import { useOpenActions } from '../runs/useActions'
+import { useCurrentRun } from '../runs/useCurrentRun'
 
 export function Layout() {
   const { user, signOut } = useAuth()
   const { pathname } = useLocation()
+  const { data: run } = useCurrentRun()
+  const pending = useOpenActions(run).data?.length ?? 0
 
   return (
     <>
@@ -30,6 +35,9 @@ export function Layout() {
           >
             Portfolio
           </HeaderMenuItem>
+          <HeaderMenuItem as={Link} to="/actions" isActive={pathname.startsWith('/actions')}>
+            Actions{pending > 0 && ` (${pending})`}
+          </HeaderMenuItem>
         </HeaderNavigation>
         <HeaderGlobalBar>
           <RunControl />
@@ -38,6 +46,7 @@ export function Layout() {
           </HeaderGlobalAction>
         </HeaderGlobalBar>
       </Header>
+      <EventToasts />
       <main className="page">
         <Outlet />
       </main>

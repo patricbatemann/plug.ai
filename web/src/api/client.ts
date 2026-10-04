@@ -138,7 +138,12 @@ export interface RunSummary {
 
 export interface ActionOut {
   id: number
+  block: number
   time: string
+  cycle_id: number | null
+  tier: 'auto' | 'approval' | 'recommend' | 'prohibited'
+  deadline_at: string | null
+  decided_by: string | null
   kind: string
   site: string | null
   asset: string | null
@@ -163,6 +168,7 @@ export interface DecisionSummary {
 
 export interface DecisionDetail extends DecisionSummary {
   trigger: string
+  trigger_detail: string
   floors: string[]
   situation: Array<{ code: string; label: string; value: string; threshold: string; material: boolean; mode: string }>
   scenarios: Record<string, string>
@@ -257,7 +263,19 @@ export const runApi = {
     request<RunState>(`/api/runs/${id}`, { method: 'PATCH', body: JSON.stringify({ speed }) }),
   inject: (id: number, event: Record<string, unknown>) => post<RunState>(`/api/runs/${id}/events`, event),
   summary: (id: number) => request<RunSummary>(`/api/runs/${id}/summary`),
-  actions: (id: number, limit = 20) => request<ActionOut[]>(`/api/runs/${id}/actions?limit=${limit}`),
+  actions: (id: number, filter: { limit?: number; status?: string[]; site?: string; block?: number } = {}) => {
+    const query = new URLSearchParams({ limit: String(filter.limit ?? 20) })
+    filter.status?.forEach((s) => query.append('status', s))
+    if (filter.site) query.set('site', filter.site)
+    if (filter.block !== undefined) query.set('block', String(filter.block))
+    return request<ActionOut[]>(`/api/runs/${id}/actions?${query}`)
+  },
+  approve: (id: number, actionId: number) => post<RunState>(`/api/runs/${id}/actions/${actionId}/approve`),
+  decline: (id: number, actionId: number) => post<RunState>(`/api/runs/${id}/actions/${actionId}/decline`),
+  events: (id: number, after: number) =>
+    request<Array<{ id: number; kind: string; sim_at: string; source: string; label: string }>>(
+      `/api/runs/${id}/events?after=${after}`,
+    ),
   latestDecision: (id: number) => request<DecisionSummary>(`/api/runs/${id}/decisions/latest`),
   decision: (cycleId: number) => request<DecisionDetail>(`/api/runs/decisions/${cycleId}`),
   siteLive: (id: number, code: string) =>

@@ -23,7 +23,8 @@ export function useRunAction() {
     mutationFn: (action: () => Promise<RunState>) => action(),
     onSuccess: (state) => {
       queryClient.setQueryData(['run'], state)
-      queryClient.invalidateQueries({ queryKey: ['live'] })
+      // A clock move, event or new run can change any run view: plans, actions, decisions, totals.
+      queryClient.invalidateQueries({ predicate: (q) => q.queryKey[0] !== 'run' })
     },
   })
 }

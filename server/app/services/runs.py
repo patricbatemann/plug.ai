@@ -5,13 +5,14 @@ from typing import Any
 from zoneinfo import ZoneInfo
 
 import numpy as np
-from sqlalchemy import select, update
+from sqlalchemy import delete, select, update
 from sqlalchemy.orm import Session
 
 from app.models.portfolio import Asset, Line, Node, Portfolio
 from app.models.run import POLICIES, Forecast, Run, WorldEvent
 from app.sim import forecast
-from app.services.dispatch import plan_block, settle_block
+from app.services import policy
+from app.services.dispatch import latest_forecasts, plan_block, plan_bob, settle_block
 from app.sim.plant import LineSpec
 from app.sim.presets import PRESETS
 from app.sim.world import BLOCK_MIN, BLOCKS_PER_DAY, AssetSpec, EventSpec, World
@@ -70,8 +71,8 @@ def sim_now(run: Run, now: datetime) -> datetime:
     return block_start + min(elapsed, BLOCK)
 
 
-def fire_events(db: Session, run: Run, until: datetime, now: datetime) -> None:
-    """Mark events before `until` as fired and apply their reveal rules. Safe to repeat."""
+def fire_events(db: Session, run: Run, until: datetime, now: datetime) -> list[WorldEvent]:
+    """Mark events before `until` as fired and apply their reveal rules; returns those just fired."""
     due = db.scalars(
         select(WorldEvent).where(WorldEvent.run_id == run.id, WorldEvent.fired_at.is_(None), WorldEvent.sim_at < until)
     ).all()
@@ -86,6 +87,34 @@ def fire_events(db: Session, run: Run, until: datetime, now: datetime) -> None:
                 .where(WorldEvent.run_id == run.id, WorldEvent.sim_at <= horizon)
                 .values(revealed=True)
             )
+    return list(due)
+
+
+# Events BOB can see the moment they happen (telemetry, grid-operator instructions, market
+# announcements, new forecasts). Cloud banks and demand surges show up in telemetry at block end.
+VISIBLE = {
+    "bess_trip": lambda p: f"{p['asset']} tripped for {p['minutes']} min",
+    "line_derate": lambda p: f"{p['line']} derated to {p['limit_mw']:g} MW",
+    "price_spike": lambda p: f"Price spike announced, ×{p['mult']} {p['from_hh']:02d}:00–{p['to_hh']:02d}:00",
+    "forecast_update": lambda p: "Forecasts updated",
+    "storm": lambda p: f"Storm over {p['node']}",
+    "frequency_dip": lambda p: f"Frequency at {p['hz']} Hz",
+}
+
+
+def replan_for_events(db: Session, run: Run, fired: list[WorldEvent], now: datetime) -> None:
+    """Re-plan the block in progress when BOB learns of a material event. Caller holds the run lock."""
+    visible = [e for e in fired if e.kind in VISIBLE and (e.kind != "storm" or e.revealed)]
+    t0 = run.current_block + 1
+    if not visible or not is_live(run) or t0 >= run.total_blocks:
+        return
+    db.flush()
+    ctx = RunContext.load(db, run)
+    if any(e.kind == "forecast_update" for e in visible):
+        db.execute(delete(Forecast).where(Forecast.run_id == run.id, Forecast.issued_block == run.current_block))
+        _store_forecasts(db, ctx, run.current_block)
+    plan_bob(db, ctx, ctx.world(), run, t0, latest_forecasts(db, ctx, run, t0), sim_now(run, now),
+             trigger="event", detail="; ".join(VISIBLE[e.kind](e.payload) for e in visible))
 
 
 @dataclass
@@ -101,6 +130,7 @@ class RunContext:
     events: list[WorldEvent]
     market: dict[str, Any]
     default_mode: str  # the operator's mode when no signal calls for another
+    protected: dict[str, Any]
 
     @classmethod
     def load(cls, db: Session, run: Run) -> "RunContext":
@@ -119,6 +149,7 @@ class RunContext:
             events=list(events),
             market=portfolio.market,
             default_mode=portfolio.mode_code,
+            protected=portfolio.protected,
         )
 
     def world(self, revealed_only: bool = False) -> World:
@@ -150,11 +181,12 @@ def advance(db: Session, run: Run, now: datetime) -> None:
         run.status = "done"
         return
     fire_events(db, run, run.sim_start_at + (b + 1) * BLOCK, now)
+    policy.expire(db, run, run.sim_start_at + (b + 1) * BLOCK)
     db.flush()
     ctx = RunContext.load(db, run)
     truth = ctx.world()
-    for policy in POLICIES:
-        settle_block(db, ctx, truth, run, b, policy)
+    for name in POLICIES:
+        settle_block(db, ctx, truth, run, b, name)
     db.flush()
     _store_forecasts(db, ctx, b)
     if b + 1 < run.total_blocks:
@@ -178,10 +210,16 @@ def claim_due_run(db: Session, now: datetime) -> Run | None:
 
 
 def tick(db: Session, now: datetime) -> bool:
-    """One worker iteration: fire mid-block events for live runs, then advance one due run."""
-    for run in db.scalars(select(Run).where(Run.status == "running")).all():
-        fire_events(db, run, sim_now(run, now), now)
-    db.commit()
+    """One worker iteration: for each running run, expire late approvals and fire mid-block events
+    (re-planning on visible ones); then advance one due run."""
+    for run_id in db.scalars(select(Run.id).where(Run.status == "running")).all():
+        run = db.scalar(select(Run).where(Run.id == run_id).with_for_update(skip_locked=True))
+        if run is None:
+            continue  # another worker has it
+        sim = sim_now(run, now)
+        policy.expire(db, run, sim)
+        replan_for_events(db, run, fire_events(db, run, sim, now), now)
+        db.commit()
     run = claim_due_run(db, now)
     if run is None:
         return False
@@ -217,7 +255,7 @@ def inject(db: Session, run: Run, kind: str, payload: dict[str, Any], now: datet
     event = WorldEvent(run_id=run.id, sim_at=sim_now(run, now), kind=kind, payload=payload, source="operator")
     db.add(event)
     db.flush()
-    fire_events(db, run, event.sim_at + timedelta(microseconds=1), now)
+    replan_for_events(db, run, fire_events(db, run, event.sim_at + timedelta(microseconds=1), now), now)
     return event
 
 

@@ -145,3 +145,36 @@ body {
   gap: $spacing-03;
   margin-top: $spacing-05;
 }
+
+.toasts {
+  position: fixed;
+  top: calc(3rem + #{$spacing-05});
+  right: $spacing-05;
+  z-index: 9000;
+}
+
+.action-list {
+  display: grid;
+  gap: $spacing-05;
+}
+
+.action-card {
+  display: grid;
+  gap: $spacing-03;
+}
+
+.action-card__head,
+.action-card__foot {
+  display: flex;
+  align-items: center;
+  gap: $spacing-04;
+}
+
+.action-card__foot {
+  justify-content: flex-end;
+}
+
+.action-card__why {
+  background: theme.$layer-02;
+  padding: $spacing-04;
+}

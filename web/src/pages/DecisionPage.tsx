@@ -38,7 +38,7 @@ export function DecisionPage() {
       <div className="tag-row">
         <Tag type="purple">Mode: {modeLabel(data.mode)}</Tag>
         <Tag type="gray">{data.mode_by === 'operator' ? 'Operator default' : `Chosen by ${data.mode_by}`}</Tag>
-        <Tag type="gray">Trigger: {data.trigger === 'tick' ? 'scheduled block' : data.trigger}</Tag>
+        <Tag type="gray">{data.trigger === 'tick' ? 'Scheduled block' : `Re-planned: ${data.trigger_detail}`}</Tag>
       </div>
 
       <Tile className="decision__why">

@@ -8,13 +8,14 @@ from app.api.dependencies import get_current_user
 from app.api.routes.portfolio import current_portfolio
 from app.core.database import get_db
 from app.models.portfolio import Portfolio
-from app.models.run import Cycle, Run
+from app.models.run import Action, Cycle, Run, WorldEvent
+from app.models.user import User
 from app.schemas.runs import (
-    ActionOut, DecisionDetail, DecisionSummary, InjectEvent, PresetInfo, RunCreate, RunState, RunSummary, SiteLive,
+    ActionOut, DecisionDetail, DecisionSummary, EventOut, InjectEvent, PresetInfo, RunCreate, RunState, RunSummary, SiteLive,
     SpeedUpdate,
 )
 from app.services import runs
-from app.services import decisions
+from app.services import decisions, policy
 from app.services.live import site_live
 from app.services.summary import recent_actions, summary
 from app.sim.presets import PRESETS
@@ -136,9 +137,48 @@ def run_summary(run: Run = Depends(_run), db: Session = Depends(get_db)) -> RunS
 
 @router.get("/{run_id}/actions", response_model=list[ActionOut])
 def run_actions(
-    run: Run = Depends(_run), db: Session = Depends(get_db), limit: int = Query(default=20, ge=1, le=200)
+    run: Run = Depends(_run), db: Session = Depends(get_db), limit: int = Query(default=20, ge=1, le=200),
+    status: list[str] = Query(default=[]), site: str | None = None, block: int | None = None,
 ) -> list[ActionOut]:
-    return recent_actions(db, run, limit)
+    return recent_actions(db, run, limit, status, site, block)
+
+
+def _decide(run_id: int, action_id: int, approve: bool, db: Session, user: User) -> RunState:
+    run = runs.lock_run(db, run_id)
+    action = db.get(Action, action_id)
+    if run is None or action is None or action.run_id != run.id:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Action not found")
+    if action.status != "awaiting_approval":
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=f"The action is {action.status}")
+    try:
+        policy.decide(db, run, action, approve, user.email, runs.sim_now(run, _now()))
+    except ValueError as error:
+        db.commit()  # keep the expiry
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(error)) from None
+    db.commit()
+    return _state(run)
+
+
+@router.post("/{run_id}/actions/{action_id}/approve", response_model=RunState)
+def approve(run_id: int, action_id: int, db: Session = Depends(get_db),
+            user: User = Depends(get_current_user)) -> RunState:
+    return _decide(run_id, action_id, True, db, user)
+
+
+@router.post("/{run_id}/actions/{action_id}/decline", response_model=RunState)
+def decline(run_id: int, action_id: int, db: Session = Depends(get_db),
+            user: User = Depends(get_current_user)) -> RunState:
+    return _decide(run_id, action_id, False, db, user)
+
+
+@router.get("/{run_id}/events", response_model=list[EventOut])
+def fired_events(run: Run = Depends(_run), db: Session = Depends(get_db), after: int = 0) -> list[EventOut]:
+    rows = db.scalars(select(WorldEvent).where(
+        WorldEvent.run_id == run.id, WorldEvent.fired_at.isnot(None), WorldEvent.id > after,
+    ).order_by(WorldEvent.id))
+    return [EventOut(id=e.id, kind=e.kind, sim_at=e.sim_at, source=e.source,
+                     label=runs.VISIBLE.get(e.kind, lambda p: e.kind.replace("_", " ").capitalize())(e.payload))
+            for e in rows]
 
 
 @router.get("/{run_id}/decisions/latest", response_model=DecisionSummary)

@@ -1,7 +1,7 @@
 from datetime import date
 from typing import Any
 
-from sqlalchemy import CheckConstraint, Date, Float, ForeignKey, String, UniqueConstraint
+from sqlalchemy import CheckConstraint, Date, Float, ForeignKey, Index, String, UniqueConstraint, text
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
@@ -19,6 +19,8 @@ class Portfolio(Base):
     tz: Mapped[str] = mapped_column(String(40))
     mode_code: Mapped[str] = mapped_column(String(32))
     market: Mapped[dict[str, Any]] = mapped_column(JSONB)
+    # Organisation limits no configured action can loosen (shown as locked in the setup wizard).
+    protected: Mapped[dict[str, Any]] = mapped_column(JSONB, server_default="{}")
 
     sites: Mapped[list["Site"]] = relationship(back_populates="portfolio", order_by="Site.id")
 
@@ -84,3 +86,34 @@ class Asset(Base):
 
     site: Mapped[Site] = relationship(back_populates="assets")
     node: Mapped[Node] = relationship()
+
+
+CONFIG_KINDS = ("battery_charge", "battery_discharge", "curtail", "demand_response", "load_shift",
+                "grid_import", "grid_export")
+
+
+class ActionConfig(Base):
+    """BOB's mandate for one kind of action on one asset: whether it may act, within which
+    limits, and whether it acts alone, asks for approval, or only recommends."""
+
+    __tablename__ = "action_config"
+    __table_args__ = (
+        CheckConstraint(f"kind IN {CONFIG_KINDS}", name="action_config_kind"),
+        CheckConstraint("autonomy IN ('auto', 'approval', 'recommend')", name="action_config_autonomy"),
+        CheckConstraint("status IN ('draft', 'testing', 'active', 'paused')", name="action_config_status"),
+        Index("uq_action_config_current", "asset_id", "kind", unique=True, postgresql_where=text("current")),
+    )
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    site_id: Mapped[int] = mapped_column(ForeignKey("site.id", ondelete="CASCADE"))
+    asset_id: Mapped[int] = mapped_column(ForeignKey("asset.id", ondelete="CASCADE"), index=True)
+    kind: Mapped[str] = mapped_column(String(24))
+    name: Mapped[str] = mapped_column(String(120))
+    status: Mapped[str] = mapped_column(String(16))
+    version: Mapped[int] = mapped_column(default=1)
+    current: Mapped[bool] = mapped_column(default=True)
+    autonomy: Mapped[str] = mapped_column(String(16))
+    # auto_max_mw, max_mw, reserve_pct, min_price_inr_mwh (each optional)
+    limits: Mapped[dict[str, Any]] = mapped_column(JSONB)
+    # approver, response_min
+    approval: Mapped[dict[str, Any]] = mapped_column(JSONB)

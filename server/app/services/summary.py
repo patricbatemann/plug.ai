@@ -25,15 +25,25 @@ def summary(db: Session, run: Run) -> RunSummary:
                       saving_inr=totals["baseline"].cost_inr - totals["bob"].cost_inr)
 
 
-def recent_actions(db: Session, run: Run, limit: int) -> list[ActionOut]:
-    rows = db.execute(
+def recent_actions(db: Session, run: Run, limit: int, status: list[str] | None = None, site: str | None = None,
+                   block: int | None = None) -> list[ActionOut]:
+    query = (
         select(Action, Asset.name, Site.name)
         .outerjoin(Asset, Asset.id == Action.asset_id).outerjoin(Site, Site.id == Asset.site_id)
         .where(Action.run_id == run.id, Action.policy == "bob")
-        .order_by(Action.block.desc(), Action.id.desc()).limit(limit)
-    ).all()
+    )
+    if status:
+        query = query.where(Action.status.in_(status))
+    else:  # history leaves out decisions that were replaced before they took effect
+        query = query.where(Action.status != "superseded")
+    if site:
+        query = query.where(Site.code == site)
+    if block is not None:
+        query = query.where(Action.block == block)
+    rows = db.execute(query.order_by(Action.block.desc(), Action.id.desc()).limit(limit)).all()
     return [
-        ActionOut(id=a.id, time=run.sim_start_at + a.block * BLOCK, kind=a.kind, site=site, asset=asset, mw=a.mw,
-                  delivered_mw=a.delivered_mw, actual_mw=a.actual_mw, status=a.status, reason=a.reason)
-        for a, asset, site in rows
+        ActionOut(id=a.id, block=a.block, time=run.sim_start_at + a.block * BLOCK, cycle_id=a.cycle_id, tier=a.tier,
+                  deadline_at=a.deadline_at, decided_by=a.decided_by, kind=a.kind, site=site_name, asset=asset,
+                  mw=a.mw, delivered_mw=a.delivered_mw, actual_mw=a.actual_mw, status=a.status, reason=a.reason)
+        for a, asset, site_name in rows
     ]

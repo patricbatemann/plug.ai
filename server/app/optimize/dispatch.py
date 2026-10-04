@@ -43,6 +43,10 @@ class Inputs:
     shifted_today_mwh: dict[str, float]  # net load moved out so far today (+ out, − back in)
     market: dict[str, Any]
     profile: dict[str, Any]
+    # Active action configs by "family:code" (market families use code "portfolio"), with their
+    # limits. A decision with no config is not available to BOB.
+    allowed: dict[str, dict[str, Any]] = field(default_factory=dict)
+    protected: dict[str, Any] = field(default_factory=dict)
 
 
 @dataclass
@@ -105,9 +109,18 @@ def _daily(m: Model, x: np.ndarray, per_day_mwh: float, used_today_mwh: float, l
         m.add([(tomorrow[None, :], DT)], ub=per_day_mwh)
 
 
-def plan(inp: Inputs, fixed: HereAndNow | None = None, single_stage: bool = False) -> Plan:
+def _cap(inp: Inputs, key: str, rating: float | np.ndarray) -> float | np.ndarray:
+    """Upper bound for a decision: zero without a config, else its rating within the configured maximum."""
+    if key not in inp.allowed:
+        return 0.0 * rating
+    return np.minimum(rating, inp.allowed[key].get("max_mw", np.inf))
+
+
+def plan(inp: Inputs, fixed: HereAndNow | None = None, single_stage: bool = False,
+         forbid: frozenset[str] = frozenset()) -> Plan:
     """Two-stage plan; or, for stress tests, one solve of reliability plus cost, optionally
-    with another plan's here-and-now decisions fixed."""
+    with another plan's here-and-now decisions fixed. `forbid` holds "family:code" decisions that
+    must not be taken now (e.g. gated actions, to build the fallback plan)."""
     H = len(inp.price)
     gate = inp.market["gate_blocks"]
     prof = inp.profile
@@ -115,17 +128,23 @@ def plan(inp: Inputs, fixed: HereAndNow | None = None, single_stage: bool = Fals
     of_kind = lambda *kinds: [a for a in inp.assets if a.kind in kinds]  # noqa: E731
     gens, batteries, consumers, ics = of_kind("solar", "wind"), of_kind("bess"), of_kind("consumer"), of_kind("interconnection")
 
-    # A plant that cannot be curtailed dispatches exactly its availability.
-    g = {a.code: m.var(H, 0 if a.params["curtailable"] else inp.available[a.code], inp.available[a.code])
+    # A plant that cannot be curtailed (physically, or without a config) dispatches its availability.
+    g = {a.code: m.var(H, 0 if a.params["curtailable"] and f"curtail:{a.code}" in inp.allowed
+                     else inp.available[a.code], inp.available[a.code])
          for a in gens}
 
     ch, dis, mode, soc, res = {}, {}, {}, {}, {}
     for a in batteries:
         p = a.capacity * inp.bess_available[a.code]
         e = a.params["energy_mwh"]
-        ch[a.code], dis[a.code] = m.var(H, 0, p), m.var(H, 0, p)
+        ch[a.code] = m.var(H, 0, _cap(inp, f"battery_charge:{a.code}", p))
+        dis[a.code] = m.var(H, 0, _cap(inp, f"battery_discharge:{a.code}", p))
         mode[a.code] = m.var(H, binary=True, ub=1)
-        soc[a.code] = m.var(H, e * a.params["soc_min_pct"] / 100, e * a.params["soc_max_pct"] / 100)
+        floor_pct = max(a.params["soc_min_pct"], inp.protected.get("battery_soc_floor_pct", 0),
+                        inp.allowed.get(f"battery_discharge:{a.code}", {}).get("reserve_pct", 0))
+        # Never demand a floor above where the battery starts; it may not be able to get there.
+        low = min(e * floor_pct / 100, inp.soc_mwh[a.code])
+        soc[a.code] = m.var(H, low, e * a.params["soc_max_pct"] / 100)
         res[a.code] = m.var(H)
 
     dr, out, back, uns, uns_crit, shift_gap = {}, {}, {}, {}, {}, {}
@@ -134,12 +153,13 @@ def plan(inp: Inputs, fixed: HereAndNow | None = None, single_stage: bool = Fals
         notice = np.arange(H) >= p["dr_notice_blocks"]
         committed = inp.committed_dr.get(a.code, np.full(H, np.nan))
         called = ~np.isnan(committed)
-        dr_ub = np.where(called, np.nan_to_num(committed), np.where(notice, p["dr_max_mw"], 0.0))
+        dr_ub = np.where(called, np.nan_to_num(committed),
+                         np.where(notice, _cap(inp, f"demand_response:{a.code}", p["dr_max_mw"]), 0.0))
         dr[a.code] = m.var(H, np.where(called, np.nan_to_num(committed), 0.0), dr_ub)
         window = p["shift_window"]
         in_window = (inp.hour >= window[0]) & (inp.hour < window[1]) if window else np.zeros(H, bool)
-        out[a.code] = m.var(H, 0, np.where(in_window, p["shift_max_mw"], 0.0))
-        back[a.code] = m.var(H, 0, np.where(in_window, p["shift_max_mw"], 0.0))
+        shift_ub = np.where(in_window, _cap(inp, f"load_shift:{a.code}", p["shift_max_mw"]), 0.0)
+        out[a.code], back[a.code] = m.var(H, 0, shift_ub), m.var(H, 0, shift_ub)
         uns[a.code] = m.var(H, 0, load)
         uns_crit[a.code] = m.var(H)
         shift_gap[a.code] = m.var((2, 2))  # [today, tomorrow] x [over, under]
@@ -149,8 +169,10 @@ def plan(inp: Inputs, fixed: HereAndNow | None = None, single_stage: bool = Fals
     flow = {l.code: m.var(H, -inp.line_limit[l.code], inp.line_limit[l.code]) for l in inp.lines}
     tradable = np.arange(H) >= gate
     rtm_cap = sum(a.params["import_max_mw"] + a.params["export_max_mw"] for a in ics)
-    sell_cap = prof["rtm_sell_cap_share"] * sum(a.params["export_max_mw"] for a in ics)
-    buy, sell = m.var(H, 0, np.where(tradable, rtm_cap, 0.0)), m.var(H, 0, np.where(tradable, sell_cap, 0.0))
+    sell_cap = _cap(inp, "grid_export:portfolio", prof["rtm_sell_cap_share"] * sum(a.params["export_max_mw"] for a in ics))
+    min_price = inp.allowed.get("grid_export:portfolio", {}).get("min_price_inr_mwh", 0)
+    buy = m.var(H, 0, np.where(tradable, _cap(inp, "grid_import:portfolio", rtm_cap), 0.0))
+    sell = m.var(H, 0, np.where(tradable & (inp.price >= min_price), sell_cap, 0.0))
     tol = band(inp.schedule, inp.market)
     over_in, over_out = m.var(H, 0, tol), m.var(H)
     under_in, under_out = m.var(H, 0, tol), m.var(H)
@@ -228,6 +250,22 @@ def plan(inp: Inputs, fixed: HereAndNow | None = None, single_stage: bool = Fals
             m.fix(buy[gate], max(fixed.rtm, 0.0))
             m.fix(sell[gate], max(-fixed.rtm, 0.0))
 
+    for key in forbid:
+        family, code = key.split(":")
+        if family in ("battery_charge", "battery_discharge"):
+            m.fix((ch if family == "battery_charge" else dis)[code][0], 0.0)
+        elif family == "curtail":
+            m.fix(g[code][0], float(inp.available[code][0]))
+        elif family == "demand_response":
+            notice = next(a.params["dr_notice_blocks"] for a in consumers if a.code == code)
+            if notice < H:
+                m.fix(dr[code][notice], 0.0)
+        elif family == "load_shift":
+            m.fix(out[code][0], 0.0)
+            m.fix(back[code][0], 0.0)
+        elif gate < H:
+            m.fix((buy if family == "grid_import" else sell)[gate], 0.0)
+
     reliability = np.zeros(m.n)
     for a in consumers:
         reliability[uns[a.code]] = VOLL * DT
@@ -259,7 +297,9 @@ def plan(inp: Inputs, fixed: HereAndNow | None = None, single_stage: bool = Fals
         cost[shift_gap[a.code]] = SHIFT_IMBALANCE  # only when the day cannot be balanced
     for a in ics:
         cost[imp[a.code]] = prof["lambda_carbon"] * inp.emission * DT
-    s = m.solve(cost + reliability if single_stage else cost, TIME_LIMIT_S, MIP_GAP)
+    # Stage B keeps reliability in its objective too: the ε cap is numerical slack, not a budget
+    # for shedding load whenever that saves money.
+    s = m.solve(cost + reliability, TIME_LIMIT_S, MIP_GAP)
     if np.isnan(s.objective):
         return Plan(status=s.status, objective=float("nan"), gap=0.0)
 

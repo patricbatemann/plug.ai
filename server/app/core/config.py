@@ -11,6 +11,7 @@ class Settings(BaseSettings):
     access_token_expire_minutes: int = Field(default=30, gt=0)
     cors_origins: str = "http://localhost:5173"
     solver_processes: int = Field(default=4, ge=0)  # 0 or 1 solves in-process
+    solver_disabled: bool = False  # demo switch: no plans, so BOB falls back to safe hold
 
     model_config = SettingsConfigDict(
         env_file=".env", env_file_encoding="utf-8", env_ignore_empty=True, extra="ignore"

@@ -9,9 +9,10 @@ from app.optimize.robust import choose_option
 from app.optimize.situation import Signal, apply_floors, choose_mode
 from app.optimize.validator import check
 from app.seed import seed
+from app.services import policy
 from app.services.dispatch import bob_inputs, latest_forecasts
 from app.services.portfolio import get_portfolio
-from app.services.runs import RunContext, advance, create_run
+from app.services.runs import RunContext, create_run
 
 NOW = datetime(2026, 10, 4, tzinfo=timezone.utc)
 
@@ -19,11 +20,9 @@ NOW = datetime(2026, 10, 4, tzinfo=timezone.utc)
 def test_plan_balances_respects_battery_limits_and_trades_only_after_the_gate(db: Session) -> None:
     seed(db)
     run = create_run(db, get_portfolio(db), "demo_story", NOW)
-    for _ in range(25):  # to midday, with batteries and markets in play
-        advance(db, run, NOW)
     ctx = RunContext.load(db, run)
-    t0 = run.current_block + 1
-    inputs = bob_inputs(db, ctx, ctx.world(), run, t0, latest_forecasts(db, ctx, run, t0))
+    # The first block's 24-hour plan covers midday charging, evening discharge and trading.
+    inputs = bob_inputs(db, ctx, ctx.world(), run, 0, latest_forecasts(db, ctx, run, 0))
     p = plan(inputs)
     assert p.kpis["unserved_mwh"] == 0
 
@@ -72,3 +71,30 @@ def test_mode_precedence_floors_and_option_choice() -> None:
         "clean": {"a": {"regret_inr": None}, "b": {"regret_inr": 0}},  # infeasible somewhere: never chosen
     }
     assert choose_option(robust, {"profile": 1, "cost": 2, "clean": 0}) == "cost"
+
+
+def test_tiers_follow_config_and_protected_limits() -> None:
+    configs = {
+        "battery_discharge:BESS-01": {"autonomy": "auto", "auto_max_mw": 9},
+        "grid_import:portfolio": {"autonomy": "approval"},
+        "load_shift:IND-1": {"autonomy": "recommend"},
+    }
+    protected = {"approval_above_mw": 100}
+    assert policy.tier("bess_discharge", "BESS-01", 8, configs, protected) == ("auto", None)
+    assert "9 MW automatic limit" in policy.tier("bess_discharge", "BESS-01", 12, configs, protected)[1]
+    assert policy.tier("rtm_buy", "portfolio", 5, configs, protected)[0] == "approval"
+    assert policy.tier("load_shift", "IND-1", 1, configs, protected)[0] == "recommend"
+    assert policy.tier("dr_call", "IND-2", 1, configs, protected)[0] == "recommend"  # no config
+    configs["battery_discharge:BESS-01"]["auto_max_mw"] = 500
+    assert "approval ceiling" in policy.tier("bess_discharge", "BESS-01", 150, configs, protected)[1]
+
+
+def test_unconfigured_actions_are_never_planned(db: Session) -> None:
+    seed(db)
+    run = create_run(db, get_portfolio(db), "evening_spike", NOW)
+    ctx = RunContext.load(db, run)
+    # The first block's 24-hour plan reaches the evening, when discharging pays.
+    inputs = bob_inputs(db, ctx, ctx.world(), run, 0, latest_forecasts(db, ctx, run, 0))
+    assert plan(inputs).battery["BESS-01"].max() > 0
+    del inputs.allowed["battery_discharge:BESS-01"]
+    assert plan(inputs).battery["BESS-01"].max() <= 1e-6

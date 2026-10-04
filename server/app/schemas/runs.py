@@ -181,7 +181,12 @@ class RunSummary(BaseModel):
 
 class ActionOut(BaseModel):
     id: int
+    block: int
     time: datetime
+    cycle_id: int | None
+    tier: str
+    deadline_at: datetime | None
+    decided_by: str | None
     kind: str
     site: str | None
     asset: str | None
@@ -234,7 +239,16 @@ class DecisionSummary(BaseModel):
 
 class DecisionDetail(DecisionSummary):
     trigger: str
+    trigger_detail: str
     floors: list[str]
     situation: list[SignalOut]
     scenarios: dict[str, str]
     options: list[OptionOut]
+
+
+class EventOut(BaseModel):
+    id: int
+    kind: str
+    sim_at: datetime
+    source: str
+    label: str

@@ -65,7 +65,7 @@ def detail(db: Session, cycle: Cycle) -> DecisionDetail:
             worst_regret_inr=max(regrets) if regrets else None, stress=stress,
         ))
     return DecisionDetail(
-        **_summary(run, cycle, plans), trigger=cycle.trigger, floors=cycle.floors,
+        **_summary(run, cycle, plans), trigger=cycle.trigger, trigger_detail=cycle.trigger_detail, floors=cycle.floors,
         situation=[SignalOut(**s) for s in cycle.situation],
         scenarios={s: SCENARIO_LABELS[s] for s in cycle.scenarios}, options=options,
     )

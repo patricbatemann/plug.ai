@@ -143,6 +143,7 @@ class Cycle(Base):
     floors: Mapped[list[str]] = mapped_column(JSONB, server_default="[]")
     scenarios: Mapped[list[str]] = mapped_column(JSONB, server_default="[]")
     rationale: Mapped[str] = mapped_column(String(600), server_default="")
+    trigger_detail: Mapped[str] = mapped_column(String(200), server_default="")
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 
 
@@ -175,9 +176,13 @@ class Action(Base):
     kind: Mapped[str] = mapped_column(String(24))
     asset_id: Mapped[int | None] = mapped_column(ForeignKey("asset.id", ondelete="CASCADE"))
     mw: Mapped[float] = mapped_column(Float)
-    status: Mapped[str] = mapped_column(String(16))
+    status: Mapped[str] = mapped_column(String(24))
     reason: Mapped[str | None] = mapped_column(String(200))
     idempotency_key: Mapped[str] = mapped_column(String(80), unique=True)
     delivered_mw: Mapped[float | None] = mapped_column(Float)
     actual_mw: Mapped[float | None] = mapped_column(Float)
+    tier: Mapped[str] = mapped_column(String(16), server_default="auto")
+    deadline_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    decided_by: Mapped[str | None] = mapped_column(String(320))
+    decided_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())

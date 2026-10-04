@@ -7,9 +7,12 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.core.database import SessionLocal
-from app.models.portfolio import Asset, Line, Node, Portfolio, Site
+from app.models.portfolio import ActionConfig, Asset, Line, Node, Portfolio, Site
 from app.schemas.portfolio import validate_params
 from app.sim.market import DEFAULT_MARKET
+
+# Organisation limits that no configured action can loosen.
+PROTECTED = {"battery_soc_floor_pct": 30, "approval_above_mw": 100}
 
 NODES = {"NORTH": "North wind corridor", "SOUTH": "South solar corridor", "HUB": "Sri City load hub"}
 LINES = [("L-NORTH-HUB", "NORTH", "HUB", 120), ("L-SOUTH-HUB", "SOUTH", "HUB", 260)]
@@ -86,7 +89,7 @@ def seed(db: Session) -> bool:
     if db.scalar(select(Portfolio.id).limit(1)) is not None:
         return False
     portfolio = Portfolio(name="Andhra Pradesh renewable portfolio", tz="Asia/Kolkata", mode_code="balanced",
-                          market=DEFAULT_MARKET)
+                          market=DEFAULT_MARKET, protected=PROTECTED)
     db.add(portfolio)
     db.flush()
     nodes = {code: Node(portfolio_id=portfolio.id, code=code, name=name) for code, name in NODES.items()}
@@ -106,8 +109,38 @@ def seed(db: Session) -> bool:
                   name=a_name, capacity_mw=capacity, params=validate_params(a_kind, params))
             for a_code, a_name, a_kind, capacity, params in assets
         )
+    db.flush()
+    db.add_all(default_configs(db.scalars(select(Asset).where(Asset.portfolio_id == portfolio.id)).all()))
     db.commit()
     return True
+
+
+def default_configs(assets: list[Asset]) -> list[ActionConfig]:
+    """Starting mandates: BOB acts alone within modest limits and asks above them."""
+    approval = {"approver": "Site operator", "response_min": 10}
+    config = lambda a, kind, name, **limits: ActionConfig(  # noqa: E731
+        site_id=a.site_id, asset_id=a.id, kind=kind, name=name, status="active", autonomy="auto",
+        limits=limits, approval=approval)
+    out = []
+    for a in assets:
+        p = a.params
+        if a.kind == "bess":
+            out.append(config(a, "battery_charge", f"Charge {a.name} from surplus", max_mw=a.capacity_mw,
+                              auto_max_mw=a.capacity_mw))
+            out.append(config(a, "battery_discharge", f"Discharge {a.name} to support demand", max_mw=a.capacity_mw,
+                              auto_max_mw=round(a.capacity_mw * 0.6), reserve_pct=PROTECTED["battery_soc_floor_pct"]))
+        elif a.kind in ("solar", "wind"):
+            out.append(config(a, "curtail", f"Limit {a.name} output", auto_max_mw=50))
+        elif a.kind == "consumer":
+            if p["dr_max_mw"]:
+                out.append(config(a, "demand_response", f"Demand response: {a.name}", max_mw=p["dr_max_mw"],
+                                  auto_max_mw=5))
+            if p["shift_max_mw"]:
+                out.append(config(a, "load_shift", f"Move load: {a.name}", max_mw=p["shift_max_mw"]))
+        elif a.kind == "interconnection" and p["import_max_mw"] >= 100:  # the hub's market connection
+            out.append(config(a, "grid_import", "Buy power in the real-time market", auto_max_mw=60))
+            out.append(config(a, "grid_export", "Sell surplus power", auto_max_mw=60, min_price_inr_mwh=0))
+    return out
 
 
 if __name__ == "__main__":
