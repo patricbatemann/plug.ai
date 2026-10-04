@@ -20,8 +20,9 @@ import {
   Tag,
 } from '@carbon/react'
 import { portfolioApi } from '../api/client'
-import { assetSummary, kindLabel, modeLabel, mw } from '../format'
+import { assetSummary, kindLabel, mw } from '../format'
 import { LiveOverview } from '../runs/LiveOverview'
+import { ModeTag } from '../runs/ModeTag'
 import { useCurrentRun } from '../runs/useCurrentRun'
 
 export function SitePage() {
@@ -54,7 +55,7 @@ export function SitePage() {
       <div className="tag-row">
         <Tag type="gray">{kindLabel(data.kind)}</Tag>
         {generation > 0 && <Tag type="gray">{mw(generation)}</Tag>}
-        <Tag type="purple">Mode: {modeLabel(data.mode_code)}</Tag>
+        <ModeTag defaultMode={data.mode_code} />
       </div>
 
       <Tabs selectedIndex={tab ?? (run ? 1 : 0)} onChange={({ selectedIndex }) => setTab(selectedIndex)}>

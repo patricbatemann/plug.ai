@@ -13,7 +13,9 @@ import {
   Tile,
 } from '@carbon/react'
 import { portfolioApi } from '../api/client'
-import { kindLabel, modeLabel, mw, mwh } from '../format'
+import { kindLabel, mw, mwh } from '../format'
+import { ModeTag } from '../runs/ModeTag'
+import { Recommendation } from '../runs/Recommendation'
 import { RunComparison } from '../runs/RunComparison'
 import { useCurrentRun } from '../runs/useCurrentRun'
 
@@ -42,7 +44,7 @@ export function PortfolioPage() {
       <h1 className="page-title">Portfolio overview</h1>
       <p className="page-meta">{data.name}</p>
       <div className="tag-row">
-        <Tag type="purple">Mode: {modeLabel(data.mode_code)}</Tag>
+        <ModeTag defaultMode={data.mode_code} />
       </div>
 
       <div className="card-grid">
@@ -56,6 +58,8 @@ export function PortfolioPage() {
           </Tile>
         ))}
       </div>
+
+      {run && run.block >= 0 && <Recommendation run={run} />}
 
       <Table aria-label="Registered sites">
         <TableHead>

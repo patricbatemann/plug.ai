@@ -76,6 +76,8 @@ export interface RunState {
   block: number
   total_blocks: number
   live: boolean
+  mode: string
+  mode_by: string
 }
 
 export interface Alert {
@@ -145,6 +147,37 @@ export interface ActionOut {
   actual_mw: number | null
   status: string
   reason: string | null
+}
+
+export interface DecisionSummary {
+  id: number
+  time: string
+  mode: string
+  mode_by: string
+  mode_reason: string
+  chosen: string | null
+  rationale: string
+  holds: number
+  tests: number
+}
+
+export interface DecisionDetail extends DecisionSummary {
+  trigger: string
+  floors: string[]
+  situation: Array<{ code: string; label: string; value: string; threshold: string; material: boolean; mode: string }>
+  scenarios: Record<string, string>
+  options: Array<{
+    variant: string
+    label: string
+    chosen: boolean
+    actions: string[]
+    cost_inr: number
+    carbon_t: number
+    curtailed_mwh: number
+    deviation_mwh: number
+    worst_regret_inr: number | null
+    stress: Record<string, { regret_inr: number | null; holds: boolean; reserve_shortfall_mwh: number | null }>
+  }>
 }
 
 export class ApiError extends Error {
@@ -225,6 +258,8 @@ export const runApi = {
   inject: (id: number, event: Record<string, unknown>) => post<RunState>(`/api/runs/${id}/events`, event),
   summary: (id: number) => request<RunSummary>(`/api/runs/${id}/summary`),
   actions: (id: number, limit = 20) => request<ActionOut[]>(`/api/runs/${id}/actions?limit=${limit}`),
+  latestDecision: (id: number) => request<DecisionSummary>(`/api/runs/${id}/decisions/latest`),
+  decision: (cycleId: number) => request<DecisionDetail>(`/api/runs/decisions/${cycleId}`),
   siteLive: (id: number, code: string) =>
     request<SiteLive>(`/api/runs/${id}/sites/${encodeURIComponent(code)}/live`),
 }

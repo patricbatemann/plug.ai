@@ -111,7 +111,9 @@ def site_live(db: Session, run: Run, site: Site, now: datetime) -> SiteLive:
     # BOB's plan for the coming blocks, from the latest cycle.
     battery_codes = [a.code for a in site.assets if a.kind == "bess"]
     latest_plan = db.scalar(
-        select(Plan).join(Cycle).where(Cycle.run_id == run.id, Cycle.block == b + 1).order_by(Cycle.seq.desc()).limit(1)
+        select(Plan).join(Cycle)
+        .where(Cycle.run_id == run.id, Cycle.block == b + 1, Plan.role == "selected")
+        .order_by(Cycle.seq.desc()).limit(1)
     )
     if latest_plan and battery_codes:
         planned = np.sum([latest_plan.schedule["battery"][c] for c in battery_codes], axis=0)[:CHART_BLOCKS]

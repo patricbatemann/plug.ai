@@ -100,6 +100,7 @@ class RunContext:
     line_ids: dict[str, int]
     events: list[WorldEvent]
     market: dict[str, Any]
+    default_mode: str  # the operator's mode when no signal calls for another
 
     @classmethod
     def load(cls, db: Session, run: Run) -> "RunContext":
@@ -107,6 +108,7 @@ class RunContext:
         assets = db.scalars(select(Asset).where(Asset.portfolio_id == run.portfolio_id, Asset.active)).all()
         lines = db.scalars(select(Line).where(Line.portfolio_id == run.portfolio_id)).all()
         events = db.scalars(select(WorldEvent).where(WorldEvent.run_id == run.id)).all()
+        portfolio = db.get(Portfolio, run.portfolio_id)
         return cls(
             run=run,
             assets=[AssetSpec(a.code, a.kind, nodes[a.node_id], a.capacity_mw, a.params) for a in assets],
@@ -115,7 +117,8 @@ class RunContext:
             line_limits={l.code: l.limit_mw for l in lines},
             line_ids={l.code: l.id for l in lines},
             events=list(events),
-            market=db.scalar(select(Portfolio.market).where(Portfolio.id == run.portfolio_id)),
+            market=portfolio.market,
+            default_mode=portfolio.mode_code,
         )
 
     def world(self, revealed_only: bool = False) -> World:

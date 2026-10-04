@@ -8,9 +8,13 @@ from app.api.dependencies import get_current_user
 from app.api.routes.portfolio import current_portfolio
 from app.core.database import get_db
 from app.models.portfolio import Portfolio
-from app.models.run import Run
-from app.schemas.runs import ActionOut, InjectEvent, PresetInfo, RunCreate, RunState, RunSummary, SiteLive, SpeedUpdate
+from app.models.run import Cycle, Run
+from app.schemas.runs import (
+    ActionOut, DecisionDetail, DecisionSummary, InjectEvent, PresetInfo, RunCreate, RunState, RunSummary, SiteLive,
+    SpeedUpdate,
+)
 from app.services import runs
+from app.services import decisions
 from app.services.live import site_live
 from app.services.summary import recent_actions, summary
 from app.sim.presets import PRESETS
@@ -26,7 +30,7 @@ def _state(run: Run) -> RunState:
     return RunState(
         id=run.id, preset=run.preset, name=run.config["name"], status=run.status, speed=run.speed,
         sim_time=runs.sim_now(run, _now()), block=run.current_block, total_blocks=run.total_blocks,
-        live=runs.is_live(run),
+        live=runs.is_live(run), mode=run.mode_code, mode_by=run.mode_by,
     )
 
 
@@ -135,3 +139,19 @@ def run_actions(
     run: Run = Depends(_run), db: Session = Depends(get_db), limit: int = Query(default=20, ge=1, le=200)
 ) -> list[ActionOut]:
     return recent_actions(db, run, limit)
+
+
+@router.get("/{run_id}/decisions/latest", response_model=DecisionSummary)
+def latest_decision(run: Run = Depends(_run), db: Session = Depends(get_db)) -> DecisionSummary:
+    summary = decisions.latest(db, run)
+    if summary is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="No decision yet")
+    return summary
+
+
+@router.get("/decisions/{cycle_id}", response_model=DecisionDetail)
+def decision(cycle_id: int, db: Session = Depends(get_db)) -> DecisionDetail:
+    cycle = db.get(Cycle, cycle_id)
+    if cycle is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Decision not found")
+    return decisions.detail(db, cycle)

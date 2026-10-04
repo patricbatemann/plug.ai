@@ -24,6 +24,8 @@ class RunState(BaseModel):
     block: int
     total_blocks: int
     live: bool
+    mode: str
+    mode_by: str
 
 
 class SpeedUpdate(BaseModel):
@@ -188,3 +190,51 @@ class ActionOut(BaseModel):
     actual_mw: float | None
     status: str
     reason: str | None
+
+
+class SignalOut(BaseModel):
+    code: str
+    label: str
+    value: str
+    threshold: str
+    material: bool
+    mode: str
+
+
+class StressResult(BaseModel):
+    regret_inr: float | None
+    holds: bool
+    reserve_shortfall_mwh: float | None
+
+
+class OptionOut(BaseModel):
+    variant: str
+    label: str
+    chosen: bool
+    actions: list[str]
+    cost_inr: float
+    carbon_t: float
+    curtailed_mwh: float
+    deviation_mwh: float
+    worst_regret_inr: float | None
+    stress: dict[str, StressResult]
+
+
+class DecisionSummary(BaseModel):
+    id: int
+    time: datetime
+    mode: str
+    mode_by: str
+    mode_reason: str
+    chosen: str | None
+    rationale: str
+    holds: int
+    tests: int
+
+
+class DecisionDetail(DecisionSummary):
+    trigger: str
+    floors: list[str]
+    situation: list[SignalOut]
+    scenarios: dict[str, str]
+    options: list[OptionOut]

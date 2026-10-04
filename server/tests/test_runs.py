@@ -77,6 +77,13 @@ def test_run_controls_events_and_live_overview(
     assert summary["block"] == 26
     assert summary["bob"]["unserved_mwh"] == 0
     assert summary["saving_inr"] == summary["baseline"]["cost_inr"] - summary["bob"]["cost_inr"]
+    latest = client.get(f"{url}/decisions/latest", headers=auth_headers).json()
+    assert latest["tests"] >= 5 and latest["chosen"]
+    decision = client.get(f"/api/runs/decisions/{latest['id']}", headers=auth_headers).json()
+    assert len(decision["situation"]) == 6
+    assert sum(o["chosen"] for o in decision["options"]) == 1
+    assert all(set(o["stress"]) == set(decision["scenarios"]) for o in decision["options"])
+    assert client.get(url.replace(f"/{run['id']}", "/current"), headers=auth_headers).json()["mode"] == decision["mode"]
     actions = client.get(f"{url}/actions?limit=5", headers=auth_headers).json()
     assert len(actions) == 5
     assert {a["status"] for a in actions} <= {"acked", "verified", "rejected"}

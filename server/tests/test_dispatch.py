@@ -4,6 +4,9 @@ import numpy as np
 from sqlalchemy.orm import Session
 
 from app.optimize.dispatch import DT, plan
+from app.optimize.profiles import PROFILES
+from app.optimize.robust import choose_option
+from app.optimize.situation import Signal, apply_floors, choose_mode
 from app.optimize.validator import check
 from app.seed import seed
 from app.services.dispatch import bob_inputs, latest_forecasts
@@ -51,3 +54,21 @@ def test_validator_rejects_unsafe_actions(db: Session) -> None:
     assert "State of charge" in check("bess_discharge", 10, battery, soc_mwh=7)
     assert "unavailable" in check("bess_charge", 5, battery, soc_mwh=30, available=False)
     assert "notice" in check("dr_call", 5, steel, lead_blocks=1)
+
+
+def test_mode_precedence_floors_and_option_choice() -> None:
+    signal = lambda code, mode, material: Signal(code, code, "", "", material, mode)  # noqa: E731
+    calm = [signal("price", "economic", False), signal("surplus", "clean", False)]
+    assert choose_mode(calm, "balanced")[0] == "balanced"
+    busy = [signal("surplus", "clean", True), signal("price", "economic", True), signal("corridor", "grid_support", True)]
+    assert choose_mode(busy, "balanced")[0] == "grid_support"
+
+    params, applied = apply_floors(PROFILES["economic"], [signal("storm", "resilience", True)])
+    assert params["reserve_share"] >= PROFILES["resilience"]["reserve_share"] and applied
+
+    robust = {
+        "profile": {"a": {"regret_inr": 100}, "b": {"regret_inr": 900}},
+        "cost": {"a": {"regret_inr": 500}, "b": {"regret_inr": 500}},
+        "clean": {"a": {"regret_inr": None}, "b": {"regret_inr": 0}},  # infeasible somewhere: never chosen
+    }
+    assert choose_option(robust, {"profile": 1, "cost": 2, "clean": 0}) == "cost"

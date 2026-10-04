@@ -28,6 +28,7 @@ class Model:
         self.n = 0
         self.rows: list[tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray, np.ndarray]] = []
         self.m = 0
+        self.bounds: dict[int, tuple[float, float]] = {}  # per-variable overrides, e.g. fixed decisions
 
     def var(self, shape: int | tuple[int, ...], lb: float | np.ndarray = 0.0, ub: float | np.ndarray = INF,
             binary: bool = False) -> np.ndarray:
@@ -38,6 +39,9 @@ class Model:
         self.binary.append(np.full(size, binary))
         self.n += size
         return idx
+
+    def fix(self, idx: int, lb: float, ub: float | None = None) -> None:
+        self.bounds[int(idx)] = (lb, lb if ub is None else ub)
 
     def add(self, terms: list[tuple[np.ndarray, float | np.ndarray]], lb: float | np.ndarray = -INF,
             ub: float | np.ndarray = INF) -> None:
@@ -66,6 +70,8 @@ class Model:
         h.setOptionValue("time_limit", time_limit)
         h.setOptionValue("mip_rel_gap", mip_gap)
         lb, ub = np.concatenate(self.lb), np.concatenate(self.ub)
+        for i, (low, high) in self.bounds.items():
+            lb[i], ub[i] = low, high
         h.addVars(self.n, lb, ub)
         h.changeColsCost(self.n, np.arange(self.n, dtype=np.int32), cost)
         binary = np.flatnonzero(np.concatenate(self.binary)).astype(np.int32)

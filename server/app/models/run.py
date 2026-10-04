@@ -35,6 +35,9 @@ class Run(Base):
     paused_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     # Day-ahead net drawal (MW per block), fixed when the run starts.
     dam_schedule: Mapped[list[float]] = mapped_column(ARRAY(Float))
+    # The operating mode in force and who set it (operator, rule or BOB).
+    mode_code: Mapped[str] = mapped_column(String(32), server_default="balanced")
+    mode_by: Mapped[str] = mapped_column(String(16), server_default="operator")
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 
 
@@ -133,6 +136,13 @@ class Cycle(Base):
     trigger: Mapped[str] = mapped_column(String(16))
     status: Mapped[str] = mapped_column(String(16))
     timings: Mapped[dict[str, Any]] = mapped_column(JSONB)
+    situation: Mapped[list[dict[str, Any]]] = mapped_column(JSONB, server_default="[]")
+    mode: Mapped[str] = mapped_column(String(32), server_default="balanced")
+    mode_by: Mapped[str] = mapped_column(String(16), server_default="rule")
+    mode_reason: Mapped[str] = mapped_column(String(300), server_default="")
+    floors: Mapped[list[str]] = mapped_column(JSONB, server_default="[]")
+    scenarios: Mapped[list[str]] = mapped_column(JSONB, server_default="[]")
+    rationale: Mapped[str] = mapped_column(String(600), server_default="")
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 
 
@@ -147,6 +157,8 @@ class Plan(Base):
     # Columnar arrays over the horizon, read whole by the charts.
     schedule: Mapped[dict[str, Any]] = mapped_column(JSONB)
     solver: Mapped[dict[str, Any]] = mapped_column(JSONB)
+    # Per stress scenario: regret (₹) and whether the plan still serves load and holds reserve.
+    robust: Mapped[dict[str, Any] | None] = mapped_column(JSONB)
 
 
 class Action(Base):

@@ -124,3 +124,24 @@ body {
   @include type-style('heading-03');
   margin: $spacing-08 0 $spacing-05;
 }
+
+.recommendation {
+  display: grid;
+  gap: $spacing-03;
+  margin-bottom: $spacing-07;
+  border-left: 3px solid theme.$border-interactive;
+}
+
+.recommendation__head,
+.recommendation__foot {
+  display: flex;
+  align-items: center;
+  gap: $spacing-05;
+}
+
+.decision__why,
+.decision__chart {
+  display: grid;
+  gap: $spacing-03;
+  margin-top: $spacing-05;
+}

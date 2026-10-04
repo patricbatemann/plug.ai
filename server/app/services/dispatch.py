@@ -1,7 +1,9 @@
 """Per-block decisions and settlement for both policies: BOB (optimiser) and today's practice."""
 
 import time
-from datetime import datetime
+from dataclasses import asdict, replace
+from datetime import timedelta
+from zoneinfo import ZoneInfo
 
 import numpy as np
 from sqlalchemy import select
@@ -9,16 +11,21 @@ from sqlalchemy.orm import Session
 
 from app.models.run import Action, AssetBlock, Cycle, Forecast, LineBlock, Plan, Run, SystemBlock
 from app.optimize import baseline
-from app.optimize.dispatch import Inputs, plan
-from app.optimize.profiles import BALANCED
+from app.optimize.dispatch import MIN_MW, Inputs, here_and_now
+from app.optimize.profiles import BALANCED, PROFILES, VARIANT_LABELS, VARIANTS, variant
+from app.optimize.robust import choose_option, evaluate, scenarios, solve_all
+from app.optimize.situation import apply_floors, assess, choose_mode, to_json
 from app.optimize.validator import check
 from app.sim.adapters import deliver
 from app.sim.market import dsm_inr
 from app.sim.plant import Setpoints, settle
 from app.sim.world import World
 
+IST = ZoneInfo("Asia/Kolkata")
+
 DT = 0.25
-MIN_MW = 0.05  # smaller setpoints are noise, not actions
+BLOCK_SPAN = timedelta(minutes=15)
+STORM_LEAD_BLOCKS = 24  # a storm within six hours is a material signal
 RTM_SIGN = {"rtm_buy": 1.0, "rtm_sell": -1.0}
 
 
@@ -88,7 +95,8 @@ def bob_inputs(db: Session, ctx, truth: World, run: Run, t0: int, forecasts: dic
         line_limit={code: last_lines.get(ctx.line_ids[code], limit) for code, limit in ctx.line_limits.items()},
         available={**{a.code: p50("re_avail", a.code) for a in of_kind("solar", "wind")},
                    **{a.code: p50("load", a.code) for a in of_kind("consumer")}},
-        bess_available={a.code: previous[ctx.asset_ids[a.code]].available_mw > 0 if previous else True
+        bess_available={a.code: np.full(horizon, float(previous[ctx.asset_ids[a.code]].available_mw > 0
+                                                         if previous else 1.0))
                         for a in of_kind("bess")},
         soc_mwh={a.code: _soc(ctx, run, previous, a.code) for a in of_kind("bess")},
         price=p50("rtm_price"), emission=truth.emission_factor[t0:t0 + horizon],
@@ -110,55 +118,123 @@ def bob_inputs(db: Session, ctx, truth: World, run: Run, t0: int, forecasts: dic
     )
 
 
+def _storm_ahead(ctx, run: Run, t0: int, horizon: int) -> tuple[str, int, int] | None:
+    """A storm BOB knows about (revealed) within the horizon: node and block window."""
+    for e in ctx.events:
+        if e.kind == "storm" and e.revealed:
+            start = int((e.sim_at - run.sim_start_at) / BLOCK_SPAN) - t0
+            end = start + int(np.ceil(e.payload["minutes"] / 15))
+            if end > 0 and start < horizon:
+                return e.payload["node"], max(start, 0), min(end, horizon)
+    return None
+
+
+def _spike_ahead(ctx, run: Run, t0: int) -> str | None:
+    """An announced (revealed) price spike whose window has not passed."""
+    now = (run.sim_start_at + t0 * BLOCK_SPAN).astimezone(IST)
+    for e in ctx.events:
+        p = e.payload
+        if (e.kind == "price_spike" and e.revealed and e.sim_at.astimezone(IST).date() == now.date()
+                and now.hour < p["to_hh"]):
+            return f"×{p['mult']} between {p['from_hh']:02d}:00 and {p['to_hh']:02d}:00"
+    return None
+
+
 def plan_bob(db: Session, ctx, truth: World, run: Run, t0: int, forecasts: dict) -> None:
     started = time.perf_counter()
     inputs = bob_inputs(db, ctx, truth, run, t0, forecasts)
     horizon = len(inputs.price)
-    of_kind = lambda *kinds: [a for a in ctx.assets if a.kind in kinds]  # noqa: E731
-    committed = inputs.committed_dr
-    gate = ctx.market["gate_blocks"]
-    result = plan(inputs)
-    cycle = Cycle(run_id=run.id, block=t0, seq=0, trigger="tick",
-                  status="planned" if result.battery else "failed",
-                  timings={"solve_ms": round((time.perf_counter() - started) * 1000)})
+    storm = _storm_ahead(ctx, run, t0, horizon)
+    # Day-ahead prices are known once the day-ahead market clears.
+    dam = truth.dam[t0:t0 + horizon]
+    signals = assess(inputs, ctx.line_limits, dam, storm is not None and storm[1] < STORM_LEAD_BLOCKS,
+                     _spike_ahead(ctx, run, t0))
+    mode, mode_reason = choose_mode(signals, ctx.default_mode)
+    params, floors = apply_floors(PROFILES[mode], signals)
+    inputs = replace(inputs, profile=params)
+
+    # Live blocks weigh five options under stress; fast-forwarded blocks plan one.
+    live = t0 >= run.live_from_block
+    names = list(VARIANTS) if live else ["profile"]
+    solved = dict(zip(names, solve_all([(replace(inputs, profile=variant(params, n)), None, False) for n in names])))
+    options, seen = {}, set()
+    for name, result in solved.items():
+        if np.isnan(result.objective):
+            continue
+        key = repr(here_and_now(result, inputs))
+        if key not in seen:  # options that commit to the same actions are one option
+            seen.add(key)
+            options[name] = result
+
+    robust, chosen, rationale = None, None, "No feasible plan; nothing was sent."
+    if options and live:
+        material = {sig.code for sig in signals if sig.material}
+        cases = scenarios(inputs, {c: np.array(forecasts[("re_avail", c)].p10[:horizon]) for c in inputs.available
+                                   if ("re_avail", c) in forecasts},
+                          {c: np.array(forecasts[("load", c)].p90[:horizon]) for c in inputs.available
+                           if ("load", c) in forecasts},
+                          storm, "corridor" in material)
+        robust = evaluate(options, inputs, cases)
+        chosen = choose_option(robust, {n: p.kpis["cost_inr"] for n, p in options.items()})
+        rationale = _rationale(chosen, robust)
+    elif options:
+        chosen = next(iter(options))
+        rationale = "Fast-forward block: one option planned for the active mode."
+
+    cycle = Cycle(
+        run_id=run.id, block=t0, seq=0, trigger="tick", status="planned" if chosen else "failed",
+        timings={"solve_ms": round((time.perf_counter() - started) * 1000)}, situation=to_json(signals),
+        mode=mode, mode_by="rule" if mode != ctx.default_mode else "operator", mode_reason=mode_reason,
+        floors=floors, scenarios=list(robust[chosen]) if robust else [], rationale=rationale,
+    )
     db.add(cycle)
     db.flush()
     rounded = lambda arrays: {k: np.round(v, 2).tolist() for k, v in arrays.items()}  # noqa: E731
-    db.add(Plan(
-        cycle_id=cycle.id, variant="balanced", role="selected", kpis=result.kpis,
-        schedule={"start_block": t0, "generation": rounded(result.generation), "battery": rounded(result.battery),
-                  "soc": rounded(result.soc), "demand_response": rounded(result.demand_response),
-                  "shift": rounded(result.shift), "rtm": np.round(result.rtm, 2).tolist()},
-        solver={"status": result.status, "objective": result.objective, "gap": result.gap},
-    ))
-    if not result.battery:
-        return  # no feasible plan: nothing is sent and assets keep their defaults
+    db.add_all(
+        Plan(cycle_id=cycle.id, variant=name, role="selected" if name == chosen else "candidate", kpis=p.kpis,
+             schedule={"start_block": t0, "generation": rounded(p.generation), "battery": rounded(p.battery),
+                       "soc": rounded(p.soc), "demand_response": rounded(p.demand_response),
+                       "shift": rounded(p.shift), "rtm": np.round(p.rtm, 2).tolist(),
+                       "here_and_now": asdict(here_and_now(p, inputs))},
+             solver={"status": p.status, "objective": p.objective, "gap": p.gap},
+             robust=robust[name] if robust else None)
+        for name, p in options.items()
+    )
+    run.mode_code, run.mode_by = mode, cycle.mode_by
+    if chosen:
+        _send_plan(db, ctx, run, cycle.id, t0, here_and_now(options[chosen], inputs), inputs)
 
-    for a in of_kind("bess"):
-        mw = float(result.battery[a.code][0])
-        if abs(mw) >= MIN_MW:
-            kind = "bess_discharge" if mw > 0 else "bess_charge"
-            reason = check(kind, abs(mw), a, soc_mwh=inputs.soc_mwh[a.code], available=inputs.bess_available[a.code])
-            _send(db, run, "bob", cycle.id, t0, kind, ctx.asset_ids[a.code], a.code, abs(mw), reason)
-    for a in of_kind("solar", "wind"):
-        if result.curtailment[a.code][0] >= 0.5:
-            cap = float(result.generation[a.code][0])
-            _send(db, run, "bob", cycle.id, t0, "curtail", ctx.asset_ids[a.code], a.code, cap, check("curtail", cap, a))
-    for a in of_kind("consumer"):
-        notice = a.params["dr_notice_blocks"]
-        if notice < horizon and np.isnan(committed[a.code][notice]) and result.demand_response[a.code][notice] >= MIN_MW:
-            mw = float(result.demand_response[a.code][notice])
-            _send(db, run, "bob", cycle.id, t0 + notice, "dr_call", ctx.asset_ids[a.code], a.code, mw,
-                  check("dr_call", mw, a, lead_blocks=notice))
-        shift = float(result.shift[a.code][0])
-        if abs(shift) >= MIN_MW:
-            _send(db, run, "bob", cycle.id, t0, "load_shift", ctx.asset_ids[a.code], a.code, shift,
-                  check("load_shift", abs(shift), a))
-    if gate < horizon and abs(result.rtm[gate]) >= MIN_MW:
-        mw = float(result.rtm[gate])
-        kind = "rtm_buy" if mw > 0 else "rtm_sell"
-        _send(db, run, "bob", cycle.id, t0 + gate, kind, None, "portfolio", abs(mw),
-              check(kind, abs(mw), None, trade_cap_mw=_trade_cap(ctx)))
+
+def _rationale(chosen: str, robust: dict) -> str:
+    worst = lambda name: max(s["regret_inr"] or 0 for s in robust[name].values())  # noqa: E731
+    holds = sum(s["holds"] for s in robust[chosen].values())
+    others = sorted(worst(n) for n in robust if n != chosen)
+    runner_up = f"; next best ₹{others[0]:,.0f}" if others else ""
+    return (f"Chose “{VARIANT_LABELS[chosen]}”: the smallest worst-case regret, ₹{worst(chosen):,.0f}, across "
+            f"{len(robust[chosen])} stress tests{runner_up}. Keeps all load served in {holds} of "
+            f"{len(robust[chosen])}.")
+
+
+def _send_plan(db: Session, ctx, run: Run, cycle_id: int, t0: int, h, inputs: Inputs) -> None:
+    assets = {a.code: a for a in ctx.assets}
+    for code, mw in h.battery.items():
+        kind = "bess_discharge" if mw > 0 else "bess_charge"
+        reason = check(kind, abs(mw), assets[code], soc_mwh=inputs.soc_mwh[code],
+                       available=bool(inputs.bess_available[code][0]))
+        _send(db, run, "bob", cycle_id, t0, kind, ctx.asset_ids[code], code, abs(mw), reason)
+    for code, cap in h.output_cap.items():
+        _send(db, run, "bob", cycle_id, t0, "curtail", ctx.asset_ids[code], code, cap, check("curtail", cap, assets[code]))
+    for code, mw in h.demand_response.items():
+        notice = assets[code].params["dr_notice_blocks"]
+        _send(db, run, "bob", cycle_id, t0 + notice, "dr_call", ctx.asset_ids[code], code, mw,
+              check("dr_call", mw, assets[code], lead_blocks=notice))
+    for code, mw in h.shift.items():
+        _send(db, run, "bob", cycle_id, t0, "load_shift", ctx.asset_ids[code], code, mw,
+              check("load_shift", abs(mw), assets[code]))
+    if h.rtm:
+        kind = "rtm_buy" if h.rtm > 0 else "rtm_sell"
+        _send(db, run, "bob", cycle_id, t0 + ctx.market["gate_blocks"], kind, None, "portfolio", abs(h.rtm),
+              check(kind, abs(h.rtm), None, trade_cap_mw=_trade_cap(ctx)))
 
 
 def _trade_cap(ctx) -> float:

@@ -29,7 +29,7 @@ class Inputs:
     lines: list[LineSpec]
     line_limit: dict[str, float]  # current limits, held over the horizon
     available: dict[str, np.ndarray]  # renewable P50 (MW) and consumer load P50 per block
-    bess_available: dict[str, bool]
+    bess_available: dict[str, np.ndarray]  # 1 where the battery can operate, per block
     soc_mwh: dict[str, float]
     price: np.ndarray  # RTM P50 ₹/MWh
     emission: np.ndarray  # tCO2/MWh of grid imports
@@ -63,6 +63,39 @@ class Plan:
     kpis: dict[str, float] = field(default_factory=dict)
 
 
+@dataclass
+class HereAndNow:
+    """Decisions that become binding now. Fixing them in another scenario's solve shows how
+    well a plan's commitments hold up if that scenario happens."""
+
+    battery: dict[str, float] = field(default_factory=dict)  # MW at index 0, + discharge
+    output_cap: dict[str, float] = field(default_factory=dict)  # MW limit at index 0
+    demand_response: dict[str, float] = field(default_factory=dict)  # MW at the consumer's notice index
+    shift: dict[str, float] = field(default_factory=dict)  # MW at index 0, + out
+    rtm: float = 0.0  # MW at the gate index, + buy
+
+
+MIN_MW = 0.05  # smaller decisions are noise, not actions
+CURTAIL_MIN_MW = 0.5
+
+
+def here_and_now(p: Plan, inp: Inputs) -> HereAndNow:
+    gate = inp.market["gate_blocks"]
+    h = HereAndNow()
+    h.battery = {c: float(v[0]) for c, v in p.battery.items() if abs(v[0]) >= MIN_MW}
+    h.output_cap = {c: float(p.generation[c][0]) for c, v in p.curtailment.items() if v[0] >= CURTAIL_MIN_MW}
+    for a in (a for a in inp.assets if a.kind == "consumer"):
+        notice = a.params["dr_notice_blocks"]
+        free = notice < len(p.rtm) and np.isnan(inp.committed_dr[a.code][notice])
+        if free and p.demand_response[a.code][notice] >= MIN_MW:
+            h.demand_response[a.code] = float(p.demand_response[a.code][notice])
+        if abs(p.shift[a.code][0]) >= MIN_MW:
+            h.shift[a.code] = float(p.shift[a.code][0])
+    if gate < len(p.rtm) and abs(p.rtm[gate]) >= MIN_MW:
+        h.rtm = float(p.rtm[gate])
+    return h
+
+
 def _daily(m: Model, x: np.ndarray, per_day_mwh: float, used_today_mwh: float, left_today: int) -> None:
     """Energy through `x` stays within today's remaining allowance, and tomorrow's within a full day's."""
     today, tomorrow = x[:left_today], x[left_today:]
@@ -72,7 +105,9 @@ def _daily(m: Model, x: np.ndarray, per_day_mwh: float, used_today_mwh: float, l
         m.add([(tomorrow[None, :], DT)], ub=per_day_mwh)
 
 
-def plan(inp: Inputs) -> Plan:
+def plan(inp: Inputs, fixed: HereAndNow | None = None, single_stage: bool = False) -> Plan:
+    """Two-stage plan; or, for stress tests, one solve of reliability plus cost, optionally
+    with another plan's here-and-now decisions fixed."""
     H = len(inp.price)
     gate = inp.market["gate_blocks"]
     prof = inp.profile
@@ -86,7 +121,7 @@ def plan(inp: Inputs) -> Plan:
 
     ch, dis, mode, soc, res = {}, {}, {}, {}, {}
     for a in batteries:
-        p = a.capacity if inp.bess_available[a.code] else 0.0
+        p = a.capacity * inp.bess_available[a.code]
         e = a.params["energy_mwh"]
         ch[a.code], dis[a.code] = m.var(H, 0, p), m.var(H, 0, p)
         mode[a.code] = m.var(H, binary=True, ub=1)
@@ -98,9 +133,9 @@ def plan(inp: Inputs) -> Plan:
         p, load = a.params, inp.available[a.code]
         notice = np.arange(H) >= p["dr_notice_blocks"]
         committed = inp.committed_dr.get(a.code, np.full(H, np.nan))
-        fixed = ~np.isnan(committed)
-        dr_ub = np.where(fixed, np.nan_to_num(committed), np.where(notice, p["dr_max_mw"], 0.0))
-        dr[a.code] = m.var(H, np.where(fixed, np.nan_to_num(committed), 0.0), dr_ub)
+        called = ~np.isnan(committed)
+        dr_ub = np.where(called, np.nan_to_num(committed), np.where(notice, p["dr_max_mw"], 0.0))
+        dr[a.code] = m.var(H, np.where(called, np.nan_to_num(committed), 0.0), dr_ub)
         window = p["shift_window"]
         in_window = (inp.hour >= window[0]) & (inp.hour < window[1]) if window else np.zeros(H, bool)
         out[a.code] = m.var(H, 0, np.where(in_window, p["shift_max_mw"], 0.0))
@@ -114,7 +149,8 @@ def plan(inp: Inputs) -> Plan:
     flow = {l.code: m.var(H, -inp.line_limit[l.code], inp.line_limit[l.code]) for l in inp.lines}
     tradable = np.arange(H) >= gate
     rtm_cap = sum(a.params["import_max_mw"] + a.params["export_max_mw"] for a in ics)
-    buy, sell = m.var(H, 0, np.where(tradable, rtm_cap, 0.0)), m.var(H, 0, np.where(tradable, rtm_cap, 0.0))
+    sell_cap = prof["rtm_sell_cap_share"] * sum(a.params["export_max_mw"] for a in ics)
+    buy, sell = m.var(H, 0, np.where(tradable, rtm_cap, 0.0)), m.var(H, 0, np.where(tradable, sell_cap, 0.0))
     tol = band(inp.schedule, inp.market)
     over_in, over_out = m.var(H, 0, tol), m.var(H)
     under_in, under_out = m.var(H, 0, tol), m.var(H)
@@ -140,7 +176,7 @@ def plan(inp: Inputs) -> Plan:
 
     reserve_terms = []
     for a in batteries:
-        e, p = a.params["energy_mwh"], (a.capacity if inp.bess_available[a.code] else 0.0)
+        e, p = a.params["energy_mwh"], a.capacity * inp.bess_available[a.code]
         eta_c, eta_d = a.params["eta_c"], a.params["eta_d"]
         # soc_t = soc_(t-1) + dt*eta_c*ch_t - dt/eta_d*dis_t, starting from the measured state.
         flows = lambda sl: [(ch[a.code][sl], -DT * eta_c), (dis[a.code][sl], DT / eta_d)]  # noqa: E731
@@ -175,16 +211,34 @@ def plan(inp: Inputs) -> Plan:
           + [(buy, -1.0), (sell, 1.0), (over_in, -1.0), (over_out, -1.0), (under_in, 1.0), (under_out, 1.0)],
           inp.schedule, inp.schedule)
 
+    if fixed:
+        for code, mw in fixed.battery.items():
+            m.fix(dis[code][0], max(mw, 0.0))
+            m.fix(ch[code][0], max(-mw, 0.0))
+        for code, cap in fixed.output_cap.items():
+            m.fix(g[code][0], 0.0, min(cap, float(inp.available[code][0])))
+        for a in consumers:
+            notice = a.params["dr_notice_blocks"]
+            if notice < H and np.isnan(inp.committed_dr[a.code][notice]):
+                m.fix(dr[a.code][notice], min(fixed.demand_response.get(a.code, 0.0), a.params["dr_max_mw"]))
+            mw = fixed.shift.get(a.code, 0.0)
+            m.fix(out[a.code][0], max(mw, 0.0))
+            m.fix(back[a.code][0], max(-mw, 0.0))
+        if gate < H:
+            m.fix(buy[gate], max(fixed.rtm, 0.0))
+            m.fix(sell[gate], max(-fixed.rtm, 0.0))
+
     reliability = np.zeros(m.n)
     for a in consumers:
         reliability[uns[a.code]] = VOLL * DT
         reliability[uns_crit[a.code]] = (VOLL_CRITICAL - VOLL) * DT
     reliability[shortfall] = VALUE_OF_RESERVE * DT
-    stage_a = m.solve(reliability, TIME_LIMIT_S, MIP_GAP)
-    if np.isnan(stage_a.objective):
-        return Plan(status=stage_a.status, objective=float("nan"), gap=0.0)
-    used = np.flatnonzero(reliability)
-    m.add([(used[None, :], reliability[used][None, :])], ub=stage_a.objective + EPSILON_MWH * VOLL * DT)
+    if not single_stage:
+        stage_a = m.solve(reliability, TIME_LIMIT_S, MIP_GAP)
+        if np.isnan(stage_a.objective):
+            return Plan(status=stage_a.status, objective=float("nan"), gap=0.0)
+        used = np.flatnonzero(reliability)
+        m.add([(used[None, :], reliability[used][None, :])], ub=stage_a.objective + EPSILON_MWH * VOLL * DT)
 
     cost = np.zeros(m.n)
     price = inp.price
@@ -205,8 +259,9 @@ def plan(inp: Inputs) -> Plan:
         cost[shift_gap[a.code]] = SHIFT_IMBALANCE  # only when the day cannot be balanced
     for a in ics:
         cost[imp[a.code]] = prof["lambda_carbon"] * inp.emission * DT
-    stage_b = m.solve(cost, TIME_LIMIT_S, MIP_GAP)
-    s = stage_b if not np.isnan(stage_b.objective) else stage_a
+    s = m.solve(cost + reliability if single_stage else cost, TIME_LIMIT_S, MIP_GAP)
+    if np.isnan(s.objective):
+        return Plan(status=s.status, objective=float("nan"), gap=0.0)
 
     result = Plan(status=s.status, objective=s.objective, gap=s.gap)
     for a in gens:
@@ -223,12 +278,22 @@ def plan(inp: Inputs) -> Plan:
         result.exchange[a.code] = s[imp[a.code]] - s[exp[a.code]]
     result.rtm = s[buy] - s[sell]
     result.deviation = s[over_in] + s[over_out] - s[under_in] - s[under_out]
+    economic = (
+        price @ (s[buy] - s[sell]) + overdraw_rate(price, inp.frequency, inp.market) @ s[over_in]
+        + inp.market["beyond_band_mult"] * price @ s[over_out] - inp.market["underdraw_credit"] * price @ s[under_in]
+        + sum(a.params["dr_incentive_inr_mwh"] * s[dr[a.code]].sum()
+              + a.params["shift_cost_inr_mwh"] * s[out[a.code]].sum() for a in consumers)
+        + sum(a.params["deg_cost_inr_mwh"] * s[dis[a.code]].sum() for a in batteries)
+        + sum(a.params["curtail_comp_inr_mwh"] * result.curtailment[a.code].sum() for a in gens)
+    ) * DT
     result.kpis = {
+        "cost_inr": float(economic),
         "market_inr": float(np.sum(price * result.rtm) * DT),
         "curtailed_mwh": float(sum(c.sum() for c in result.curtailment.values()) * DT),
         "unserved_mwh": float(sum(u.sum() for u in result.unserved.values()) * DT),
         "discharged_mwh": float(sum(np.maximum(b, 0).sum() for b in result.battery.values()) * DT),
         "deviation_mwh": float(np.abs(result.deviation).sum() * DT),
         "carbon_t": float(sum(np.maximum(x, 0) @ inp.emission for x in result.exchange.values()) * DT),
+        "reserve_shortfall_mwh": float(s[shortfall].sum() * DT),
     }
     return result

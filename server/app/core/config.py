@@ -10,6 +10,7 @@ class Settings(BaseSettings):
     database_url: str = "postgresql+psycopg://bob:bob@localhost:5432/bob"
     access_token_expire_minutes: int = Field(default=30, gt=0)
     cors_origins: str = "http://localhost:5173"
+    solver_processes: int = Field(default=4, ge=0)  # 0 or 1 solves in-process
 
     model_config = SettingsConfigDict(
         env_file=".env", env_file_encoding="utf-8", env_ignore_empty=True, extra="ignore"
