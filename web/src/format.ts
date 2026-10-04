@@ -62,7 +62,12 @@ const ACTION_LABELS: Record<string, string> = {
   rtm_sell: 'Market sell',
   curtail: 'Output limit',
   dr_call: 'Demand response call',
+  maintenance_schedule: 'Move a maintenance job',
+  inspection_dispatch: 'Send an inspection crew',
 }
+
+/** Work orders to the maintenance system: no MW, no fallback plan. */
+export const WORK_ORDERS = ['maintenance_schedule', 'inspection_dispatch']
 
 export function actionLabel(kind: string, mw: number): string {
   if (kind === 'load_shift') return mw < 0 ? 'Load moved in' : 'Load moved out'

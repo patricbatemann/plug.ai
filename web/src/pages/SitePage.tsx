@@ -25,6 +25,7 @@ import { assetSummary, kindLabel, mw } from '../format'
 import { LiveOverview } from '../runs/LiveOverview'
 import { ModeTag } from '../runs/ModeTag'
 import { SiteActions } from '../runs/SiteActions'
+import { SiteMaintenance } from '../runs/SiteMaintenance'
 import { useCurrentRun } from '../runs/useCurrentRun'
 
 export function SitePage() {
@@ -69,6 +70,7 @@ export function SitePage() {
           <Tab>Site details</Tab>
           <Tab disabled={!run}>Live overview</Tab>
           <Tab disabled={!run}>AI Actions</Tab>
+          <Tab disabled={!run}>Maintenance</Tab>
         </TabList>
         <TabPanels>
           <TabPanel>
@@ -106,6 +108,7 @@ export function SitePage() {
             )}
           </TabPanel>
           <TabPanel>{run && <SiteActions run={run} site={data.code} />}</TabPanel>
+          <TabPanel>{run && <SiteMaintenance run={run} site={data.code} />}</TabPanel>
         </TabPanels>
       </Tabs>
     </>

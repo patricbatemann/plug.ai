@@ -1,0 +1,5 @@
+SIMULATED SAMPLE - not a real instruction.
+Southern Load Despatch Desk (fictional)
+
+Curtailment instruction No. 4480, 12 November 2026.
+Nellore solar array (SOL-NEL) output shall not exceed 30 MW between 12:30 and 14:30 IST today owing to a breaker fault at the pooling station.

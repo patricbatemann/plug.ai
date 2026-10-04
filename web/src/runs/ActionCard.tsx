@@ -1,7 +1,7 @@
 import { Link } from 'react-router-dom'
 import { Button, InlineNotification, Tag, Tile } from '@carbon/react'
 import type { ActionOut, RunState } from '../api/client'
-import { actionLabel, mw, simTime } from '../format'
+import { WORK_ORDERS, actionLabel, mw, simTime } from '../format'
 import { useAskBob } from './AskBob'
 import { useDecide } from './useActions'
 
@@ -9,6 +9,7 @@ import { useDecide } from './useActions'
 export function ActionCard({ action, run }: { action: ActionOut; run: RunState }) {
   const decide = useDecide(run)
   const ask = useAskBob()
+  const workOrder = WORK_ORDERS.includes(action.kind)
   const minutesLeft = action.deadline_at
     ? Math.max(0, Math.round((Date.parse(action.deadline_at) - Date.parse(run.sim_time)) / 60000))
     : null
@@ -26,13 +27,14 @@ export function ActionCard({ action, run }: { action: ActionOut; run: RunState }
         )}
       </div>
       <h3 className="card-title">
-        {actionLabel(action.kind, action.mw)} · {mw(Math.abs(action.mw))}
+        {actionLabel(action.kind, action.mw)}
+        {!workOrder && ` · ${mw(Math.abs(action.mw))}`}
         {action.asset && <span className="stat-label"> · {action.asset}</span>}
       </h3>
       <div className="action-card__why">
-        <div className="stat-label">Why it needs you</div>
+        <div className="stat-label">{workOrder ? 'Why BOB proposes this' : 'Why it needs you'}</div>
         <p>{action.reason}</p>
-        <p className="stat-label">Until you decide, BOB runs a fallback plan without this action.</p>
+        {!workOrder && <p className="stat-label">Until you decide, BOB runs a fallback plan without this action.</p>}
       </div>
       {decide.error && <InlineNotification kind="error" title={decide.error.message} hideCloseButton lowContrast />}
       <div className="action-card__foot">

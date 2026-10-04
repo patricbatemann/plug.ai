@@ -154,7 +154,11 @@ class World:
         p = a.params
         speed = self.wind_speed[a.node] * (1 + _ar1_cached(self.seed, f"wind:{a.code}", self.n, 0.9, 0.03))
         ramp = np.clip((speed - p["cut_in"]) / (p["rated"] - p["cut_in"]), 0, 1) ** 3
-        return a.capacity * np.where((speed < p["cut_in"]) | (speed >= p["cut_out"]), 0.0, ramp)
+        out = a.capacity * np.where((speed < p["cut_in"]) | (speed >= p["cut_out"]), 0.0, ramp)
+        for e in self._events("storm", node=a.node):  # damage a turbine keeps until it is repaired
+            if a.code in e.payload.get("after_pct", {}):
+                out = np.where(self._block_start >= e.end_min, out * e.payload["after_pct"][a.code] / 100, out)
+        return out
 
     def _load(self, a: AssetSpec, sigma: float) -> np.ndarray:
         shape = LOAD_PROFILES[a.params["segment"]](self.hour)

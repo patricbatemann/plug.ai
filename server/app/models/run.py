@@ -1,7 +1,10 @@
 from datetime import datetime
 from typing import Any
 
-from sqlalchemy import ARRAY, CheckConstraint, DateTime, Float, ForeignKey, Index, Integer, String, UniqueConstraint, func
+from sqlalchemy import (
+    ARRAY, Boolean, CheckConstraint, DateTime, Float, ForeignKey, Index, Integer, LargeBinary, String, Text,
+    UniqueConstraint, func,
+)
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import Mapped, mapped_column
 
@@ -186,6 +189,7 @@ class Action(Base):
     deadline_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     decided_by: Mapped[str | None] = mapped_column(String(320))
     decided_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    params: Mapped[dict[str, Any] | None] = mapped_column(JSONB)  # e.g. a maintenance move's task and start
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 
 
@@ -221,3 +225,60 @@ class ChatMessage(Base):
     role: Mapped[str] = mapped_column(String(16))
     content: Mapped[dict[str, Any]] = mapped_column(JSONB)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+
+class Document(Base):
+    """An uploaded document. Files are small; keeping them here lets every replica read them."""
+
+    __tablename__ = "document"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    run_id: Mapped[int] = mapped_column(ForeignKey("run.id", ondelete="CASCADE"), index=True)
+    filename: Mapped[str] = mapped_column(String(200))
+    mime: Mapped[str] = mapped_column(String(64))
+    content: Mapped[bytes] = mapped_column(LargeBinary)
+    sha256: Mapped[str] = mapped_column(String(64))
+    text: Mapped[str | None] = mapped_column(Text)  # read locally; None for images
+    extraction: Mapped[dict[str, Any] | None] = mapped_column(JSONB)
+    uploaded_by: Mapped[int | None] = mapped_column(ForeignKey("users.id", ondelete="SET NULL"))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+
+class Constraint(Base):
+    """What BOB knows about a limit or hazard, as opposed to the world event that makes it real."""
+
+    __tablename__ = "run_constraint"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    run_id: Mapped[int] = mapped_column(ForeignKey("run.id", ondelete="CASCADE"), index=True)
+    document_id: Mapped[int | None] = mapped_column(ForeignKey("document.id", ondelete="CASCADE"))
+    kind: Mapped[str] = mapped_column(String(24))
+    targets: Mapped[list[str]] = mapped_column(JSONB)
+    start_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    end_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    value: Mapped[float | None] = mapped_column(Float)
+    quote: Mapped[str] = mapped_column(String(600))
+    confidence: Mapped[float] = mapped_column(Float)
+    verified: Mapped[bool] = mapped_column(Boolean)  # the quote was found in the document's text
+    tightens: Mapped[bool] = mapped_column(Boolean)
+    status: Mapped[str] = mapped_column(String(16))  # pending | active | rejected | withdrawn
+    note: Mapped[str] = mapped_column(String(300), server_default="")
+    decided_by: Mapped[str | None] = mapped_column(String(320))
+    decided_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+
+
+class MaintenanceTask(Base):
+    """A planned job. Today's practice keeps the calendared start; BOB may move its own."""
+
+    __tablename__ = "maintenance_task"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    run_id: Mapped[int] = mapped_column(ForeignKey("run.id", ondelete="CASCADE"), index=True)
+    asset_id: Mapped[int] = mapped_column(ForeignKey("asset.id", ondelete="CASCADE"))
+    kind: Mapped[str] = mapped_column(String(24))
+    duration_blocks: Mapped[int] = mapped_column(Integer)
+    earliest_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    deadline_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))  # must finish by
+    calendar_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    scheduled_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    safety_critical: Mapped[bool] = mapped_column(Boolean, default=False)

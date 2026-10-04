@@ -2,7 +2,8 @@
 
 import time
 from dataclasses import asdict
-from datetime import timedelta
+from datetime import datetime, timedelta
+from typing import NamedTuple
 from zoneinfo import ZoneInfo
 
 import numpy as np
@@ -10,13 +11,13 @@ from sqlalchemy import func, select, update
 from sqlalchemy.orm import Session
 
 from app.agent import cycle as agent_cycle, llm
-from app.models.run import Action, AssetBlock, Cycle, Forecast, LineBlock, Plan, Run, SystemBlock
+from app.models.run import Action, AssetBlock, Constraint, Cycle, Forecast, LineBlock, Plan, Run, SystemBlock
 from app.optimize import baseline
 from app.optimize.dispatch import MIN_MW, Inputs, here_and_now, plan
 from app.optimize.profiles import BALANCED
 from app.optimize.situation import assess, choose_mode, to_json
 from app.optimize.validator import check
-from app.services import configs, policy
+from app.services import configs, maintenance, policy
 from app.services.deliberation import Deliberation
 from app.sim.adapters import deliver
 from app.sim.market import dsm_inr
@@ -85,11 +86,44 @@ def _send(db: Session, run: Run, policy: str, cycle_id: int | None, block: int, 
     db.add(action)
 
 
-def _known_window(run: Run, event, t0: int, horizon: int) -> tuple[int, int]:
-    """Block indices (relative to t0) an event covers, clipped to the horizon."""
-    start = int((event.sim_at - run.sim_start_at) / BLOCK_SPAN) - t0
-    end = start + int(np.ceil(event.payload.get("minutes", 0) / 15))
-    return max(start, 0), min(end, horizon)
+class Known(NamedTuple):
+    """Something BOB knows limits the plan: from telemetry, the grid operator, a document or its own schedule."""
+
+    kind: str  # storm | line_derate | asset_outage | curtailment_order
+    targets: list[str]
+    value: float | None
+    start_at: datetime
+    end_at: datetime
+
+
+def knowledge(db: Session, ctx, run: Run) -> list[Known]:
+    """Battery trips and derates are known the moment they happen; storms once revealed (by a
+    forecast) or read from a document; BOB's own maintenance as scheduled."""
+    out = []
+    for e in ctx.events:
+        end = e.sim_at + timedelta(minutes=e.payload.get("minutes", 0))
+        if e.kind == "bess_trip" and e.fired_at:
+            out.append(Known("asset_outage", [e.payload["asset"]], None, e.sim_at, end))
+        elif e.kind == "line_derate" and e.fired_at:
+            out.append(Known("line_derate", [e.payload["line"]], e.payload["limit_mw"], e.sim_at, end))
+        elif e.kind == "storm" and e.revealed:
+            out.append(Known("storm", [e.payload["node"]], None, e.sim_at, end))
+    out += [Known(c.kind, c.targets, c.value, c.start_at, c.end_at) for c in db.scalars(
+        select(Constraint).where(Constraint.run_id == run.id, Constraint.status == "active"))]
+    code_of = {i: c for c, i in ctx.asset_ids.items()}
+    out += [Known("asset_outage", [code_of[t.asset_id]], None, t.scheduled_at,
+                  t.scheduled_at + t.duration_blocks * BLOCK_SPAN) for t in maintenance.tasks(db, run)]
+    return out
+
+
+def _blocks(run: Run, k: Known, t0: int) -> tuple[int, int]:
+    """The blocks, relative to t0, that something known covers."""
+    return (int((k.start_at - run.sim_start_at) / BLOCK_SPAN) - t0,
+            int(np.ceil((k.end_at - run.sim_start_at) / BLOCK_SPAN)) - t0)
+
+
+def storms(run: Run, known: list[Known], t0: int) -> list[tuple[str, int, int]]:
+    return [(node, *_blocks(run, k, t0)) for k in known if k.kind == "storm" for node in k.targets]
 
 
 def bob_inputs(db: Session, ctx, truth: World, run: Run, t0: int, forecasts: dict) -> Inputs:
@@ -101,20 +135,30 @@ def bob_inputs(db: Session, ctx, truth: World, run: Run, t0: int, forecasts: dic
     for action in _actions(db, run, "bob", (t0, t0 + horizon), ("dr_call",)):
         code = next(c for c, i in ctx.asset_ids.items() if i == action.asset_id)
         committed[code][action.block - t0] = action.mw
-    # What BOB knows now: battery trips are telemetry and derates are grid-operator instructions,
-    # both known the moment they happen, with their expected duration.
     bess_available = {a.code: np.ones(horizon) for a in of_kind("bess")}
+    available = {**{a.code: p50("re_avail", a.code) for a in of_kind("solar", "wind")},
+                 **{a.code: p50("load", a.code) for a in of_kind("consumer")}}
     line_limit = dict(ctx.line_limits)
-    for e in (e for e in ctx.events if e.fired_at is not None):
-        start, end = _known_window(run, e, t0, horizon)
-        if e.kind == "bess_trip" and start < end:
-            bess_available[e.payload["asset"]][start:end] = 0.0
-        elif e.kind == "line_derate" and start == 0 < end:
-            line_limit[e.payload["line"]] = e.payload["limit_mw"]
+    kind_of = {a.code: a.kind for a in ctx.assets}
+    for k in knowledge(db, ctx, run):
+        begin, end = _blocks(run, k, t0)
+        now = slice(max(begin, 0), min(end, horizon))
+        if now.start >= now.stop:
+            continue
+        if k.kind == "asset_outage":
+            for code in k.targets:
+                (bess_available if kind_of[code] == "bess" else available)[code][now] = 0.0
+        elif k.kind == "curtailment_order":
+            for code in k.targets:
+                available[code][now] = np.minimum(available[code][now], k.value)
+        elif k.kind == "storm":  # wind turbines cut out; solar keeps a fifth of its output
+            for a in (a for a in ctx.assets if a.node in k.targets and a.kind in ("solar", "wind")):
+                available[a.code][now] *= 0.0 if a.kind == "wind" else 0.2
+        elif k.kind == "line_derate" and begin <= 0:  # one limit per line: the one in force now
+            for code in k.targets:
+                line_limit[code] = k.value
     return Inputs(
-        assets=ctx.assets, lines=ctx.lines, line_limit=line_limit,
-        available={**{a.code: p50("re_avail", a.code) for a in of_kind("solar", "wind")},
-                   **{a.code: p50("load", a.code) for a in of_kind("consumer")}},
+        assets=ctx.assets, lines=ctx.lines, line_limit=line_limit, available=available,
         bess_available=bess_available,
         soc_mwh={a.code: _soc(ctx, run, previous, a.code) for a in of_kind("bess")},
         price=p50("rtm_price"), emission=truth.emission_factor[t0:t0 + horizon],
@@ -136,17 +180,6 @@ def bob_inputs(db: Session, ctx, truth: World, run: Run, t0: int, forecasts: dic
     )
 
 
-def _storm_ahead(ctx, run: Run, t0: int, horizon: int) -> tuple[str, int, int] | None:
-    """A storm BOB knows about (revealed) within the horizon: node and block window."""
-    for e in ctx.events:
-        if e.kind == "storm" and e.revealed:
-            start = int((e.sim_at - run.sim_start_at) / BLOCK_SPAN) - t0
-            end = start + int(np.ceil(e.payload["minutes"] / 15))
-            if end > 0 and start < horizon:
-                return e.payload["node"], max(start, 0), min(end, horizon)
-    return None
-
-
 def _spike_ahead(ctx, run: Run, t0: int) -> str | None:
     """An announced (revealed) price spike whose window has not passed."""
     now = (run.sim_start_at + t0 * BLOCK_SPAN).astimezone(IST)
@@ -163,7 +196,9 @@ def plan_bob(db: Session, ctx, truth: World, run: Run, t0: int, forecasts: dict,
     started = time.perf_counter()
     inputs = bob_inputs(db, ctx, truth, run, t0, forecasts)
     horizon = len(inputs.price)
-    storm = _storm_ahead(ctx, run, t0, horizon)
+    # The nearest storm BOB knows of that has not passed.
+    storm = next(((node, max(begin, 0), min(end, horizon))
+                  for node, begin, end in storms(run, knowledge(db, ctx, run), t0) if end > 0 and begin < horizon), None)
     # Day-ahead prices are known once the day-ahead market clears.
     signals = assess(inputs, ctx.line_limits, truth.dam[t0:t0 + horizon],
                      storm is not None and storm[1] < STORM_LEAD_BLOCKS, _spike_ahead(ctx, run, t0))
@@ -310,9 +345,17 @@ def plan_block(db: Session, ctx, truth: World, run: Run, t0: int) -> None:
         made_for = latest_forecasts(db, ctx, run, t0 - 1)
         hits = configs.watch_hits(db, run, t0 - 1, {code: f.p50[0] for (series, code), f in made_for.items()
                                                     if series == "re_avail"})
-    plan_bob(db, ctx, truth, run, t0, forecasts, run.sim_start_at + t0 * BLOCK_SPAN,
-             trigger="watch" if hits else "tick", detail="; ".join(hits))
+    now = run.sim_start_at + t0 * BLOCK_SPAN
+    plan_bob(db, ctx, truth, run, t0, forecasts, now, trigger="watch" if hits else "tick", detail="; ".join(hits))
     plan_baseline(db, ctx, truth, run, t0, forecasts)
+    if t0 < run.live_from_block:
+        return  # proposals need someone to answer them: none before the demo opens
+    known = storms(run, knowledge(db, ctx, run), t0)
+    if t0 % 4 == 0:  # hourly
+        maintenance.review(db, ctx, run, t0, forecasts, known, now)
+    expected = {b: {code: f.p50[0] for (series, code), f in latest_forecasts(db, ctx, run, b).items()
+                    if series == "re_avail"} for b in (t0 - 1, t0 - 2) if b >= 1}
+    maintenance.inspect(db, ctx, run, t0, known, expected, now)
 
 
 def settle_block(db: Session, ctx, truth: World, run: Run, b: int, policy: str) -> None:
@@ -320,6 +363,8 @@ def settle_block(db: Session, ctx, truth: World, run: Run, b: int, policy: str) 
     code_of = {i: c for c, i in ctx.asset_ids.items()}
     assets = {a.code: a for a in ctx.assets}
     available = {code: float(series[b]) for code, series in truth.available.items()}
+    for asset_id in maintenance.down(db, run, policy, b):
+        available[code_of[asset_id]] = 0.0
     actions = list(db.scalars(select(Action).where(
         Action.run_id == run.id, Action.policy == policy, Action.block == b, Action.status == "acked")))
     setpoints = Setpoints()

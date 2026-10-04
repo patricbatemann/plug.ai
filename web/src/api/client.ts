@@ -323,6 +323,8 @@ export type ChatCard =
   | { type: 'tests'; config_id: number; site: string; asset: string; asset_name: string; kind: string
       tests: ConfigOut['tests'] }
   | { type: 'what_if'; changes: Record<string, unknown>; current: WhatIfPlan; what_if: WhatIfPlan }
+  | { type: 'constraint'; id: number; kind: string; label: string; quote: string; note: string; verified: boolean
+      confidence: number; filename: string | null; status: 'pending' | 'active' | 'rejected' | 'withdrawn' }
 
 export interface WhatIfPlan {
   feasible: boolean
@@ -338,6 +340,31 @@ export interface ChatItem {
   role: 'user' | 'assistant'
   text: string
   cards: ChatCard[]
+}
+
+export interface MaintenanceTask {
+  id: number
+  asset: string
+  kind: string
+  hours: number
+  earliest_at: string
+  deadline_at: string
+  calendar_at: string
+  scheduled_at: string
+  safety_critical: boolean
+  status: 'planned' | 'in progress' | 'done'
+}
+
+export const documentApi = {
+  samples: () => request<Array<{ name: string; title: string }>>('/api/document-samples'),
+  upload: (runId: number, doc: { sample: string } | { filename: string; data: string }) =>
+    post<ChatItem[]>(`/api/runs/${runId}/documents`, doc),
+  decide: (runId: number, id: number, decision: 'apply' | 'reject' | 'withdraw') =>
+    post<ChatItem[]>(`/api/runs/${runId}/constraints/${id}/${decision}`),
+  maintenance: (runId: number, site: string) =>
+    request<{ tasks: MaintenanceTask[]; proposals: ActionOut[] }>(
+      `/api/runs/${runId}/sites/${encodeURIComponent(site)}/maintenance`,
+    ),
 }
 
 export interface ConfigValues {

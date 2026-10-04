@@ -325,3 +325,9 @@ body {
     text-align: left;
   }
 }
+
+.chat-card__quote {
+  padding-left: $spacing-04;
+  border-left: 3px solid theme.$border-strong-01;
+  font-style: italic;
+}

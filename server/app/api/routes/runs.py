@@ -180,8 +180,9 @@ def fired_events(run: Run = Depends(_run), db: Session = Depends(get_db), after:
     rows = db.scalars(select(WorldEvent).where(
         WorldEvent.run_id == run.id, WorldEvent.fired_at.isnot(None), WorldEvent.id > after,
     ).order_by(WorldEvent.id))
+    labels = {**runs.VISIBLE, **runs.NOTICES}
     return [EventOut(id=e.id, kind=e.kind, sim_at=e.sim_at, source=e.source,
-                     label=runs.VISIBLE.get(e.kind, lambda p: e.kind.replace("_", " ").capitalize())(e.payload))
+                     label=labels.get(e.kind, lambda p: e.kind.replace("_", " ").capitalize())(e.payload))
             for e in rows]
 
 
@@ -204,7 +205,7 @@ def decision(cycle_id: int, db: Session = Depends(get_db)) -> DecisionDetail:
 @router.get("/{run_id}/chat", response_model=list[ChatItem])
 def chat_history(run: Run = Depends(_run), db: Session = Depends(get_db),
                  user: User = Depends(get_current_user)) -> list[dict]:
-    return chat.display(chat.history(db, run, user.id))
+    return chat.display(db, run, chat.history(db, run, user.id))
 
 
 @router.post("/{run_id}/chat")

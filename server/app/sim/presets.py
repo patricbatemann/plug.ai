@@ -16,6 +16,8 @@ BASE: dict[str, Any] = {
     # Events reach forecasts only when revealed: `"reveal": True` on the event, or a later
     # forecast_update (which reveals fired events, plus those within its `lookahead_h`).
     "events": [],
+    # Planned jobs: asset, kind, duration, the window it must fit and the calendared start (HH:MM).
+    "maintenance": [],
 }
 
 
@@ -56,12 +58,16 @@ PRESETS: dict[str, dict[str, Any]] = {
     ),
     "storm_day": preset(
         "Storm day",
-        "A storm crosses the north wind sites in the afternoon.",
+        "A bulletin warns of an afternoon storm over the north wind sites, where maintenance is calendared.",
         weather={"cloud_mean": 0.35, "wind_mean_ms": 9.0},
         events=[
-            # The weather service announces the storm three hours ahead.
-            {"at": "11:30", "kind": "forecast_update", "payload": {"lookahead_h": 6}},
-            {"at": "14:30", "kind": "storm", "payload": {"node": "NORTH", "minutes": 180}},
+            # BOB learns of the storm only from the bulletin, once an operator uploads it.
+            {"at": "11:30", "kind": "document_publish",
+             "payload": {"document": "storm_bulletin.pdf", "title": "Storm bulletin"}},
+            {"at": "14:30", "kind": "storm", "payload": {"node": "NORTH", "minutes": 180,
+                                                         "after_pct": {"WND-GTY": 60}}},
         ],
+        maintenance=[{"asset": "WND-TIR", "kind": "preventive", "duration_blocks": 16, "earliest": "10:00",
+                      "deadline": "23:45", "at": "14:00", "safety_critical": False}],
     ),
 }

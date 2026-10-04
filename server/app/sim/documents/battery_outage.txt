@@ -1,0 +1,6 @@
+SIMULATED SAMPLE - not a real work order.
+Chittoor Hybrid Site maintenance desk (fictional)
+
+Work order CHT-WO-221, 12 November 2026
+
+Battery 2 (BESS-02) will be out of service from 12:00 to 16:00 IST on 12 November 2026 for an inverter firmware update. It cannot charge or discharge in this period.

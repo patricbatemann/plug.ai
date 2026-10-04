@@ -11,10 +11,10 @@ from openai.types.chat import ChatCompletionChunk
 from sqlalchemy import func, select, update
 from sqlalchemy.orm import Session
 
-from app.agent import llm
+from app.agent import extract, llm
 from app.core.config import settings
 from app.models.portfolio import ActionConfig, Asset
-from app.models.run import Action, AgentCall, AssetBlock, Cycle, Run
+from app.models.run import Action, AgentCall, AssetBlock, Cycle, MaintenanceTask, Run
 from app.seed import seed
 from app.services import policy
 from app.services.portfolio import get_portfolio
@@ -257,3 +257,46 @@ def test_bob_decides_within_bounds_falls_back_to_rules_and_chat_never_breaches_l
     assert reply["cards"][0]["type"] == "blocked" and "30 %" in reply["cards"][0]["text"]
     assert db.scalar(select(func.count()).select_from(ActionConfig)) == drafts
     assert [m["role"] for m in client.get(f"{url}/chat", headers=auth_headers).json()] == ["user", "assistant"]
+
+
+def test_storm_bulletin_moves_maintenance_and_brings_an_inspection(
+    client: TestClient, db: Session, auth_headers: dict[str, str], monkeypatch
+) -> None:
+    seed(db)
+    run = client.post("/api/runs", json={"preset": "storm_day"}, headers=auth_headers).json()
+    url = f"/api/runs/{run['id']}"
+    db.execute(update(Run).values(live_from_block=10_000))  # one option per block keeps the test quick
+    db.commit()
+    client.post(f"{url}/pause", headers=auth_headers)
+    for _ in range(21):  # to 11:00, after the bulletin
+        client.post(f"{url}/step", headers=auth_headers)
+
+    storm = {"kind": "storm", "targets": ["NORTH"], "start": "2026-11-12 14:30", "end": "2026-11-12 17:30",
+             "value": None, "confidence": 0.95, "source_quote": "from 14:30 to 17:30 IST on 12 November 2026"}
+    monkeypatch.setattr(extract, "extract", lambda *_, **__: {"summary": "A storm bulletin.", "items": [storm]})
+    *_, reply = client.post(f"{url}/documents", json={"sample": "storm_bulletin.pdf"}, headers=auth_headers).json()
+    assert [(c["type"], c["status"]) for c in reply["cards"]] == [("constraint", "active")]
+
+    moves = client.get(f"{url}/actions?status=awaiting_approval", headers=auth_headers).json()
+    move, = [a for a in moves if a["kind"] == "maintenance_schedule"]
+    assert move["asset"] == "Tirupati wind farm" and "storm" in move["reason"]
+    assert client.post(f"{url}/actions/{move['id']}/approve", headers=auth_headers).status_code == 200
+    task = db.scalar(select(MaintenanceTask))
+    db.refresh(task)
+    assert task.scheduled_at >= datetime(2026, 11, 12, 12, 0, tzinfo=timezone.utc)  # 17:30 IST or later
+
+    for _ in range(14):  # to 14:30; the calendared job runs for today's practice only
+        client.post(f"{url}/step", headers=auth_headers)
+    assert db.scalar(select(Cycle).order_by(Cycle.id.desc()).limit(1)).mode == "resilience"
+    tir = db.scalar(select(Asset).where(Asset.code == "WND-TIR")).id
+    at_two = {r.policy: r.available_mw for r in db.scalars(select(AssetBlock).where(
+        AssetBlock.asset_id == tir, AssetBlock.block == 34))}  # 14:00
+    assert at_two["baseline"] == 0 and at_two["bob"] > 0
+
+    db.execute(update(Run).values(live_from_block=49))  # inspections are proposed only once someone can answer
+    db.commit()
+    for _ in range(15):  # past the storm: Gooty runs at 60 %
+        client.post(f"{url}/step", headers=auth_headers)
+    inspections = [a for a in client.get(f"{url}/actions?status=awaiting_approval", headers=auth_headers).json()
+                   if a["kind"] == "inspection_dispatch"]
+    assert [a["asset"] for a in inspections] == ["Gooty wind farm"]

@@ -12,7 +12,7 @@ from collections.abc import Callable, Iterator
 from dataclasses import dataclass
 from functools import cache
 
-from openai import OpenAI, pydantic_function_tool
+from openai import BadRequestError, OpenAI, pydantic_function_tool
 from pydantic import BaseModel, ValidationError
 from sqlalchemy.orm import Session
 
@@ -51,9 +51,7 @@ def turn(db: Session, purpose: str, messages: list[dict], tools: dict[str, Tool]
     if not ready():
         raise Unavailable("BOB is switched off or not configured")
     specs = [pydantic_function_tool(t.args, name=name) for name, t in tools.items()]
-    log = AgentCall(run_id=run_id, cycle_id=cycle_id, purpose=purpose,
-                    deployment=settings.microsoft_azure_openai_deployment_name, input_tokens=0, output_tokens=0,
-                    cached_tokens=0, tool_calls=0, outcome="ok")
+    log = _log(purpose, run_id, cycle_id)
     started = time.monotonic()
 
     def remaining() -> float:
@@ -71,11 +69,7 @@ def turn(db: Session, purpose: str, messages: list[dict], tools: dict[str, Tool]
                 timeout=remaining()) as stream:
                 for chunk in stream:
                     remaining()  # the client timeout bounds each read, not the whole answer
-                    if chunk.usage:
-                        log.input_tokens += chunk.usage.prompt_tokens
-                        log.output_tokens += chunk.usage.completion_tokens
-                        details = chunk.usage.prompt_tokens_details
-                        log.cached_tokens += (details.cached_tokens or 0) if details else 0
+                    _count(log, chunk.usage)
                     for choice in chunk.choices:
                         if choice.delta.content:
                             text += choice.delta.content
@@ -105,13 +99,56 @@ def turn(db: Session, purpose: str, messages: list[dict], tools: dict[str, Tool]
         log.outcome, log.error = "fallback", "client disconnected"
         raise
     except Exception as error:
-        if not isinstance(error, Unavailable):
-            logging.exception("BOB turn failed")
-        log.outcome, log.error = "fallback", f"{type(error).__name__}: {error}"[:300]
-        raise Unavailable(log.error) from error
+        raise _failed(log, error) from error
     finally:
         log.latency_ms = round((time.monotonic() - started) * 1000)
         db.add(log)
+
+
+def parse(db: Session, purpose: str, messages: list[dict], schema: type[BaseModel], *, run_id: int,
+          budget_s: float) -> BaseModel:
+    """One structured-output call: the answer is an instance of `schema`, or Unavailable."""
+    if not ready():
+        raise Unavailable("BOB is switched off or not configured")
+    log = _log(purpose, run_id)
+    started = time.monotonic()
+    try:
+        response = _client().chat.completions.parse(
+            model=settings.microsoft_azure_openai_deployment_name, messages=messages, response_format=schema,
+            reasoning_effort="low", timeout=budget_s)
+        _count(log, response.usage)
+        if response.choices[0].message.parsed is None:
+            raise Unavailable("no structured answer (refused or filtered)")
+        return response.choices[0].message.parsed
+    except Exception as error:
+        raise _failed(log, error) from error
+    finally:
+        log.latency_ms = round((time.monotonic() - started) * 1000)
+        db.add(log)
+
+
+def _log(purpose: str, run_id: int, cycle_id: int | None = None) -> AgentCall:
+    return AgentCall(run_id=run_id, cycle_id=cycle_id, purpose=purpose,
+                     deployment=settings.microsoft_azure_openai_deployment_name, input_tokens=0, output_tokens=0,
+                     cached_tokens=0, tool_calls=0, outcome="ok")
+
+
+def _count(log: AgentCall, usage) -> None:
+    if usage:
+        log.input_tokens += usage.prompt_tokens
+        log.output_tokens += usage.completion_tokens
+        details = usage.prompt_tokens_details
+        log.cached_tokens += (details.cached_tokens or 0) if details else 0
+
+
+def _failed(log: AgentCall, error: Exception) -> Unavailable:
+    if isinstance(error, BadRequestError) and error.code == "content_filter":
+        log.outcome, log.error = "fallback", "blocked by Azure's content filter"
+    else:
+        if not isinstance(error, Unavailable):
+            logging.exception("BOB call failed")
+        log.outcome, log.error = "fallback", f"{type(error).__name__}: {error}"[:300]
+    return Unavailable(log.error)
 
 
 def _call(tools: dict[str, Tool], function: dict) -> dict:

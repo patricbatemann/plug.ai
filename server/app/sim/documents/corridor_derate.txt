@@ -1,0 +1,11 @@
+SIMULATED SAMPLE - not a real instruction.
+Southern Regional Despatch Desk (fictional)
+
+Instruction SRD/1182 dated 12 November 2026, 11:40 IST
+
+To: Andhra Pradesh renewable portfolio control room
+
+Line L-NORTH-HUB (North wind corridor to Sri City load hub) shall be limited to 70 MW from 15:00 to 19:00 IST on 12 November 2026 for protection relay testing.
+Please revise schedules accordingly and confirm receipt.
+
+Shift engineer, SRD Desk

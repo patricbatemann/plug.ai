@@ -1,7 +1,7 @@
 from datetime import datetime
 from typing import Annotated, Literal
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, model_validator
 
 
 class PresetInfo(BaseModel):
@@ -267,3 +267,40 @@ class EventOut(BaseModel):
     sim_at: datetime
     source: str
     label: str
+
+
+class DocumentUpload(BaseModel):
+    """A sample by name, or a file as base64."""
+
+    sample: str | None = None
+    filename: str = Field(default="", max_length=200)
+    data: str = Field(default="", max_length=7_000_000)  # 5 MB as base64
+
+    @model_validator(mode="after")
+    def one_source(self) -> "DocumentUpload":
+        if not self.sample and not (self.filename and self.data):
+            raise ValueError("Send a sample name, or a filename with its data")
+        return self
+
+
+class SampleOut(BaseModel):
+    name: str
+    title: str
+
+
+class TaskOut(BaseModel):
+    id: int
+    asset: str
+    kind: str
+    hours: float
+    earliest_at: datetime
+    deadline_at: datetime
+    calendar_at: datetime
+    scheduled_at: datetime
+    safety_critical: bool
+    status: Literal["planned", "in progress", "done"]
+
+
+class MaintenanceOut(BaseModel):
+    tasks: list[TaskOut]
+    proposals: list[ActionOut]

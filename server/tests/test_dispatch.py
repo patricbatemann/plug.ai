@@ -9,7 +9,7 @@ from app.optimize.robust import choose_option
 from app.optimize.situation import Signal, apply_floors, choose_mode
 from app.optimize.validator import check
 from app.seed import seed
-from app.services import policy
+from app.services import documents, policy
 from app.services.dispatch import bob_inputs, latest_forecasts
 from app.services.portfolio import get_portfolio
 from app.services.runs import RunContext, create_run
@@ -98,3 +98,24 @@ def test_unconfigured_actions_are_never_planned(db: Session) -> None:
     assert plan(inputs).battery["BESS-01"].max() > 0
     del inputs.allowed["battery_discharge:BESS-01"]
     assert plan(inputs).battery["BESS-01"].max() <= 1e-6
+
+
+def test_document_validator_applies_only_safe_verified_tightening() -> None:
+    ref = documents.Reference(nodes={"NORTH": "North"}, lines={"L-NORTH-HUB": 120},
+                    assets={"SOL-KDR": ("Kadiri solar park", "solar", 105), "BESS-02": ("Battery 2", "bess", 10)})
+    now = datetime(2026, 11, 12, 11, 0, tzinfo=documents.IST)
+    text = "Line L-NORTH-HUB shall be limited to 70 MW from 15:00 to 19:00 IST."
+    item = lambda **change: {"kind": "line_derate", "targets": ["L-NORTH-HUB"], "start": "2026-11-12 15:00",  # noqa: E731
+                             "end": "2026-11-12 19:00", "value": 70.0, "confidence": 0.95,
+                             "source_quote": "line L-NORTH-HUB shall be  limited to 70 MW from 15:00 to 19:00 IST.",
+                             **change}
+    assert documents.check(item(), ref, now, text)["status"] == "active"  # case and spacing do not matter
+    raised = documents.check(item(value=150.0), ref, now, text)
+    assert raised["status"] == "pending" and not raised["tightens"]
+    assert documents.check(item(source_quote="limited to 50 MW"), ref, now, text)["status"] == "pending"
+    assert documents.check(item(), ref, now, None)["status"] == "pending"  # an image: the quote cannot be checked
+    assert documents.check(item(confidence=0.5), ref, now, text)["status"] == "pending"
+    assert documents.check(item(value=500.0), ref, now, text)["status"] == "rejected"
+    assert documents.check(item(targets=["SOL-KDR"]), ref, now, text)["status"] == "rejected"
+    assert documents.check(item(end="2026-11-12 10:00", start="2026-11-12 09:00"), ref, now, text)["status"] == "rejected"
+    assert documents.check(item(kind="demand_notice"), ref, now, text)["status"] == "rejected"

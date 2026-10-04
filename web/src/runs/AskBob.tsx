@@ -1,9 +1,11 @@
 import { createContext, useContext, useEffect, useRef, useState, type ReactNode } from 'react'
 import { Link, useLocation } from 'react-router-dom'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { Button, IconButton, InlineLoading, InlineNotification, Tag, TextArea, Tile } from '@carbon/react'
-import { Close, Locked, Send } from '@carbon/icons-react'
-import { runApi, type ChatCard, type WhatIfPlan } from '../api/client'
+import {
+  Button, IconButton, InlineLoading, InlineNotification, OverflowMenu, OverflowMenuItem, Tag, TextArea, Tile,
+} from '@carbon/react'
+import { Attachment, Close, Locked, Send } from '@carbon/icons-react'
+import { documentApi, runApi, type ChatCard, type WhatIfPlan } from '../api/client'
 import { AUTONOMY, configKindLabel, limitsSummary, mwh, netCost } from '../format'
 import { useCurrentRun } from './useCurrentRun'
 
@@ -79,9 +81,16 @@ export function Chat({ question }: { question?: string }) {
     onMutate: () => { setText(''); setLive({ status: '', text: '' }) }, // the question shows while BOB works
     onError: (_, message) => setText(message),
   })
+  const upload = useMutation({
+    mutationFn: (doc: { sample: string } | { filename: string; data: string }) => documentApi.upload(run!.id, doc),
+    onSuccess: (items) => {
+      queryClient.setQueryData(['chat', run!.id], items)
+      queryClient.invalidateQueries() // an applied constraint re-plans the block
+    },
+  })
   useEffect(() => {
     end.current?.scrollIntoView({ behavior: 'smooth' })
-  }, [history.data, send.isPending, live])
+  }, [history.data, send.isPending, live, upload.isPending])
 
   if (!run) return <p className="page-meta">Start a run to talk to BOB.</p>
   const submit = (message: string) => message.trim() && !send.isPending && send.mutate(message.trim())
@@ -114,11 +123,18 @@ export function Chat({ question }: { question?: string }) {
             )}
           </>
         )}
-        {send.error && <InlineNotification kind="error" lowContrast hideCloseButton title={send.error.message} />}
+        {upload.isPending && (
+          <InlineLoading description={`BOB is reading ${'sample' in upload.variables ? upload.variables.sample
+            : upload.variables.filename}…`} />
+        )}
+        {(send.error ?? upload.error) && (
+          <InlineNotification kind="error" lowContrast hideCloseButton title={(send.error ?? upload.error)!.message} />
+        )}
         <div ref={end} />
       </div>
       {!run.bob_online && <p className="stat-label">BOB is offline; decisions continue on rules.</p>}
       <div className="chat__input">
+        <Attach disabled={upload.isPending} onPick={(doc) => upload.mutate(doc)} />
         <TextArea labelText="Message" hideLabel rows={2} value={text} placeholder="Ask BOB…"
           onChange={(e) => setText(e.target.value)}
           onKeyDown={(e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); submit(text) } }} />
@@ -130,12 +146,40 @@ export function Chat({ question }: { question?: string }) {
   )
 }
 
+/** 📎: a file from disk, or one of the simulated samples. */
+function Attach({ disabled, onPick }: {
+  disabled: boolean
+  onPick: (doc: { sample: string } | { filename: string; data: string }) => void
+}) {
+  const samples = useQuery({ queryKey: ['document-samples'], queryFn: documentApi.samples, staleTime: Infinity })
+  const file = useRef<HTMLInputElement>(null)
+  const read = (f: File) => {
+    const reader = new FileReader()
+    reader.onload = () => onPick({ filename: f.name, data: String(reader.result).split(',')[1] })
+    reader.readAsDataURL(f)
+  }
+  return (
+    <>
+      <input ref={file} type="file" hidden accept=".pdf,.txt,.png,.jpg,.jpeg"
+        onChange={(e) => { if (e.target.files?.[0]) read(e.target.files[0]); e.target.value = '' }} />
+      <OverflowMenu renderIcon={Attachment} iconDescription="Attach a document" disabled={disabled} flipped
+        direction="top" aria-label="Attach a document">
+        <OverflowMenuItem itemText="Upload a file…" onClick={() => file.current?.click()} />
+        {samples.data?.map((s) => (
+          <OverflowMenuItem key={s.name} itemText={`Sample: ${s.title}`} onClick={() => onPick({ sample: s.name })} />
+        ))}
+      </OverflowMenu>
+    </>
+  )
+}
+
 /** BOB writes plain prose but may bold a figure with **…**. */
 const withBold = (text: string) =>
   text.split(/\*\*(.+?)\*\*/g).map((part, i) => (i % 2 ? <strong key={i}>{part}</strong> : part))
 
 /** `last` carries the wizard link, so a draft followed by its tests links once. */
 function CardView({ card, last }: { card: ChatCard; last: boolean }) {
+  if (card.type === 'constraint') return <ConstraintCard card={card} />
   if (card.type === 'blocked') {
     return (
       <Tile className="chat-card chat-card--blocked">
@@ -188,6 +232,54 @@ function CardView({ card, last }: { card: ChatCard; last: boolean }) {
         </>
       )}
       {last && <Link className="cds--link" to={link}>Review and activate in setup</Link>}
+    </Tile>
+  )
+}
+
+const CONSTRAINT_STATUS = {
+  active: { tag: 'green', label: 'Applied' },
+  pending: { tag: 'warm-gray', label: 'Needs your confirmation' },
+  rejected: { tag: 'red', label: 'Not applied' },
+  withdrawn: { tag: 'gray', label: 'Withdrawn' },
+} as const
+
+/** A constraint read from a document, with its quote and what a person can still do. */
+function ConstraintCard({ card }: { card: Extract<ChatCard, { type: 'constraint' }> }) {
+  const { data: run } = useCurrentRun()
+  const queryClient = useQueryClient()
+  const decide = useMutation({
+    mutationFn: (decision: 'apply' | 'reject' | 'withdraw') => documentApi.decide(run!.id, card.id, decision),
+    onSuccess: (items) => {
+      queryClient.setQueryData(['chat', run!.id], items)
+      queryClient.invalidateQueries()
+    },
+  })
+  const status = CONSTRAINT_STATUS[card.status]
+  return (
+    <Tile className="chat-card">
+      <div className="action-card__head">
+        <span className="card-title">{card.label}</span>
+        <Tag size="sm" type={status.tag}>{status.label}</Tag>
+      </div>
+      <blockquote className="chat-card__quote">“{card.quote}”</blockquote>
+      <p className="stat-label">
+        {card.note}. {card.filename && `From ${card.filename}; `}confidence {Math.round(card.confidence * 100)} %
+        {card.verified ? ', quote found in the document' : ''}.
+      </p>
+      {decide.error && <InlineNotification kind="error" lowContrast hideCloseButton title={decide.error.message} />}
+      {card.status === 'pending' && (
+        <div className="action-card__foot">
+          <Button kind="tertiary" size="sm" disabled={decide.isPending} onClick={() => decide.mutate('reject')}>Reject</Button>
+          <Button size="sm" disabled={decide.isPending} onClick={() => decide.mutate('apply')}>Apply</Button>
+        </div>
+      )}
+      {card.status === 'active' && (
+        <div className="action-card__foot">
+          <Button kind="ghost" size="sm" disabled={decide.isPending} onClick={() => decide.mutate('withdraw')}>
+            Withdraw
+          </Button>
+        </div>
+      )}
     </Tile>
   )
 }

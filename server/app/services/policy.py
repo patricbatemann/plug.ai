@@ -8,7 +8,7 @@ from sqlalchemy import select, update
 from sqlalchemy.orm import Session
 
 from app.models.portfolio import ActionConfig, Asset
-from app.models.run import Action, Run
+from app.models.run import Action, MaintenanceTask, Run
 from app.sim.adapters import deliver
 
 FAMILY = {
@@ -16,6 +16,7 @@ FAMILY = {
     "dr_call": "demand_response", "load_shift": "load_shift", "rtm_buy": "grid_import", "rtm_sell": "grid_export",
 }
 MARKET = ("grid_import", "grid_export")
+WORK_ORDERS = ("maintenance_schedule", "inspection_dispatch")
 # Kinds that set the same thing on the same asset: an approved action replaces its stand-in.
 SAME_DECISION = {"bess_charge": ("bess_charge", "bess_discharge"), "bess_discharge": ("bess_charge", "bess_discharge"),
                  "rtm_buy": ("rtm_buy", "rtm_sell"), "rtm_sell": ("rtm_buy", "rtm_sell")}
@@ -71,6 +72,12 @@ def decide(db: Session, run: Run, action: Action, approve: bool, user: str, sim_
     action.decided_by, action.decided_at = user, sim_now
     if not approve:
         action.status = "declined"
+        return
+    if action.kind in WORK_ORDERS:  # a work order to the maintenance system, not a setpoint
+        if action.kind == "maintenance_schedule":
+            db.get(MaintenanceTask, action.params["task_id"]).scheduled_at = datetime.fromisoformat(
+                action.params["start_at"])
+        action.status = "acked"
         return
     kinds = SAME_DECISION.get(action.kind, (action.kind,))
     db.execute(update(Action).where(

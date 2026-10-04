@@ -15,12 +15,12 @@ from sqlalchemy.orm import Session
 from app.agent.llm import Tool, Unavailable, turn
 from app.core.config import settings
 from app.models.portfolio import ActionConfig, Asset, Portfolio, Site
-from app.models.run import Action, AssetBlock, ChatMessage, Cycle, Forecast, Run
+from app.models.run import Action, AssetBlock, ChatMessage, Constraint, Cycle, Forecast, Run
 from app.optimize.dispatch import here_and_now
 from app.optimize.profiles import PROFILES
 from app.optimize.robust import solve_all
 from app.optimize.situation import Signal, apply_floors
-from app.services import configs, decisions, policy, runs
+from app.services import configs, decisions, documents, policy, runs
 from app.services.deliberation import IST, describe
 from app.services.dispatch import bob_inputs, latest_forecasts
 from app.services.summary import recent_actions, summary
@@ -138,18 +138,28 @@ def ask(db: Session, run: Run, user_id: int, text: str, context: str | None) -> 
         content = {"message": message, **({"cards": cards} if i == len(new) - 1 else {})}
         db.add(ChatMessage(run_id=run.id, user_id=user_id, role=message["role"], content=content))
     db.commit()
-    yield "done", display(history(db, run, user_id))
+    yield "done", display(db, run, history(db, run, user_id))
 
 
-def display(rows: list[ChatMessage]) -> list[dict]:
-    """What the operator sees: their questions and BOB's answers with any cards."""
+def display(db: Session, run: Run, rows: list[ChatMessage]) -> list[dict]:
+    """What the operator sees: their questions and BOB's answers with any cards. Constraint cards
+    are read fresh, so they show whether a person has since applied or rejected them."""
+    ref = None
+
+    def fresh(card: dict) -> dict:
+        nonlocal ref
+        if card["type"] != "constraint":
+            return card
+        ref = ref or documents.Reference.load(db, run.portfolio_id)
+        return documents.card(db, db.get(Constraint, card["id"]), ref)
+
     out = []
     for r in rows:
         if r.role == "user":
             out.append({"id": r.id, "role": "user", "text": r.content["text"], "cards": []})
         elif r.role == "assistant" and (r.content["message"].get("content") or r.content.get("cards")):
             out.append({"id": r.id, "role": "assistant", "text": r.content["message"].get("content") or "",
-                        "cards": r.content.get("cards", [])})
+                        "cards": [fresh(c) for c in r.content.get("cards", [])]})
     return out
 
 

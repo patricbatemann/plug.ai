@@ -1,0 +1,6 @@
+SIMULATED SAMPLE - not a real instruction.
+Southern Regional Despatch Desk (fictional)
+
+Instruction SRD/1201, 12 November 2026
+
+Due to a conductor clearance issue, the transfer limit on L-SOUTH-HUB is reduced to 180 MW from 13:00 to 16:00 IST on 12 November 2026.

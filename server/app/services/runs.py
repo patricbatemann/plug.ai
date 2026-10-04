@@ -9,7 +9,7 @@ from sqlalchemy import delete, select, update
 from sqlalchemy.orm import Session
 
 from app.models.portfolio import ActionConfig, Asset, Line, Node, Portfolio
-from app.models.run import POLICIES, Forecast, Run, WorldEvent
+from app.models.run import POLICIES, Forecast, MaintenanceTask, Run, WorldEvent
 from app.sim import forecast
 from app.services import configs, policy
 from app.services.dispatch import bob_inputs, latest_forecasts, plan_block, plan_bob, settle_block
@@ -44,6 +44,13 @@ def create_run(db: Session, portfolio: Portfolio, preset: str, now: datetime) ->
     )
     db.flush()
     ctx = RunContext.load(db, run)
+    db.add_all(
+        MaintenanceTask(run_id=run.id, asset_id=ctx.asset_ids[m["asset"]], kind=m["kind"],
+                        duration_blocks=m["duration_blocks"], earliest_at=_at(config, m["earliest"]),
+                        deadline_at=_at(config, m["deadline"]), calendar_at=_at(config, m["at"]),
+                        scheduled_at=_at(config, m["at"]), safety_critical=m["safety_critical"])
+        for m in config["maintenance"]
+    )
     # The day-ahead position comes from forecasts made before the run starts.
     issues = _store_forecasts(db, ctx, -1, horizon=run.total_blocks)
     p50 = {(i.series, i.asset_code): np.array(i.p50) for i in issues}
@@ -100,21 +107,31 @@ VISIBLE = {
     "storm": lambda p: f"Storm over {p['node']}",
     "frequency_dip": lambda p: f"Frequency at {p['hz']} Hz",
 }
+# Events BOB cannot act on by itself: a person has to bring them in.
+NOTICES = {"document_publish": lambda p: f"{p['title']} published: upload it in Ask BOB (📎) so BOB can use it"}
 
 
 def replan_for_events(db: Session, run: Run, fired: list[WorldEvent], now: datetime) -> None:
     """Re-plan the block in progress when BOB learns of a material event. Caller holds the run lock."""
     visible = [e for e in fired if e.kind in VISIBLE and (e.kind != "storm" or e.revealed)]
+    if not visible:
+        return
+    if any(e.kind == "forecast_update" for e in visible) and is_live(run):
+        db.flush()
+        db.execute(delete(Forecast).where(Forecast.run_id == run.id, Forecast.issued_block == run.current_block))
+        _store_forecasts(db, RunContext.load(db, run), run.current_block)
+    replan(db, run, now, "event", "; ".join(VISIBLE[e.kind](e.payload) for e in visible))
+
+
+def replan(db: Session, run: Run, now: datetime, trigger: str, detail: str) -> None:
+    """Plan the block in progress again on what BOB now knows. Caller holds the run lock."""
     t0 = run.current_block + 1
-    if not visible or not is_live(run) or t0 >= run.total_blocks:
+    if not is_live(run) or t0 >= run.total_blocks:
         return
     db.flush()
     ctx = RunContext.load(db, run)
-    if any(e.kind == "forecast_update" for e in visible):
-        db.execute(delete(Forecast).where(Forecast.run_id == run.id, Forecast.issued_block == run.current_block))
-        _store_forecasts(db, ctx, run.current_block)
     plan_bob(db, ctx, ctx.world(), run, t0, latest_forecasts(db, ctx, run, t0), sim_now(run, now),
-             trigger="event", detail="; ".join(VISIBLE[e.kind](e.payload) for e in visible))
+             trigger=trigger, detail=detail)
 
 
 @dataclass

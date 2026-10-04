@@ -1,0 +1,13 @@
+{
+  "_note": "Expected extraction per simulated sample: kind, targets, window (IST), value, and the status the validator should give.",
+  "storm_bulletin.pdf": [{"kind": "storm", "targets": ["NORTH"], "start": "2026-11-12 14:30", "end": "2026-11-12 17:30", "value": null, "status": "active"}],
+  "corridor_derate.txt": [{"kind": "line_derate", "targets": ["L-NORTH-HUB"], "start": "2026-11-12 15:00", "end": "2026-11-12 19:00", "value": 70, "status": "active"}],
+  "curtailment_order.png": [{"kind": "curtailment_order", "targets": ["SOL-KDR"], "start": "2026-11-12 13:00", "end": "2026-11-12 15:00", "value": 40, "status": "pending"}],
+  "corridor_uprating.txt": [{"kind": "line_derate", "targets": ["L-NORTH-HUB"], "start": "2026-11-12 18:00", "end": "2026-11-12 22:00", "value": 150, "status": "pending"}],
+  "shift_roster.txt": [],
+  "battery_outage.txt": [{"kind": "asset_outage", "targets": ["BESS-02"], "start": "2026-11-12 12:00", "end": "2026-11-12 16:00", "value": null, "status": "active"}],
+  "storm_south.txt": [{"kind": "storm", "targets": ["SOUTH"], "start": "2026-11-12 16:00", "end": "2026-11-12 18:00", "value": null, "status": "active"}],
+  "south_derate.txt": [{"kind": "line_derate", "targets": ["L-SOUTH-HUB"], "start": "2026-11-12 13:00", "end": "2026-11-12 16:00", "value": 180, "status": "active"}],
+  "nellore_curtailment.txt": [{"kind": "curtailment_order", "targets": ["SOL-NEL"], "start": "2026-11-12 12:30", "end": "2026-11-12 14:30", "value": 30, "status": "active"}],
+  "injected_email.txt": []
+}
