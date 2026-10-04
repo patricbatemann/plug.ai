@@ -1,0 +1,585 @@
+import { useEffect, useRef, useState } from "react"
+import { useOperations } from "./Operations"
+import { parseCSV, validateMapping } from "./ConnectionData"
+import { SAMPLE_HEADERS, SAMPLE_ROWS } from "./ConnectionSample"
+
+interface ConnectDataProps {
+  onBack: () => void
+}
+const fields = [
+  ["timestamp", "Timestamp (IST)"],
+  ["deviceId", "Device ID"],
+  ["soc", "SOC (%)"],
+  ["batteryPower", "Battery Power (MW)"],
+]
+const input =
+  "min-h-11 w-full min-w-0 border border-[#e0e0e0] bg-white px-3 text-sm focus:outline-2 focus:outline-[#0f62fe]"
+const button =
+  "min-h-11 border border-[#e0e0e0] px-4 text-sm font-semibold hover:bg-[#f4f4f4] disabled:cursor-not-allowed disabled:opacity-50"
+
+export default function ConnectData({ onBack }: ConnectDataProps) {
+  const { setState, addAudit } = useOperations()
+  const [dataset, setDataset] = useState<{
+    headers: string[]
+    rows: string[][]
+    name: string
+    kind: "CSV" | "API"
+    historical: boolean
+  } | null>({
+    headers: SAMPLE_HEADERS,
+    rows: SAMPLE_ROWS,
+    name: "kuppam_battery_data.csv",
+    kind: "CSV",
+    historical: true,
+  })
+  const [phase, setPhase] = useState<"source" | "mapping" | "success">("source")
+  const [error, setError] = useState("")
+  const [busy, setBusy] = useState(false)
+  const [endpoint, setEndpoint] = useState("")
+  const [key, setKey] = useState("")
+  const [showKey, setShowKey] = useState(false)
+  const [interval, setInterval] = useState("5")
+  const [detected, setDetected] = useState(true)
+  const [page, setPage] = useState(1)
+  const [mapping, setMapping] = useState<Record<string, string>>({})
+  const [timezone, setTimezone] = useState("Asia/Kolkata")
+  const fileInput = useRef<HTMLInputElement>(null)
+  const apiRequest = useRef<AbortController | null>(null)
+  useEffect(() => () => apiRequest.current?.abort(), [])
+  const load = async (file?: File) => {
+    if (!file) return
+    setError("")
+    setBusy(true)
+    try {
+      if (!file.name.toLowerCase().endsWith(".csv"))
+        throw new Error("Choose a CSV file.")
+      if (file.size > 5_000_000)
+        throw new Error("CSV files must be 5 MB or smaller.")
+      const parsed = parseCSV(await file.text())
+      setDataset({ ...parsed, name: file.name, kind: "CSV", historical: true })
+      setPage(1)
+      setPhase("source")
+    } catch (reason) {
+      setError(reason instanceof Error ? reason.message : "Unable to read CSV.")
+    } finally {
+      setBusy(false)
+      if (fileInput.current) fileInput.current.value = ""
+    }
+  }
+  const testAPI = async () => {
+    setError("")
+    setBusy(true)
+    const controller = new AbortController()
+    apiRequest.current = controller
+    try {
+      const url = new URL(endpoint)
+      if (url.protocol !== "https:")
+        throw new Error("Use an HTTPS API endpoint.")
+      const adapter = import.meta.env.VITE_DATA_CONNECT_ENDPOINT
+      if (
+        !adapter ||
+        new URL(adapter, location.origin).origin !== location.origin
+      )
+        throw new Error(
+          "A same-origin data-connection adapter is required. Configure VITE_DATA_CONNECT_ENDPOINT; no connection has been made.",
+        )
+      const response = await fetch(adapter, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          siteId: "KUP-SOLAR-001",
+          endpoint,
+          apiKey: key,
+          refreshIntervalMin: Number(interval),
+        }),
+        signal: AbortSignal.any([controller.signal, AbortSignal.timeout(30_000)]),
+        redirect: 'error',
+      })
+      if (!response.ok)
+        throw new Error(`Connection validation failed (${response.status}).`)
+      const data = await response.json()
+      if (controller.signal.aborted) return
+      if (
+        !Array.isArray(data.headers) ||
+        !data.headers.every(
+          (header: unknown) => typeof header === "string" && header,
+        ) ||
+        new Set(data.headers).size !== data.headers.length ||
+        !Array.isArray(data.rows) ||
+        !data.rows.length ||
+        !data.rows.every(
+          (row: unknown) =>
+            Array.isArray(row) &&
+            row.length === data.headers.length &&
+            row.every(
+              (value) => typeof value === "string" || typeof value === "number",
+            ),
+        )
+      )
+        throw new Error(
+          "API adapter must return unique headers and non-empty, matching data rows.",
+        )
+      setDataset({
+        headers: data.headers,
+        rows: data.rows.map((row: unknown[]) => row.map(String)),
+        name: url.hostname,
+        kind: "API",
+        historical: false,
+      })
+      setPage(1)
+      setKey("")
+      if (data.permissions?.gridRemoteAvailable === true)
+        setState((current) => ({
+          ...current,
+          gridRemoteAvailable: true,
+          gridTelemetryAgeSeconds:
+            typeof data.telemetryAgeSeconds === "number" &&
+            data.telemetryAgeSeconds >= 0
+              ? data.telemetryAgeSeconds
+              : null,
+          gridSafetyVerified: data.safetyChecksPassed === true,
+          gridVerifiedAt: Date.now(),
+        }))
+    } catch (reason) {
+      setError(
+        reason instanceof Error ? reason.message : "API connection failed.",
+      )
+    } finally {
+      setBusy(false)
+    }
+  }
+  const validate = () => {
+    if (!dataset) return
+    setError("")
+    const matched: Record<string, string> = {}
+    const aliases: Record<string, string[]> = {
+      timestamp: ["timestamp", "time", "datetime"],
+      deviceId: ["deviceid", "device", "assetid"],
+      soc: ["soc", "socpercent"],
+      batteryPower: ["batterypowermw", "batterypower", "powermw"],
+    }
+    for (const [field] of fields)
+      matched[field] =
+        dataset.headers.find((header) =>
+          aliases[field].includes(header.toLowerCase().replace(/[^a-z]/g, "")),
+        ) ?? ""
+    setMapping(matched)
+    setPhase("mapping")
+  }
+  const finish = () => {
+    if (!dataset) return
+    try {
+      validateMapping(dataset.headers, dataset.rows, mapping)
+      setState((current) => ({
+        ...current,
+        connections: [
+          ...current.connections.filter(
+            (source) => source.name !== dataset.name,
+          ),
+          {
+            name: dataset.name,
+            fields: { ...mapping, timezone },
+            kind: dataset.kind,
+          },
+        ],
+      }))
+      addAudit(
+        "Data source validated",
+        `${dataset.name}: ${dataset.rows.length} rows, ${dataset.headers.length} columns; ${dataset.kind}; timezone ${timezone}; read-only mapping verified. Historical imports are not live telemetry. BOB control permissions unchanged.`,
+      )
+      setError("")
+      setPhase("success")
+    } catch (reason) {
+      setError(
+        reason instanceof Error ? reason.message : "Field mapping failed.",
+      )
+    }
+  }
+
+  return (
+    <div className="flex min-h-screen min-w-0 flex-col bg-[#f4f4f6] text-[#525252] font-['IBM Plex Sans:Regular'] [&_button]:focus-visible:outline-2 [&_button]:focus-visible:outline-offset-2 [&_button]:focus-visible:outline-[#0f62fe]">
+      <header className="space-y-4 border-b border-[#e0e0e0] bg-white px-4 py-6 md:px-8 xl:px-12">
+        <nav aria-label="Breadcrumb" className="flex flex-wrap gap-2 text-xs">
+          <button onClick={onBack} className="text-[#0f62fe]">
+            Sites
+          </button>
+          <span>/</span>
+          <button onClick={onBack} className="text-[#0f62fe]">
+            Kuppam Solar Site
+          </button>
+          <span>/</span>
+          <span>Connect data</span>
+        </nav>
+        <h1 className="text-[32px] font-light text-[#161616]">
+          Connect data source
+        </h1>
+        <p className="text-sm">
+          Import data via CSV upload or connect to a live system API
+        </p>
+      </header>
+      <main className="space-y-6 px-4 py-6 md:px-8 xl:px-12">
+        {error && (
+          <div
+            role="alert"
+            className="border-l-4 border-[#da1e28] bg-[#fff1f1] p-4 text-sm text-[#da1e28]"
+          >
+            {error}
+            <button
+              onClick={() => setError("")}
+              className="ml-4 min-h-11 underline"
+            >
+              Dismiss
+            </button>
+          </div>
+        )}
+        {phase === "success" ? (
+          <section className="space-y-4 border-l-4 border-[#198038] bg-white p-6">
+            <h2 className="text-xl font-semibold text-[#198038]">
+              Data source connected
+            </h2>
+            <p className="text-sm">
+              {dataset?.name} · {dataset?.rows.length} rows validated · Required
+              fields mapped.
+            </p>
+            <p className="text-sm">
+              {dataset?.kind === "CSV"
+                ? "Historical/imported data only — this does not refresh live telemetry."
+                : "API response validated. Continuous refresh requires the server-side adapter to retain the connection securely."}{" "}
+              Monitoring only; no BOB control permission granted.
+            </p>
+            <button
+              onClick={onBack}
+              className={`${button} bg-[#0f62fe] text-white`}
+            >
+              Return to Site details
+            </button>
+          </section>
+        ) : (
+          <>
+            <div className="grid items-start gap-6 lg:grid-cols-2">
+              <section className="space-y-4 border border-[#e0e0e0] bg-white p-4 md:p-6">
+                <div className="flex items-center gap-3">
+                  <span
+                    className="flex size-10 items-center justify-center rounded bg-[#edf5ff] text-xl text-[#0f62fe]"
+                    aria-hidden="true"
+                  >
+                    ↑
+                  </span>
+                  <div>
+                    <h2 className="font-semibold text-[#161616]">Upload CSV</h2>
+                    <p className="text-xs">
+                      Import static data from a CSV file
+                    </p>
+                  </div>
+                </div>
+                <input
+                  ref={fileInput}
+                  type="file"
+                  accept=".csv,text/csv"
+                  aria-label="Upload CSV file"
+                  className="sr-only"
+                  onChange={(event) => void load(event.target.files?.[0])}
+                />
+                <div
+                  onDragOver={(event) => event.preventDefault()}
+                  onDrop={(event) => {
+                    event.preventDefault()
+                    void load(event.dataTransfer.files[0])
+                  }}
+                  className="flex flex-col items-center gap-2 rounded border border-dashed border-[#0f62fe] px-4 py-8"
+                >
+                  <span aria-hidden="true" className="text-3xl text-[#8d8d8d]">
+                    ↑
+                  </span>
+                  <p className="text-sm">Drag &amp; drop your CSV file here</p>
+                  <button
+                    disabled={busy}
+                    className="min-h-11 text-sm font-semibold text-[#0f62fe] underline"
+                    onClick={() => fileInput.current?.click()}
+                  >
+                    Browse Files
+                  </button>
+                </div>
+                {dataset?.kind === "CSV" && (
+                  <div className="flex flex-wrap items-center justify-between gap-3 rounded border border-[#e0e0e0] p-3">
+                    <div className="min-w-0">
+                      <p className="break-all text-sm font-semibold text-[#161616]">
+                        {dataset.name}
+                      </p>
+                      <p className="text-xs text-[#6f6f6f]">
+                        {dataset.rows.length} rows · {dataset.headers.length}{" "}
+                        columns · Historical/imported data
+                      </p>
+                    </div>
+                    <div className="flex items-center gap-3">
+                      <span className="rounded-full bg-[#defbe6] px-2 py-1 text-xs text-[#198038]">
+                        ✓ Detected
+                      </span>
+                      <button
+                        onClick={() => {
+                          setDataset(null)
+                          setPhase("source")
+                        }}
+                        className="min-h-11 text-xs text-[#da1e28] underline"
+                      >
+                        Remove
+                      </button>
+                    </div>
+                  </div>
+                )}
+              </section>
+              <section className="space-y-4 border border-[#e0e0e0] bg-white p-4 md:p-6">
+                <div className="flex items-center gap-3">
+                  <span
+                    aria-hidden="true"
+                    className="flex size-10 items-center justify-center rounded bg-[#f4f4f4] text-xl"
+                  >
+                    ↗
+                  </span>
+                  <div>
+                    <h2 className="font-semibold text-[#161616]">
+                      Connect API
+                    </h2>
+                    <p className="text-xs">
+                      Live data feed that updates automatically
+                    </p>
+                  </div>
+                </div>
+                <label className="block space-y-2 text-sm font-semibold">
+                  API Endpoint URL
+                  <input
+                    value={endpoint}
+                    onChange={(event) => setEndpoint(event.target.value)}
+                    placeholder="https://api.example.com/v1/data"
+                    type="url"
+                    className={input}
+                  />
+                </label>
+                <label className="block space-y-2 text-sm font-semibold">
+                  API Key
+                  <div className="flex">
+                    <input
+                      aria-label="API Key"
+                      value={key}
+                      onChange={(event) => setKey(event.target.value)}
+                      autoComplete="off"
+                      type={showKey ? "text" : "password"}
+                      className={input}
+                    />
+                    <button
+                      aria-label={showKey ? "Hide API key" : "Show API key"}
+                      onClick={() => setShowKey(!showKey)}
+                      className={button}
+                    >
+                      {showKey ? "Hide" : "Show"}
+                    </button>
+                  </div>
+                </label>
+                <div className="flex flex-wrap items-end gap-4">
+                  <label className="min-w-0 flex-1 space-y-2 text-sm font-semibold">
+                    Refresh Interval
+                    <select
+                      value={interval}
+                      onChange={(event) => setInterval(event.target.value)}
+                      className={input}
+                    >
+                      <option value="1">Every minute</option>
+                      <option value="5">Every 5 minutes</option>
+                      <option value="15">Every 15 minutes</option>
+                    </select>
+                  </label>
+                  <button
+                    disabled={busy || !endpoint}
+                    onClick={() => void testAPI()}
+                    className={button}
+                  >
+                    {busy ? "Validating…" : "Test Connection"}
+                  </button>
+                </div>
+                {dataset?.kind === "API" && (
+                  <p role="status" className="text-xs text-[#198038]">
+                    Connection response validated — continue to field mapping.
+                  </p>
+                )}
+                <p className="text-xs">
+                  Battery execution requires telemetry no older than 2 minutes;
+                  a 5-minute refresh is monitoring-only.
+                </p>
+              </section>
+            </div>
+            {dataset && (
+              <section className="min-w-0 overflow-hidden rounded-[2px] border border-[#e0e0e0] bg-white">
+                <div className="flex flex-wrap items-center justify-between gap-4 p-5">
+                  <div>
+                    <h2 className="font-semibold text-[#161616]">
+                      Data Preview
+                    </h2>
+                    <p className="text-xs text-[#6f6f6f]">
+                      {dataset.rows.length} rows · {dataset.headers.length}{" "}
+                      columns detected ·{" "}
+                      {dataset.historical
+                        ? "Historical/imported data, not live"
+                        : "API validation sample"}
+                    </p>
+                  </div>
+                  <label className="flex min-h-11 items-center gap-3 text-xs">
+                    <input
+                      type="checkbox"
+                      checked={detected}
+                      onChange={(event) => setDetected(event.target.checked)}
+                    />
+                    Auto-detect field types
+                  </label>
+                </div>
+                <div
+                  role="region"
+                  aria-label="Data preview table"
+                  tabIndex={0}
+                  className="overflow-x-auto"
+                >
+                  <table className="w-full border-collapse text-left text-xs">
+                    <thead className="bg-[#f4f4f4]">
+                      <tr>
+                        {dataset.headers.map((header, index) => (
+                          <th
+                            key={header}
+                            className="min-w-28 whitespace-nowrap border-b border-[#e0e0e0] px-5 py-3"
+                          >
+                            <p>{header}</p>
+                            {detected && (
+                              <span className="mt-1 inline-block rounded bg-[#defbe6] px-1.5 py-0.5 text-[10px] text-[#198038]">
+                                {dataset.rows.every(
+                                  (row) =>
+                                    row[index] !== "" &&
+                                    Number.isFinite(Number(row[index])),
+                                )
+                                  ? "Number"
+                                  : header.toLowerCase().includes("time")
+                                    ? "DateTime"
+                                    : "String"}
+                              </span>
+                            )}
+                          </th>
+                        ))}
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {dataset.rows
+                        .slice((page - 1) * 10, page * 10)
+                        .map((row, index) => (
+                          <tr
+                            key={index}
+                            className="border-b border-[#e0e0e0] hover:bg-[#f9fafb]"
+                          >
+                            {row.map((cell, column) => (
+                              <td
+                                key={column}
+                                className="whitespace-nowrap px-5 py-3"
+                              >
+                                {cell}
+                              </td>
+                            ))}
+                          </tr>
+                        ))}
+                    </tbody>
+                  </table>
+                </div>
+                <div className="flex flex-wrap items-center justify-between gap-3 bg-[#f9fafb] px-5 py-3 text-xs">
+                  <span>
+                    Showing {(page - 1) * 10 + 1}-
+                    {Math.min(page * 10, dataset.rows.length)} of{" "}
+                    {dataset.rows.length} rows
+                  </span>
+                  <div className="flex items-center gap-3">
+                    <button
+                      className={button}
+                      disabled={page === 1}
+                      onClick={() => setPage(page - 1)}
+                      aria-label="Previous page"
+                    >
+                      ‹
+                    </button>
+                    <span>
+                      {page} / {Math.ceil(dataset.rows.length / 10)}
+                    </span>
+                    <button
+                      className={button}
+                      disabled={page * 10 >= dataset.rows.length}
+                      onClick={() => setPage(page + 1)}
+                      aria-label="Next page"
+                    >
+                      ›
+                    </button>
+                  </div>
+                </div>
+              </section>
+            )}
+            {phase === "mapping" && dataset && (
+              <section className="space-y-4 border border-[#e0e0e0] bg-white p-6">
+                <h2 className="font-semibold text-[#161616]">
+                  Validation complete · Map required fields
+                </h2>
+                <p className="text-xs">
+                  Source structure is valid. Verify units and timestamp timezone
+                  before importing. Negative battery power means charging;
+                  positive means discharging.
+                </p>
+                <div className="grid gap-4 sm:grid-cols-2">
+                  {fields.map(([field, label]) => (
+                    <label key={field} className="space-y-2 text-sm">
+                      {label}
+                      <select
+                        aria-label={`Map ${label}`}
+                        value={mapping[field] ?? ""}
+                        onChange={(event) =>
+                          setMapping((current) => ({
+                            ...current,
+                            [field]: event.target.value,
+                          }))
+                        }
+                        className={input}
+                      >
+                        <option value="">Select source column</option>
+                        {dataset.headers.map((header) => (
+                          <option key={header}>{header}</option>
+                        ))}
+                      </select>
+                    </label>
+                  ))}
+                </div>
+                <label className="block space-y-2 text-sm">
+                  Timestamp timezone
+                  <select
+                    className={input}
+                    value={timezone}
+                    onChange={(event) => setTimezone(event.target.value)}
+                  >
+                    <option value="Asia/Kolkata">Asia/Kolkata (IST)</option>
+                    <option value="UTC">UTC</option>
+                  </select>
+                </label>
+              </section>
+            )}
+          </>
+        )}
+      </main>
+      {phase !== "success" && (
+        <footer className="sticky bottom-0 mt-auto flex flex-wrap justify-between gap-3 border-t border-[#e0e0e0] bg-white px-4 py-4 md:px-8 xl:px-12">
+          <button
+            onClick={phase === "mapping" ? () => setPhase("source") : onBack}
+            className={button}
+          >
+            {phase === "mapping" ? "Back to source" : "Cancel"}
+          </button>
+          <button
+            disabled={!dataset || busy}
+            onClick={phase === "mapping" ? finish : validate}
+            className={`${button} border-[#0f62fe] bg-[#0f62fe] text-white hover:bg-[#0353e9]`}
+          >
+            {phase === "mapping" ? "Confirm mapping & import" : "Import Data"}
+          </button>
+        </footer>
+      )}
+    </div>
+  )
+}

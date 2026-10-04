@@ -1,0 +1,11 @@
+{
+  "title": "Plug.ai - Energy Operations Platform",
+  "description": "Connect and manage AI tools seamlessly in one platform to boost productivity and streamline workflows for energy professionals and teams.",
+  "robots": {
+    "index": false
+  },
+  "accessibility": {
+    "addBypassLinks": false,
+    "ignoreReducedMotion": false
+  }
+}

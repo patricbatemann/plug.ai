@@ -1,0 +1,178 @@
+{
+  "templates": [
+    {
+      "id": "sell",
+      "title": "Auto-Sell Surplus Energy",
+      "description": "Automatically sell surplus generation to grid when prices are optimal and safety limits are met.",
+      "count": 3,
+      "triggers": [
+        "When surplus generation > 5 MW and site capacity ≤ 45 MW",
+        "AND market price > ₹8.00/kWh",
+        "AND grid stability index > 95%"
+      ],
+      "rules": [
+        "Auto-approve up to: 6 MW",
+        "Above 6 MW: Requires admin approval",
+        "Maximum daily trades: 5",
+        "Cooldown between trades: 15 min"
+      ],
+      "activity": [
+        ["13:38 IST", "Sold 6 MWh at ₹8.40/kWh — Revenue ₹50,400", "Completed"],
+        ["11:20 IST", "Sold 5 MWh at ₹8.10/kWh — Revenue ₹40,500", "Completed"],
+        ["09:05 IST", "Skipped: Market price ₹7.50 below threshold", "Skipped"]
+      ],
+      "summary": "Today: 2 trades · ₹90,900 revenue · 11 MWh sold · 100% success rate"
+    },
+    {
+      "id": "battery",
+      "title": "Battery Charge Management",
+      "description": "Optimize battery discharge to support peak demand while respecting configured reserve, manufacturer recommendation, and organizational floor.",
+      "count": 2,
+      "triggers": [
+        "Site deficit > 3 MW persists for 5 minutes",
+        "AND battery SOC > 60% before discharge starts",
+        "Stop at the 55% configured reserve",
+        "Block unsafe execution or stale battery telemetry"
+      ],
+      "rules": [
+        "Battery capacity: 20 MWh / 8 MW equipment maximum",
+        "Discharge floor: 55% configured reserve",
+        "Locked emergency floor: 30% SOC",
+        "Maximum automatic discharge: 6 MW",
+        "Action cap: 30 minutes / 3 MWh",
+        "Above 6 MW: Requires administrator approval"
+      ],
+      "activity": [
+        ["14:32 IST", "Baseline dispatch 6 MW supporting 44 MW demand", "Executing"],
+        ["09:00 IST", "Charged from 55% reserve to 85% SOC", "Completed"],
+        ["Yesterday 18:30 IST", "Discharged 4 MW (evening peak)", "Completed"]
+      ],
+      "summary": "Today: 2 operations · Battery health 98% · Avg cycle efficiency 94%"
+    },
+    {
+      "id": "grid",
+      "title": "Grid Import on Shortfall",
+      "description": "Recommend grid import when demand exceeds available generation and battery supply.",
+      "count": 1,
+      "triggers": [
+        "Demand exceeds available solar and battery supply",
+        "14:50 IST: 52 MW demand − 38 MW solar − 6 MW battery = 8 MW deficit"
+      ],
+      "rules": [
+        "Proposed import: 8 MW for 15 minutes (2 MWh)",
+        "Administrator approval required",
+        "Approval expires after 10 minutes",
+        "Modified 6 MW import leaves a 2 MW deficit",
+        "Execution requires verified control permission and fresh telemetry"
+      ],
+      "activity": [
+        ["14:50 IST", "8 MW grid import recommended", "Awaiting approval"]
+      ],
+      "summary": "Today: 1 recommendation · No import executed without authorization"
+    },
+    {
+      "id": "maintenance",
+      "title": "Preventive Maintenance Alerts",
+      "description": "Work orders when inverter efficiency < 92%",
+      "count": 1,
+      "triggers": [
+        "Inverter efficiency < 92%",
+        "OR vibration anomaly detected"
+      ],
+      "rules": [
+        "Notify maintenance team",
+        "Create a work order for review; no equipment control"
+      ],
+      "activity": [
+        ["12:50 IST", "Created WO-4521 for panel cleaning", "Completed"]
+      ],
+      "summary": "Today: 1 maintenance alert"
+    },
+    {
+      "id": "notifications",
+      "title": "Notifications & Alerts",
+      "description": "Teams + Email for critical events and approvals",
+      "count": 1,
+      "triggers": [
+        "Critical site events",
+        "Approval requests and expiring authorizations"
+      ],
+      "rules": [
+        "Notify configured Teams and Email recipients",
+        "Include site, action, and audit context"
+      ],
+      "activity": [
+        [
+          "14:50 IST",
+          "Administrator notified of grid-import approval request",
+          "Completed"
+        ]
+      ],
+      "summary": "Today: 1 notification"
+    }
+  ],
+  "requiredSimulations": [
+    {
+      "id": "normal",
+      "label": "Normal 6 MW discharge",
+      "desc": "Verify discharge starts above 3 MW deficit after the 5-minute delay"
+    },
+    {
+      "id": "blocked_soc",
+      "label": "58% SOC blocked (below 60% start threshold)",
+      "desc": "Verify action does not start when battery SOC is below threshold"
+    },
+    {
+      "id": "stop_reserve",
+      "label": "Stop at 55% reserve SOC",
+      "desc": "Verify discharge stops exactly at configured reserve level"
+    },
+    {
+      "id": "high_temp",
+      "label": "High battery temperature block",
+      "desc": "Verify action is blocked when battery temperature exceeds limit"
+    },
+    {
+      "id": "stale_telem",
+      "label": "Battery telemetry delayed >2 minutes",
+      "desc": "Verify safety hold activates on stale telemetry"
+    },
+    {
+      "id": "unavailable",
+      "label": "Battery unavailable — recovery triggered",
+      "desc": "Verify recovery behavior when primary battery becomes unavailable"
+    },
+    {
+      "id": "above_limit",
+      "label": "Discharge above 6 MW requires approval",
+      "desc": "Verify approval gate activates for requests above automatic limit"
+    }
+  ],
+  "configSteps": [
+    "Objective",
+    "Battery selection",
+    "Trigger conditions",
+    "Safety limits",
+    "Automation & approvals",
+    "Recovery behavior",
+    "Notifications"
+  ],
+  "priorities": [
+    { "id": "reliability", "label": "Maintain supply reliability", "recommended": true },
+    { "id": "cost", "label": "Reduce grid purchase cost", "recommended": false },
+    { "id": "peak", "label": "Avoid peak grid demand", "recommended": false },
+    { "id": "renewable", "label": "Maximize renewable energy use", "recommended": false }
+  ],
+  "recoveryOptions": [
+    { "id": "notify-and-hold", "label": "Notify and hold current state", "recommended": true },
+    { "id": "switch-battery", "label": "Switch to secondary battery if available", "recommended": false },
+    { "id": "request-import", "label": "Request grid import approval", "recommended": false },
+    { "id": "load-shed", "label": "Initiate load-shedding protocol", "recommended": false }
+  ],
+  "notificationChannels": [
+    { "id": "sms", "label": "SMS — Operations team" },
+    { "id": "email", "label": "Email — Site managers" },
+    { "id": "push", "label": "Push — Plug.ai mobile app" },
+    { "id": "slack", "label": "Slack — #kuppam-ops channel" }
+  ]
+}
