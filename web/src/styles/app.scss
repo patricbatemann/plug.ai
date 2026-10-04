@@ -243,6 +243,8 @@ body {
 
 .assistant {
   display: flex;
+  padding: $spacing-05;
+  background: theme.$layer-01;
   height: calc(100vh - 16rem);
   max-width: 56rem;
 }
@@ -272,18 +274,19 @@ body {
 .chat__message {
   display: grid;
   gap: $spacing-03;
-  max-width: 90%;
+  max-width: 85%;
   padding: $spacing-04;
   white-space: pre-wrap;
 }
 
 .chat__message--user {
   align-self: flex-end;
-  background: theme.$layer-accent-01;
+  background: theme.$highlight;
 }
 
 .chat__message--assistant {
-  align-self: flex-start;
+  align-self: stretch;
+  max-width: none;
   background: theme.$layer-02;
 }
 
@@ -310,6 +313,11 @@ body {
 
 .chat-card__table {
   @include type-style('body-compact-01');
+  width: 100%;
+
+  td:first-child {
+    white-space: nowrap;
+  }
 
   th,
   td {

@@ -134,8 +134,9 @@ def decide(db: Session, ctx, run, t0: int, cycle_id: int, d: Deliberation, trigg
                 {"role": "user", "content": f"Plan the block starting {start.astimezone(IST):%H:%M}. "
                                             f"Trigger: {trigger}{f' ({detail})' if detail else ''}."}]
     try:
-        turn(db, "cycle", messages, tools, run_id=run.id, cycle_id=cycle_id, budget_s=settings.bob_timeout_s,
-             done=lambda: d.selected_by == "bob")
+        for _ in turn(db, "cycle", messages, tools, run_id=run.id, cycle_id=cycle_id,
+                      budget_s=settings.bob_timeout_s, done=lambda: d.selected_by == "bob"):
+            pass  # nobody watches a cycle turn live
     except Unavailable as error:
         return f"fallback: {error}"
     return "ok" if d.selected_by == "bob" else "fallback: no option selected"

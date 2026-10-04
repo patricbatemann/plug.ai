@@ -2,12 +2,13 @@
 It never executes an action and never activates a configuration. The conversation is kept per
 run and user in chat_message, so any replica can continue it."""
 
+from collections.abc import Iterator
 from dataclasses import asdict, replace
 from datetime import datetime, time, timedelta, timezone
 from typing import Literal
 
 import numpy as np
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
@@ -15,7 +16,6 @@ from app.agent.llm import Tool, Unavailable, turn
 from app.core.config import settings
 from app.models.portfolio import ActionConfig, Asset, Portfolio, Site
 from app.models.run import Action, AssetBlock, ChatMessage, Cycle, Forecast, Run
-from app.models.user import User
 from app.optimize.dispatch import here_and_now
 from app.optimize.profiles import PROFILES
 from app.optimize.robust import solve_all
@@ -26,12 +26,17 @@ from app.services.dispatch import bob_inputs, latest_forecasts
 from app.services.summary import recent_actions, summary
 
 HISTORY_ROWS = 40
+WORKING_ON = {"get_situation": "Reading the live situation", "get_cycle": "Reading the decision record",
+              "get_asset": "Checking the asset", "explain_action": "Looking up the action",
+              "what_if": "Planning the what-if", "draft_action_config": "Drafting the setup",
+              "test_action_config": "Testing the draft"}
 SYSTEM = """You are BOB, the AI orchestrator of an Indian renewable portfolio, answering a control-room \
 operator in PlugAI. Times are IST; money is ₹ (write lakh for 1,00,000); power in MW, energy in MWh.
 
-Answer from tool outputs only, briefly, in plain sentences. When explaining a decision, cite the cycle \
-time, the mode and why, the option chosen and the criterion that decided it. You cannot execute \
-actions, approve them or activate configurations: say what the operator can do instead.
+Answer from tool outputs only, briefly, in plain sentences: no headings, lists or tables. When \
+explaining a decision, cite the cycle time, the mode and why, the option chosen and the criterion that \
+decided it. You cannot execute actions, approve them or activate configurations: say what the \
+operator can do instead.
 
 Setting up an action: use draft_action_config with only the fields the operator asked to change, then \
 test_action_config on the draft, then tell the operator to review and activate it in the setup wizard. \
@@ -82,13 +87,15 @@ class DraftActionConfig(BaseModel):
     asset: str
     kind: Literal[tuple(configs.LIMITS_FOR)]
     name: str | None
-    autonomy: Literal["auto", "approval", "recommend"] | None
-    max_mw: float | None
-    auto_max_mw: float | None
-    reserve_pct: float | None
-    min_price_inr_mwh: float | None
-    response_min: int | None
-    watch_threshold: float | None
+    autonomy: Literal["auto", "approval", "recommend"] | None = Field(description=(
+        "auto: BOB acts alone up to auto_max_mw and asks approval above it; approval: every action needs "
+        "approval; recommend: BOB only recommends"))
+    max_mw: float | None = Field(description="Hard ceiling: BOB never plans above this")
+    auto_max_mw: float | None = Field(description="With autonomy auto, actions above this need approval")
+    reserve_pct: float | None = Field(description="Battery charge kept in reserve, %")
+    min_price_inr_mwh: float | None = Field(description="Sell only above this price")
+    response_min: int | None = Field(description="Minutes an approver has to respond")
+    watch_threshold: float | None = Field(description="Re-plan and flag when the asset's watch metric crosses this")
     remove_watch: bool
 
 
@@ -97,32 +104,41 @@ class TestActionConfig(BaseModel):
     config_id: int
 
 
-def history(db: Session, run: Run, user: User) -> list[ChatMessage]:
-    rows = list(db.scalars(select(ChatMessage).where(ChatMessage.run_id == run.id, ChatMessage.user_id == user.id)
+def history(db: Session, run: Run, user_id: int) -> list[ChatMessage]:
+    rows = list(db.scalars(select(ChatMessage).where(ChatMessage.run_id == run.id, ChatMessage.user_id == user_id)
                            .order_by(ChatMessage.id.desc()).limit(HISTORY_ROWS)))[::-1]
     while rows and rows[0].role != "user":  # never start mid-turn
         rows.pop(0)
     return rows
 
 
-def ask(db: Session, run: Run, user: User, text: str, context: str | None) -> None:
-    """One operator message and BOB's reply, stored. A failed turn stores only an apology, so the
-    stored conversation always replays as a valid sequence."""
+def ask(db: Session, run: Run, user_id: int, text: str, context: str | None) -> Iterator[tuple[str, object]]:
+    """One operator message and BOB's reply, streamed as ("status", label), ("delta", text) and
+    finally ("done", the stored conversation). A failed turn stores only an apology, so the stored
+    conversation always replays as a valid sequence."""
     question = {"role": "user", "content": f"{text}\n\n(Operator is viewing: {context})" if context else text}
-    messages = [{"role": "system", "content": SYSTEM}, *(r.content["message"] for r in history(db, run, user)),
+    messages = [{"role": "system", "content": SYSTEM}, *(r.content["message"] for r in history(db, run, user_id)),
                 question]
     cards: list[dict] = []
     try:
         asked = len(messages)
-        turn(db, "chat", messages, _tools(db, run, cards), run_id=run.id, budget_s=settings.bob_chat_timeout_s)
+        for kind, value in turn(db, "chat", messages, _tools(db, run, cards), run_id=run.id,
+                                budget_s=settings.bob_chat_timeout_s):
+            # A new tool means the text so far was a preamble; the UI clears it on each status.
+            yield ("status", WORKING_ON.get(value, "Working")) if kind == "tool" else ("delta", value)
         new = messages[asked:]
     except Unavailable as error:
         cards = []
         new = [{"role": "assistant", "content": f"I can't answer right now ({error}). Decisions continue on rules."}]
-    db.add(ChatMessage(run_id=run.id, user_id=user.id, role="user", content={"message": question, "text": text}))
+    except GeneratorExit:  # the operator left: keep the call log and any draft already made, not the exchange
+        db.commit()
+        raise
+    db.add(ChatMessage(run_id=run.id, user_id=user_id, role="user", content={"message": question, "text": text}))
     for i, message in enumerate(new):
         content = {"message": message, **({"cards": cards} if i == len(new) - 1 else {})}
-        db.add(ChatMessage(run_id=run.id, user_id=user.id, role=message["role"], content=content))
+        db.add(ChatMessage(run_id=run.id, user_id=user_id, role=message["role"], content=content))
+    db.commit()
+    yield "done", display(history(db, run, user_id))
 
 
 def display(rows: list[ChatMessage]) -> list[dict]:

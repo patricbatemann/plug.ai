@@ -1,13 +1,16 @@
+import json
+from collections.abc import Iterator
 from datetime import datetime, timezone
 
 from fastapi import APIRouter, Body, Depends, HTTPException, Query, status
+from fastapi.responses import StreamingResponse
 from sqlalchemy import select
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, sessionmaker
 
 from app.agent import chat, llm
 from app.api.dependencies import get_current_user
 from app.api.routes.portfolio import current_portfolio
-from app.core.database import get_db
+from app.core.database import get_db, get_session_factory
 from app.models.portfolio import Portfolio
 from app.models.run import Action, Cycle, Run, WorldEvent
 from app.models.user import User
@@ -201,12 +204,20 @@ def decision(cycle_id: int, db: Session = Depends(get_db)) -> DecisionDetail:
 @router.get("/{run_id}/chat", response_model=list[ChatItem])
 def chat_history(run: Run = Depends(_run), db: Session = Depends(get_db),
                  user: User = Depends(get_current_user)) -> list[dict]:
-    return chat.display(chat.history(db, run, user))
+    return chat.display(chat.history(db, run, user.id))
 
 
-@router.post("/{run_id}/chat", response_model=list[ChatItem])
-def ask_bob(payload: ChatAsk, run: Run = Depends(_run), db: Session = Depends(get_db),
-            user: User = Depends(get_current_user)) -> list[dict]:
-    chat.ask(db, run, user, payload.message, payload.context)
-    db.commit()
-    return chat.display(chat.history(db, run, user))
+@router.post("/{run_id}/chat")
+def ask_bob(payload: ChatAsk, run: Run = Depends(_run), user: User = Depends(get_current_user),
+            sessions: sessionmaker = Depends(get_session_factory)) -> StreamingResponse:
+    """Server-sent events: status (a tool started), delta (answer text), done (the stored
+    conversation, with cards)."""
+    run_id, user_id = run.id, user.id
+
+    def events() -> Iterator[str]:
+        with sessions() as db:
+            for name, data in chat.ask(db, db.get(Run, run_id), user_id, payload.message, payload.context):
+                yield f"event: {name}\ndata: {json.dumps(data, default=str)}\n\n"
+
+    return StreamingResponse(events(), media_type="text/event-stream",
+                             headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"})

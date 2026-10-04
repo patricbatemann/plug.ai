@@ -10,7 +10,7 @@ from sqlalchemy import create_engine, text
 from sqlalchemy.orm import Session, sessionmaker
 
 from app.core.config import settings
-from app.core.database import Base, get_db
+from app.core.database import Base, get_db, get_session_factory
 from app.main import app
 
 TEST_DATABASE_URL = os.getenv(
@@ -46,6 +46,7 @@ def db() -> Generator[Session, None, None]:
 @pytest.fixture
 def client(db: Session) -> Generator[TestClient, None, None]:
     app.dependency_overrides[get_db] = lambda: db
+    app.dependency_overrides[get_session_factory] = lambda: TestingSession
     yield TestClient(app)
     app.dependency_overrides.clear()
 

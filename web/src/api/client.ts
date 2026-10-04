@@ -206,7 +206,7 @@ export const tokenStore = {
 
 const apiUrl = (import.meta.env.VITE_API_URL || 'http://localhost:8000').replace(/\/$/, '')
 
-async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
+async function send(path: string, init: RequestInit = {}): Promise<Response> {
   const token = tokenStore.get()
   const response = await fetch(`${apiUrl}${path}`, {
     ...init,
@@ -230,7 +230,35 @@ async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
     }
     throw new ApiError(message, response.status)
   }
-  return response.json() as Promise<T>
+  return response
+}
+
+async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
+  return (await send(path, init)).json() as Promise<T>
+}
+
+export type ChatEvent =
+  | { event: 'status'; data: string }
+  | { event: 'delta'; data: string }
+  | { event: 'done'; data: ChatItem[] }
+
+/** Reads a server-sent event stream; EventSource cannot POST or send the token. */
+async function stream(path: string, body: unknown, onEvent: (e: ChatEvent) => void): Promise<void> {
+  const response = await send(path, { method: 'POST', body: JSON.stringify(body) })
+  const reader = response.body!.pipeThrough(new TextDecoderStream()).getReader()
+  let buffer = ''
+  for (;;) {
+    const { value, done } = await reader.read()
+    if (done) break
+    buffer += value
+    const frames = buffer.split('\n\n')
+    buffer = frames.pop()!
+    for (const frame of frames) {
+      const event = /^event: (.*)$/m.exec(frame)?.[1]
+      const data = /^data: (.*)$/m.exec(frame)?.[1]
+      if (event && data) onEvent({ event, data: JSON.parse(data) } as ChatEvent)
+    }
+  }
 }
 
 export const authApi = {
@@ -282,7 +310,8 @@ export const runApi = {
   latestDecision: (id: number) => request<DecisionSummary>(`/api/runs/${id}/decisions/latest`),
   decision: (cycleId: number) => request<DecisionDetail>(`/api/runs/decisions/${cycleId}`),
   chat: (id: number) => request<ChatItem[]>(`/api/runs/${id}/chat`),
-  ask: (id: number, message: string, context?: string) => post<ChatItem[]>(`/api/runs/${id}/chat`, { message, context }),
+  ask: (id: number, message: string, context: string | undefined, onEvent: (e: ChatEvent) => void) =>
+    stream(`/api/runs/${id}/chat`, { message, context }, onEvent),
   siteLive: (id: number, code: string) =>
     request<SiteLive>(`/api/runs/${id}/sites/${encodeURIComponent(code)}/live`),
 }

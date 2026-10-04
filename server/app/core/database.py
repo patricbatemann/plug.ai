@@ -14,6 +14,12 @@ engine = create_engine(settings.database_url, pool_pre_ping=True)
 SessionLocal = sessionmaker(bind=engine, autoflush=False, autocommit=False)
 
 
+def get_session_factory() -> sessionmaker:
+    """For work that outlives the request, such as a streamed response: FastAPI closes the
+    request's session before the response body is sent."""
+    return SessionLocal
+
+
 def get_db() -> Generator[Session, None, None]:
     db = SessionLocal()
     try:

@@ -1,3 +1,4 @@
+import contextlib
 import json
 from datetime import datetime, timezone
 from types import SimpleNamespace
@@ -6,7 +7,7 @@ import httpx
 import numpy as np
 import openai
 from fastapi.testclient import TestClient
-from openai.types.chat import ChatCompletion
+from openai.types.chat import ChatCompletionChunk
 from sqlalchemy import func, select, update
 from sqlalchemy.orm import Session
 
@@ -168,22 +169,26 @@ def test_configure_test_activate_watch_and_pause(client: TestClient, db: Session
 
 
 class FakeModel:
-    """Stands in for Azure: `reply(messages)` gives (tool, arguments) to call, or the final text."""
+    """Stands in for Azure: `reply(messages)` gives (tool, arguments) to call, or the final text,
+    streamed in chunks as the API sends them."""
 
     def __init__(self, reply) -> None:
         self.reply = reply
         self.chat = SimpleNamespace(completions=self)
 
-    def create(self, messages: list[dict], **_) -> ChatCompletion:
+    def create(self, messages: list[dict], **_) -> contextlib.nullcontext:
         out = self.reply(messages)
-        message = {"role": "assistant", "content": out} if isinstance(out, str) else {
-            "role": "assistant", "content": None, "tool_calls": [{
-                "id": f"call{len(messages)}", "type": "function",
-                "function": {"name": out[0], "arguments": json.dumps(out[1])}}]}
-        return ChatCompletion.model_validate({
-            "id": "x", "object": "chat.completion", "created": 0, "model": "fake",
-            "choices": [{"index": 0, "finish_reason": "stop", "message": message}],
-            "usage": {"prompt_tokens": 10, "completion_tokens": 5, "total_tokens": 15}})
+        chunk = lambda delta, usage=None: ChatCompletionChunk.model_validate({  # noqa: E731
+            "id": "x", "object": "chat.completion.chunk", "created": 0, "model": "fake", "usage": usage,
+            "choices": [{"index": 0, "delta": delta}] if delta else []})
+        if isinstance(out, str):
+            middle = len(out) // 2
+            deltas = [{"content": out[:middle]}, {"content": out[middle:]}]
+        else:
+            deltas = [{"tool_calls": [{"index": 0, "id": f"call{len(messages)}", "type": "function",
+                                       "function": {"name": out[0], "arguments": json.dumps(out[1])}}]}]
+        usage = {"prompt_tokens": 10, "completion_tokens": 5, "total_tokens": 15}
+        return contextlib.nullcontext([*map(chunk, deltas), chunk(None, usage)])
 
 
 def test_bob_decides_within_bounds_falls_back_to_rules_and_chat_never_breaches_limits(
@@ -242,8 +247,13 @@ def test_bob_decides_within_bounds_falls_back_to_rules_and_chat_never_breaches_l
                             "asset": "BESS-01", "kind": "battery_discharge", "name": None, "autonomy": None,
                             "max_mw": None, "auto_max_mw": None, "reserve_pct": 0, "min_price_inr_mwh": None,
                             "response_min": None, "watch_threshold": None, "remove_watch": False})))
-    answer = client.post(f"{url}/chat", json={"message": "Remove the minimum battery reserve"}, headers=auth_headers)
-    *_, reply = answer.json()
+    stream = client.post(f"{url}/chat", json={"message": "Remove the minimum battery reserve"}, headers=auth_headers)
+    events = [(frame.split("\n")[0].removeprefix("event: "), json.loads(frame.split("\n")[1].removeprefix("data: ")))
+              for frame in stream.text.strip().split("\n\n")]
+    assert [name for name, _ in events] == ["status", "delta", "delta", "done"]
+    assert events[0][1] == "Drafting the setup" and "".join(d for n, d in events if n == "delta") == \
+        "Blocked by a protected limit."
+    *_, reply = events[-1][1]
     assert reply["cards"][0]["type"] == "blocked" and "30 %" in reply["cards"][0]["text"]
     assert db.scalar(select(func.count()).select_from(ActionConfig)) == drafts
     assert [m["role"] for m in client.get(f"{url}/chat", headers=auth_headers).json()] == ["user", "assistant"]

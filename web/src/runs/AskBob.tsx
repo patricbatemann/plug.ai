@@ -60,15 +60,28 @@ export function Chat({ question }: { question?: string }) {
   const [text, setText] = useState(question ?? '')
   const end = useRef<HTMLDivElement>(null)
   const history = useQuery({ queryKey: ['chat', run?.id], queryFn: () => runApi.chat(run!.id), enabled: !!run })
+  // The answer as it streams in; a new status means BOB moved on to a tool, so earlier text was a preamble.
+  const [live, setLive] = useState({ status: '', text: '' })
   const send = useMutation({
-    mutationFn: (message: string) => runApi.ask(run!.id, message, context),
-    onSuccess: (items) => {
-      queryClient.setQueryData(['chat', run!.id], items)
-      setText('')
-      queryClient.invalidateQueries({ queryKey: ['configs'] }) // a draft may have changed
+    mutationFn: async (message: string) => {
+      let finished = false
+      await runApi.ask(run!.id, message, context, (e) => {
+        if (e.event === 'status') setLive({ status: e.data, text: '' })
+        else if (e.event === 'delta') setLive((l) => ({ status: '', text: l.text + e.data }))
+        else {
+          finished = true
+          queryClient.setQueryData(['chat', run!.id], e.data)
+          queryClient.invalidateQueries({ queryKey: ['configs'] }) // a draft may have changed
+        }
+      })
+      if (!finished) throw new Error('The answer was cut off. Ask again.')
     },
+    onMutate: () => { setText(''); setLive({ status: '', text: '' }) }, // the question shows while BOB works
+    onError: (_, message) => setText(message),
   })
-  useEffect(() => end.current?.scrollIntoView({ behavior: 'smooth' }), [history.data, send.isPending])
+  useEffect(() => {
+    end.current?.scrollIntoView({ behavior: 'smooth' })
+  }, [history.data, send.isPending, live])
 
   if (!run) return <p className="page-meta">Start a run to talk to BOB.</p>
   const submit = (message: string) => message.trim() && !send.isPending && send.mutate(message.trim())
@@ -87,14 +100,18 @@ export function Chat({ question }: { question?: string }) {
         )}
         {items.map((m) => (
           <div key={m.id} className={`chat__message chat__message--${m.role}`}>
-            {m.text && <p>{m.text}</p>}
-            {m.cards.map((c, i) => <CardView key={i} card={c} />)}
+            {m.text && <p>{withBold(m.text)}</p>}
+            {m.cards.map((c, i) => <CardView key={i} card={c} last={i === m.cards.length - 1} />)}
           </div>
         ))}
         {send.isPending && (
           <>
             <div className="chat__message chat__message--user"><p>{send.variables}</p></div>
-            <InlineLoading description="BOB is working…" />
+            {live.text ? (
+              <div className="chat__message chat__message--assistant"><p>{withBold(live.text)}</p></div>
+            ) : (
+              <InlineLoading description={`${live.status || 'BOB is thinking'}…`} />
+            )}
           </>
         )}
         {send.error && <InlineNotification kind="error" lowContrast hideCloseButton title={send.error.message} />}
@@ -113,7 +130,12 @@ export function Chat({ question }: { question?: string }) {
   )
 }
 
-function CardView({ card }: { card: ChatCard }) {
+/** BOB writes plain prose but may bold a figure with **…**. */
+const withBold = (text: string) =>
+  text.split(/\*\*(.+?)\*\*/g).map((part, i) => (i % 2 ? <strong key={i}>{part}</strong> : part))
+
+/** `last` carries the wizard link, so a draft followed by its tests links once. */
+function CardView({ card, last }: { card: ChatCard; last: boolean }) {
   if (card.type === 'blocked') {
     return (
       <Tile className="chat-card chat-card--blocked">
@@ -124,7 +146,7 @@ function CardView({ card }: { card: ChatCard }) {
   }
   if (card.type === 'what_if') {
     const rows: Array<[string, (p: WhatIfPlan) => string]> = [
-      ['Net cost, 24 h', (p) => netCost(p.net_cost_inr ?? 0)],
+      ['Net cost (24 h)', (p) => netCost(p.net_cost_inr ?? 0)],
       ['Carbon', (p) => `${p.carbon_t} t`],
       ['Curtailed', (p) => mwh(p.curtailed_mwh ?? 0)],
       ['Unserved', (p) => mwh(p.unserved_mwh ?? 0)],
@@ -159,11 +181,13 @@ function CardView({ card }: { card: ChatCard }) {
         <>
           <div className="card-title">Tests: {configKindLabel(card.kind)} · {card.asset_name}</div>
           {Object.entries(card.tests).map(([key, t]) => (
-            <p key={key}><Tag size="sm" type={t.passed ? 'green' : 'red'}>{t.passed ? 'Passed' : 'Failed'}</Tag> {t.label}</p>
+            <div key={key} className="action-card__head">
+              <Tag size="sm" type={t.passed ? 'green' : 'red'}>{t.passed ? 'Passed' : 'Failed'}</Tag> {t.label}
+            </div>
           ))}
         </>
       )}
-      <Link className="cds--link" to={link}>Review and activate in setup</Link>
+      {last && <Link className="cds--link" to={link}>Review and activate in setup</Link>}
     </Tile>
   )
 }
