@@ -2,8 +2,10 @@ import { Navigate, Route, Routes } from 'react-router-dom'
 import { Layout } from './components/Layout'
 import { ActionsPage } from './pages/ActionsPage'
 import { AuthPage } from './pages/AuthPage'
+import { ConfigureBobPage } from './pages/ConfigureBobPage'
 import { DecisionPage } from './pages/DecisionPage'
 import { PortfolioPage } from './pages/PortfolioPage'
+import { SetupWizardPage } from './pages/SetupWizardPage'
 import { SitePage } from './pages/SitePage'
 import { RequireAuth } from './auth/RequireAuth'
 
@@ -16,6 +18,8 @@ export function App() {
         <Route element={<Layout />}>
           <Route path="portfolio" element={<PortfolioPage />} />
           <Route path="sites/:code" element={<SitePage />} />
+          <Route path="sites/:code/bob" element={<ConfigureBobPage />} />
+          <Route path="sites/:code/bob/setup" element={<SetupWizardPage />} />
           <Route path="decisions/:id" element={<DecisionPage />} />
           <Route path="actions" element={<ActionsPage />} />
         </Route>

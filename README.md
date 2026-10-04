@@ -58,6 +58,8 @@ Other targets: `make test` runs backend tests (needs `make db-up`) and the colou
 | `GET` | `/api/runs/{id}/decisions/latest`, `/api/runs/decisions/{cycle}` | Latest decision; full decision record |
 | `POST` | `/api/runs/{id}/actions/{action}/approve`, `/decline` | Decide a gated action before its deadline |
 | `GET` | `/api/runs/{id}/events?after=` | Fired world events (for notifications) |
+| `GET` / `POST` | `/api/sites/{code}/configs`, `/api/sites/{code}/config-options` | Configured actions; save a draft |
+| `POST` / `PATCH` | `/api/configs/{id}/test`, `/activate`; `/api/configs/{id}` | Test and activate a draft; pause or resume |
 
 All endpoints except register and login need `Authorization: Bearer <token>`.
 

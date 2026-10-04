@@ -117,3 +117,7 @@ class ActionConfig(Base):
     limits: Mapped[dict[str, Any]] = mapped_column(JSONB)
     # approver, response_min
     approval: Mapped[dict[str, Any]] = mapped_column(JSONB)
+    # [{metric, value}]: crossing one makes BOB re-plan and shows on the site's AI Actions tab
+    watch: Mapped[list[dict[str, Any]]] = mapped_column(JSONB, server_default="[]")
+    # Last test results by scenario: {label, passed, detail}
+    tests: Mapped[dict[str, Any]] = mapped_column(JSONB, server_default="{}")

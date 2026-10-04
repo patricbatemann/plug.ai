@@ -1,6 +1,6 @@
 import { useQuery } from '@tanstack/react-query'
 import { SkeletonText, Table, TableBody, TableCell, TableHead, TableHeader, TableRow, Tag } from '@carbon/react'
-import { runApi, type RunState } from '../api/client'
+import { configApi, runApi, type RunState } from '../api/client'
 import { actionLabel, mw, simTime } from '../format'
 import { ActionCard } from './ActionCard'
 import { useOpenActions } from './useActions'
@@ -11,6 +11,10 @@ export function SiteActions({ run, site }: { run: RunState; site: string }) {
   const recent = useQuery({
     queryKey: ['actions', 'site', run.id, site, run.block],
     queryFn: () => runApi.actions(run.id, { status: ['acked', 'verified'], site, limit: 15 }),
+  })
+  const watch = useQuery({
+    queryKey: ['watch', run.id, site, run.block],
+    queryFn: () => configApi.watch(run.id, site),
   })
   if (!open.data || !recent.data) return <SkeletonText paragraph lineCount={4} />
   const now = recent.data.filter((a) => a.block === run.block + 1)
@@ -24,6 +28,17 @@ export function SiteActions({ run, site }: { run: RunState; site: string }) {
       {open.data.length === 0 && <p className="page-meta">Nothing waiting for this site.</p>}
       {open.data.map((a) => (
         <ActionCard key={a.id} action={a} run={run} />
+      ))}
+      <h2 className="section-title">Watch conditions ({watch.data?.length ?? 0})</h2>
+      {watch.data?.length === 0 && <p className="page-meta">No watch conditions. Add them in Configure BOB.</p>}
+      {watch.data?.map((w) => (
+        <div key={`${w.asset}-${w.label}`} className="action-card__head">
+          <Tag size="sm" type={w.met ? 'warm-gray' : 'gray'}>{w.met ? 'Crossed: BOB re-planned' : 'Watching'}</Tag>
+          <span>
+            {w.asset}: {w.label}
+          </span>
+          <span className="stat-label">now {w.value === null ? '—' : w.value.toFixed(1)}</span>
+        </div>
       ))}
       <h2 className="section-title">Recently verified</h2>
       <ActionTable rows={earlier} empty="No verified actions yet." />

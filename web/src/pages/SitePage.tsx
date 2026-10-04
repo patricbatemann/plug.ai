@@ -1,9 +1,10 @@
 import { useState } from 'react'
-import { Link, useParams } from 'react-router-dom'
+import { Link, useNavigate, useParams } from 'react-router-dom'
 import { useQuery } from '@tanstack/react-query'
 import {
   Breadcrumb,
   BreadcrumbItem,
+  Button,
   InlineNotification,
   SkeletonText,
   Tab,
@@ -31,6 +32,7 @@ export function SitePage() {
   const { data, error } = useQuery({ queryKey: ['site', code], queryFn: () => portfolioApi.site(code) })
   const { data: run } = useCurrentRun()
   const [tab, setTab] = useState<number | null>(null)
+  const navigate = useNavigate()
 
   if (error) return <InlineNotification kind="error" title="Could not load the site" subtitle={error.message} hideCloseButton lowContrast />
   if (!data) return <SkeletonText paragraph lineCount={6} />
@@ -47,9 +49,12 @@ export function SitePage() {
         </BreadcrumbItem>
         <BreadcrumbItem isCurrentPage>{data.name}</BreadcrumbItem>
       </Breadcrumb>
-      <h1 className="page-title">
-        {data.name} · {data.code}
-      </h1>
+      <div className="page-head">
+        <h1 className="page-title">
+          {data.name} · {data.code}
+        </h1>
+        <Button kind="tertiary" onClick={() => navigate(`/sites/${data.code}/bob`)}>Configure BOB</Button>
+      </div>
       <p className="page-meta">
         {data.location} · Commissioned {data.commissioned_on.slice(0, 4)}
       </p>

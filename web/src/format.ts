@@ -78,3 +78,29 @@ export function batteryState(mw: number, available: boolean): string {
   if (mw < -0.05) return `Charging at ${(-mw).toFixed(1)} MW`
   return 'Idle'
 }
+
+const CONFIG_KINDS: Record<string, string> = {
+  battery_charge: 'Charge battery',
+  battery_discharge: 'Discharge battery',
+  curtail: 'Limit plant output',
+  demand_response: 'Call demand response',
+  load_shift: 'Move industrial load',
+  grid_import: 'Buy in the real-time market',
+  grid_export: 'Sell in the real-time market',
+}
+export const configKindLabel = (kind: string) => CONFIG_KINDS[kind] ?? kind
+
+export const AUTONOMY: Record<string, { label: string; detail: string }> = {
+  recommend: { label: 'Recommend only', detail: 'BOB identifies the situation and suggests an action; a person starts it.' },
+  approval: { label: 'Approval required', detail: 'BOB prepares the action and waits for an authorised person.' },
+  auto: { label: 'Automatic within limits', detail: 'BOB acts when its plan calls for it and every limit is met.' },
+}
+
+export function limitsSummary(limits: Record<string, number>): string[] {
+  const out = []
+  if (limits.auto_max_mw !== undefined) out.push(`Automatic up to ${limits.auto_max_mw} MW, approval above`)
+  if (limits.max_mw !== undefined) out.push(`Never more than ${limits.max_mw} MW`)
+  if (limits.reserve_pct !== undefined) out.push(`Keeps ${limits.reserve_pct} % charge in reserve`)
+  if (limits.min_price_inr_mwh) out.push(`Sells only above ₹${limits.min_price_inr_mwh}/MWh`)
+  return out
+}

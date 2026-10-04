@@ -17,7 +17,7 @@ from app.optimize.profiles import BALANCED, PROFILES, VARIANT_LABELS, VARIANTS, 
 from app.optimize.robust import choose_option, evaluate, scenarios, solve_all
 from app.optimize.situation import apply_floors, assess, choose_mode, to_json
 from app.optimize.validator import check
-from app.services import policy
+from app.services import configs, policy
 from app.sim.adapters import deliver
 from app.sim.market import dsm_inr
 from app.sim.plant import Setpoints, settle
@@ -336,7 +336,13 @@ def latest_forecasts(db: Session, ctx, run: Run, t0: int) -> dict:
 
 def plan_block(db: Session, ctx, truth: World, run: Run, t0: int) -> None:
     forecasts = latest_forecasts(db, ctx, run, t0)
-    plan_bob(db, ctx, truth, run, t0, forecasts, run.sim_start_at + t0 * BLOCK_SPAN)
+    hits = []
+    if t0 > 0:  # watch conditions on the block just settled, against the forecast made for it
+        made_for = latest_forecasts(db, ctx, run, t0 - 1)
+        hits = configs.watch_hits(db, run, t0 - 1, {code: f.p50[0] for (series, code), f in made_for.items()
+                                                    if series == "re_avail"})
+    plan_bob(db, ctx, truth, run, t0, forecasts, run.sim_start_at + t0 * BLOCK_SPAN,
+             trigger="watch" if hits else "tick", detail="; ".join(hits))
     plan_baseline(db, ctx, truth, run, t0, forecasts)
 
 

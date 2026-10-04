@@ -32,7 +32,7 @@ export function RunControl() {
       <span className="run-control__clock">
         {run.name} · {simTime(run.sim_time)} IST
       </span>
-      {!run.live && run.status !== 'done' ? (
+      {!run.live && run.status === 'running' ? (
         <InlineLoading description="Fast-forwarding" />
       ) : (
         <Tag size="sm" type={STATUS_TAG[run.status]}>

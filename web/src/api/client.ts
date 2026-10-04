@@ -281,3 +281,52 @@ export const runApi = {
   siteLive: (id: number, code: string) =>
     request<SiteLive>(`/api/runs/${id}/sites/${encodeURIComponent(code)}/live`),
 }
+
+export interface ConfigValues {
+  name: string
+  autonomy: 'auto' | 'approval' | 'recommend'
+  limits: Record<string, number>
+  approval: { response_min?: number; approver?: string }
+  watch: Array<{ metric: string; value: number }>
+}
+
+export interface ConfigOut extends ConfigValues {
+  id: number
+  asset: string
+  asset_name: string
+  kind: string
+  status: 'draft' | 'testing' | 'active' | 'paused'
+  version: number
+  current: boolean
+  tests: Record<string, { label: string; passed: boolean; detail: string }>
+  actions_today: number
+  active: ConfigValues | null
+}
+
+export interface ConfigOptions {
+  assets: Array<{
+    code: string
+    name: string
+    kind: string
+    capacity_mw: number
+    actions: string[]
+    watch_metric: string | null
+    watch_label: string | null
+  }>
+  protected: { battery_soc_floor_pct?: number; approval_above_mw?: number }
+}
+
+export const configApi = {
+  list: (site: string) => request<ConfigOut[]>(`/api/sites/${site}/configs`),
+  options: (site: string) => request<ConfigOptions>(`/api/sites/${site}/config-options`),
+  save: (site: string, draft: ConfigValues & { asset: string; kind: string }) =>
+    post<ConfigOut>(`/api/sites/${site}/configs`, draft),
+  test: (id: number) => post<ConfigOut>(`/api/configs/${id}/test`),
+  activate: (id: number) => post<ConfigOut>(`/api/configs/${id}/activate`),
+  setStatus: (id: number, status: 'active' | 'paused') =>
+    request<ConfigOut>(`/api/configs/${id}`, { method: 'PATCH', body: JSON.stringify({ status }) }),
+  watch: (runId: number, site: string) =>
+    request<Array<{ asset: string; label: string; value: number | null; met: boolean }>>(
+      `/api/runs/${runId}/sites/${site}/watch`,
+    ),
+}

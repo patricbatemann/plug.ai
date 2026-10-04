@@ -85,6 +85,7 @@ body {
 
 .run-control__clock {
   @include type-style('body-compact-01');
+  white-space: nowrap;
   font-variant-numeric: tabular-nums;
 }
 
@@ -177,4 +178,35 @@ body {
 .action-card__why {
   background: theme.$layer-02;
   padding: $spacing-04;
+}
+
+.page-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: $spacing-05;
+}
+
+.config-card__body {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: $spacing-07;
+  padding: $spacing-04 0;
+}
+
+.wizard__steps {
+  margin: $spacing-05 0 $spacing-07;
+}
+
+.wizard__panel {
+  max-width: 48rem;
+}
+
+.wizard__protected {
+  background: theme.$layer-02;
+}
+
+.wizard__buttons {
+  display: flex;
+  gap: $spacing-04;
 }

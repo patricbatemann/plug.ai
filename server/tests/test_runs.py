@@ -9,6 +9,7 @@ from app.core.config import settings
 from app.models.portfolio import ActionConfig, Asset
 from app.models.run import Action, AssetBlock, Cycle
 from app.seed import seed
+from app.services import policy
 from app.services.portfolio import get_portfolio
 from app.services.runs import RunContext, advance, claim_due_run, create_run
 from tests.conftest import TestingSession
@@ -122,3 +123,39 @@ def test_events_replan_and_gated_actions_wait_for_approval(
     client.post(f"{url}/step", headers=auth_headers)
     latest = db.scalar(select(Cycle).where(Cycle.run_id == run["id"]).order_by(Cycle.id.desc()).limit(1))
     assert latest.status == "safe_hold"
+
+
+def test_configure_test_activate_watch_and_pause(client: TestClient, db: Session, auth_headers: dict[str, str]) -> None:
+    seed(db)
+    run = client.post("/api/runs", json={"preset": "calm_day"}, headers=auth_headers).json()
+    url = f"/api/runs/{run['id']}"
+    client.post(f"{url}/pause", headers=auth_headers)
+    client.post(f"{url}/step", headers=auth_headers)
+
+    draft = {"asset": "BESS-01", "kind": "battery_discharge", "name": "Discharge Battery 1", "autonomy": "approval",
+             "limits": {"max_mw": 12, "auto_max_mw": 6, "reserve_pct": 20}, "approval": {"response_min": 10},
+             "watch": [{"metric": "soc_below_pct", "value": 99}]}
+    blocked = client.post("/api/sites/KUP-SOLAR-001/configs", json=draft, headers=auth_headers)
+    assert blocked.status_code == 422 and blocked.json()["detail"].startswith("Protected boundary")
+
+    draft["limits"]["reserve_pct"] = 50
+    saved = client.post("/api/sites/KUP-SOLAR-001/configs", json=draft, headers=auth_headers).json()
+    assert saved["current"] is False and saved["active"]["autonomy"] == "auto"
+    assert client.post(f"/api/configs/{saved['id']}/activate", headers=auth_headers).status_code == 409
+    tested = client.post(f"/api/configs/{saved['id']}/test", headers=auth_headers).json()
+    assert len(tested["tests"]) == 3 and all(t["passed"] for t in tested["tests"].values())
+    active = client.post(f"/api/configs/{saved['id']}/activate", headers=auth_headers).json()
+    assert active["current"] and active["version"] == 2
+
+    client.post(f"{url}/step", headers=auth_headers)  # Battery 1 is below 99 %: the watch condition fires
+    db.expire_all()
+    latest = db.scalar(select(Cycle).where(Cycle.run_id == run["id"]).order_by(Cycle.id.desc()).limit(1))
+    assert latest.trigger == "watch" and "Battery 1" in latest.trigger_detail
+    watch = client.get(f"{url}/sites/KUP-SOLAR-001/watch", headers=auth_headers).json()
+    assert watch and watch[0]["met"]
+
+    listed = client.get("/api/sites/KUP-SOLAR-001/configs", headers=auth_headers).json()
+    discharge = next(c for c in listed if c["kind"] == "battery_discharge")
+    assert discharge["id"] == active["id"]
+    client.patch(f"/api/configs/{discharge['id']}", json={"status": "paused"}, headers=auth_headers)
+    assert "battery_discharge:BESS-01" not in policy.allowed(db, get_portfolio(db).id)
