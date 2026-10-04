@@ -51,3 +51,30 @@ const clock = new Intl.DateTimeFormat('en-IN', {
 })
 
 export const simTime = (iso: string) => clock.format(new Date(iso))
+
+const rupees = new Intl.NumberFormat('en-IN', { style: 'currency', currency: 'INR', maximumFractionDigits: 0 })
+export const inr = (value: number) => rupees.format(value || 0)
+
+const ACTION_LABELS: Record<string, string> = {
+  bess_charge: 'Battery charge',
+  bess_discharge: 'Battery discharge',
+  rtm_buy: 'Market buy',
+  rtm_sell: 'Market sell',
+  curtail: 'Output limit',
+  dr_call: 'Demand response call',
+}
+
+export function actionLabel(kind: string, mw: number): string {
+  if (kind === 'load_shift') return mw < 0 ? 'Load moved in' : 'Load moved out'
+  return ACTION_LABELS[kind] ?? kind
+}
+
+/** A cost that is negative is money earned; say so instead of showing a minus sign. */
+export const netCost = (value: number) => (value < 0 ? `${inr(-value)} earned` : `${inr(value)} cost`)
+
+export function batteryState(mw: number, available: boolean): string {
+  if (!available) return 'Unavailable'
+  if (mw > 0.05) return `Discharging at ${mw.toFixed(1)} MW`
+  if (mw < -0.05) return `Charging at ${(-mw).toFixed(1)} MW`
+  return 'Idle'
+}

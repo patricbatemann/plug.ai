@@ -18,6 +18,7 @@ class Portfolio(Base):
     name: Mapped[str] = mapped_column(String(120))
     tz: Mapped[str] = mapped_column(String(40))
     mode_code: Mapped[str] = mapped_column(String(32))
+    market: Mapped[dict[str, Any]] = mapped_column(JSONB)
 
     sites: Mapped[list["Site"]] = relationship(back_populates="portfolio", order_by="Site.id")
 

@@ -119,3 +119,8 @@ body {
 .live .card-grid {
   margin-bottom: 0;
 }
+
+.section-title {
+  @include type-style('heading-03');
+  margin: $spacing-08 0 $spacing-05;
+}

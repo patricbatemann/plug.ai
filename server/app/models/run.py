@@ -1,13 +1,15 @@
 from datetime import datetime
 from typing import Any
 
-from sqlalchemy import ARRAY, CheckConstraint, DateTime, Float, ForeignKey, Index, Integer, String, func
+from sqlalchemy import ARRAY, CheckConstraint, DateTime, Float, ForeignKey, Index, Integer, String, UniqueConstraint, func
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.core.database import Base
 
 RUN_STATUSES = ("running", "paused", "done")
+# Each run is settled twice on the same world: BOB's plan and today's rule-based practice.
+POLICIES = ("bob", "baseline")
 
 
 class Run(Base):
@@ -31,6 +33,8 @@ class Run(Base):
     block_started_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
     next_due_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
     paused_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    # Day-ahead net drawal (MW per block), fixed when the run starts.
+    dam_schedule: Mapped[list[float]] = mapped_column(ARRAY(Float))
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 
 
@@ -55,6 +59,7 @@ class AssetBlock(Base):
     __tablename__ = "asset_block"
 
     run_id: Mapped[int] = mapped_column(ForeignKey("run.id", ondelete="CASCADE"), primary_key=True)
+    policy: Mapped[str] = mapped_column(String(16), primary_key=True)
     block: Mapped[int] = mapped_column(Integer, primary_key=True)
     asset_id: Mapped[int] = mapped_column(ForeignKey("asset.id", ondelete="CASCADE"), primary_key=True)
     available_mw: Mapped[float] = mapped_column(Float)
@@ -66,12 +71,22 @@ class SystemBlock(Base):
     __tablename__ = "system_block"
 
     run_id: Mapped[int] = mapped_column(ForeignKey("run.id", ondelete="CASCADE"), primary_key=True)
+    policy: Mapped[str] = mapped_column(String(16), primary_key=True)
     block: Mapped[int] = mapped_column(Integer, primary_key=True)
     frequency_hz: Mapped[float] = mapped_column(Float)
     dam_price: Mapped[float] = mapped_column(Float)
     rtm_price: Mapped[float] = mapped_column(Float)
     emission_factor: Mapped[float] = mapped_column(Float)
     net_exchange_mw: Mapped[float] = mapped_column(Float)
+    schedule_mw: Mapped[float] = mapped_column(Float)
+    deviation_mw: Mapped[float] = mapped_column(Float)
+    # Costs for the block (₹): market trades, deviation settlement, demand response,
+    # battery wear and curtailment compensation; cost_inr is their total.
+    market_inr: Mapped[float] = mapped_column(Float)
+    dsm_inr: Mapped[float] = mapped_column(Float)
+    dr_inr: Mapped[float] = mapped_column(Float)
+    wear_inr: Mapped[float] = mapped_column(Float)
+    curtail_inr: Mapped[float] = mapped_column(Float)
     cost_inr: Mapped[float] = mapped_column(Float)
     carbon_t: Mapped[float] = mapped_column(Float)
     curtailed_mwh: Mapped[float] = mapped_column(Float)
@@ -82,6 +97,7 @@ class LineBlock(Base):
     __tablename__ = "line_block"
 
     run_id: Mapped[int] = mapped_column(ForeignKey("run.id", ondelete="CASCADE"), primary_key=True)
+    policy: Mapped[str] = mapped_column(String(16), primary_key=True)
     block: Mapped[int] = mapped_column(Integer, primary_key=True)
     line_id: Mapped[int] = mapped_column(ForeignKey("line.id", ondelete="CASCADE"), primary_key=True)
     limit_mw: Mapped[float] = mapped_column(Float)
@@ -102,3 +118,54 @@ class Forecast(Base):
     p10: Mapped[list[float]] = mapped_column(ARRAY(Float))
     p50: Mapped[list[float]] = mapped_column(ARRAY(Float))
     p90: Mapped[list[float]] = mapped_column(ARRAY(Float))
+
+
+class Cycle(Base):
+    """One decision cycle: BOB plans the block about to start."""
+
+    __tablename__ = "cycle"
+    __table_args__ = (UniqueConstraint("run_id", "block", "seq"),)
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    run_id: Mapped[int] = mapped_column(ForeignKey("run.id", ondelete="CASCADE"))
+    block: Mapped[int] = mapped_column(Integer)
+    seq: Mapped[int] = mapped_column(Integer, default=0)
+    trigger: Mapped[str] = mapped_column(String(16))
+    status: Mapped[str] = mapped_column(String(16))
+    timings: Mapped[dict[str, Any]] = mapped_column(JSONB)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+
+class Plan(Base):
+    __tablename__ = "plan"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    cycle_id: Mapped[int] = mapped_column(ForeignKey("cycle.id", ondelete="CASCADE"), index=True)
+    variant: Mapped[str] = mapped_column(String(16))
+    role: Mapped[str] = mapped_column(String(16))
+    kpis: Mapped[dict[str, Any]] = mapped_column(JSONB)
+    # Columnar arrays over the horizon, read whole by the charts.
+    schedule: Mapped[dict[str, Any]] = mapped_column(JSONB)
+    solver: Mapped[dict[str, Any]] = mapped_column(JSONB)
+
+
+class Action(Base):
+    """One dispatch decision, from proposal to verification."""
+
+    __tablename__ = "action"
+    __table_args__ = (Index("ix_action_run_block", "run_id", "policy", "block"),)
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    run_id: Mapped[int] = mapped_column(ForeignKey("run.id", ondelete="CASCADE"))
+    policy: Mapped[str] = mapped_column(String(16))
+    cycle_id: Mapped[int | None] = mapped_column(ForeignKey("cycle.id", ondelete="CASCADE"))
+    block: Mapped[int] = mapped_column(Integer)  # delivery block
+    kind: Mapped[str] = mapped_column(String(24))
+    asset_id: Mapped[int | None] = mapped_column(ForeignKey("asset.id", ondelete="CASCADE"))
+    mw: Mapped[float] = mapped_column(Float)
+    status: Mapped[str] = mapped_column(String(16))
+    reason: Mapped[str | None] = mapped_column(String(200))
+    idempotency_key: Mapped[str] = mapped_column(String(80), unique=True)
+    delivered_mw: Mapped[float | None] = mapped_column(Float)
+    actual_mw: Mapped[float | None] = mapped_column(Float)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())

@@ -3,11 +3,12 @@
 from collections import defaultdict
 from datetime import datetime, timedelta
 
+import numpy as np
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.models.portfolio import Asset, Site
-from app.models.run import AssetBlock, Forecast, Run, WorldEvent
+from app.models.run import AssetBlock, Cycle, Forecast, Plan, Run, WorldEvent
 from app.schemas.runs import (
     Alert, BatteryCard, ChartPoint, FlowItem, GenerationCard, SiteLive, Weather,
 )
@@ -75,7 +76,7 @@ def site_live(db: Session, run: Run, site: Site, now: datetime) -> SiteLive:
     capacity = sum(a.capacity_mw for a in site.assets if a.kind in GENERATION)
     rows = db.execute(
         select(AssetBlock).where(
-            AssetBlock.run_id == run.id, AssetBlock.asset_id.in_(assets),
+            AssetBlock.run_id == run.id, AssetBlock.policy == "bob", AssetBlock.asset_id.in_(assets),
             AssetBlock.block.between(b - CHART_BLOCKS + 1, b),
         )
     ).scalars().all()
@@ -107,6 +108,16 @@ def site_live(db: Session, run: Run, site: Site, now: datetime) -> SiteLive:
         chart.append(ChartPoint(group="Forecast", time=time_of(b + 1 + i), value=round(mid, 2),
                                 low=round(low, 2), high=round(high, 2)))
 
+    # BOB's plan for the coming blocks, from the latest cycle.
+    battery_codes = [a.code for a in site.assets if a.kind == "bess"]
+    latest_plan = db.scalar(
+        select(Plan).join(Cycle).where(Cycle.run_id == run.id, Cycle.block == b + 1).order_by(Cycle.seq.desc()).limit(1)
+    )
+    if latest_plan and battery_codes:
+        planned = np.sum([latest_plan.schedule["battery"][c] for c in battery_codes], axis=0)[:CHART_BLOCKS]
+        chart += [ChartPoint(group="Planned battery", time=time_of(b + 1 + i), value=round(float(v), 2))
+                  for i, v in enumerate(planned)]
+
     generation = None
     alerts = []
     if gen_ids:
@@ -126,7 +137,7 @@ def site_live(db: Session, run: Run, site: Site, now: datetime) -> SiteLive:
             alerts.append(alert)
 
     batteries = [
-        BatteryCard(code=a.code, name=a.name, soc_pct=round(latest[a.id].soc_mwh / a.params["energy_mwh"] * 100, 1),
+        BatteryCard(code=a.code, name=a.name, mw=round(latest[a.id].actual_mw, 2), soc_pct=round(latest[a.id].soc_mwh / a.params["energy_mwh"] * 100, 1),
                     energy_mwh=a.params["energy_mwh"], power_mw=a.capacity_mw,
                     available=latest[a.id].available_mw > 0)
         for a in site.assets if a.kind == "bess"

@@ -14,9 +14,12 @@ import {
 } from '@carbon/react'
 import { portfolioApi } from '../api/client'
 import { kindLabel, modeLabel, mw, mwh } from '../format'
+import { RunComparison } from '../runs/RunComparison'
+import { useCurrentRun } from '../runs/useCurrentRun'
 
 export function PortfolioPage() {
   const { data, error } = useQuery({ queryKey: ['portfolio'], queryFn: portfolioApi.get })
+  const { data: run } = useCurrentRun()
 
   if (error) return <InlineNotification kind="error" title="Could not load the portfolio" subtitle={error.message} hideCloseButton lowContrast />
   if (!data) return <SkeletonText paragraph lineCount={6} />
@@ -83,6 +86,8 @@ export function PortfolioPage() {
           ))}
         </TableBody>
       </Table>
+
+      {run && run.block >= 0 && <RunComparison run={run} />}
     </>
   )
 }

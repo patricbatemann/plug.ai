@@ -105,13 +105,46 @@ export interface SiteLive {
     frequency_hz: number
   }
   generation: { actual_mw: number; forecast_mw: number | null; capacity_mw: number } | null
-  batteries: Array<{ code: string; name: string; soc_pct: number; energy_mwh: number; power_mw: number; available: boolean }>
+  batteries: Array<{ code: string; name: string; mw: number; soc_pct: number; energy_mwh: number; power_mw: number; available: boolean }>
   demand_mw: number | null
   grid_mw: number | null
   alerts: Alert[]
   chart: ChartPoint[]
   sources: Array<{ label: string; mw: number }>
   uses: Array<{ label: string; mw: number }>
+}
+
+export interface PolicyTotals {
+  cost_inr: number
+  market_inr: number
+  dsm_inr: number
+  dr_inr: number
+  wear_inr: number
+  curtail_inr: number
+  curtailed_mwh: number
+  carbon_t: number
+  deviation_mwh: number
+  unserved_mwh: number
+}
+
+export interface RunSummary {
+  block: number
+  bob: PolicyTotals
+  baseline: PolicyTotals
+  saving_inr: number
+}
+
+export interface ActionOut {
+  id: number
+  time: string
+  kind: string
+  site: string | null
+  asset: string | null
+  mw: number
+  delivered_mw: number | null
+  actual_mw: number | null
+  status: string
+  reason: string | null
 }
 
 export class ApiError extends Error {
@@ -190,6 +223,8 @@ export const runApi = {
   speed: (id: number, speed: number) =>
     request<RunState>(`/api/runs/${id}`, { method: 'PATCH', body: JSON.stringify({ speed }) }),
   inject: (id: number, event: Record<string, unknown>) => post<RunState>(`/api/runs/${id}/events`, event),
+  summary: (id: number) => request<RunSummary>(`/api/runs/${id}/summary`),
+  actions: (id: number, limit = 20) => request<ActionOut[]>(`/api/runs/${id}/actions?limit=${limit}`),
   siteLive: (id: number, code: string) =>
     request<SiteLive>(`/api/runs/${id}/sites/${encodeURIComponent(code)}/live`),
 }

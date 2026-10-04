@@ -4,13 +4,15 @@ from datetime import datetime, timedelta
 from typing import Any
 from zoneinfo import ZoneInfo
 
+import numpy as np
 from sqlalchemy import select, update
 from sqlalchemy.orm import Session
 
 from app.models.portfolio import Asset, Line, Node, Portfolio
-from app.models.run import AssetBlock, Forecast, LineBlock, Run, SystemBlock, WorldEvent
+from app.models.run import POLICIES, Forecast, Run, WorldEvent
 from app.sim import forecast
-from app.sim.plant import LineSpec, settle
+from app.services.dispatch import plan_block, settle_block
+from app.sim.plant import LineSpec
 from app.sim.presets import PRESETS
 from app.sim.world import BLOCK_MIN, BLOCKS_PER_DAY, AssetSpec, EventSpec, World
 
@@ -31,7 +33,7 @@ def create_run(db: Session, portfolio: Portfolio, preset: str, now: datetime) ->
         portfolio_id=portfolio.id, preset=preset, config=config, status="running", speed=config["speed"],
         sim_start_at=start, total_blocks=config["days"] * BLOCKS_PER_DAY,
         live_from_block=(_at(config, config["live_from"]) - start) // BLOCK,
-        current_block=-1, block_started_at=now, next_due_at=now,
+        current_block=-1, block_started_at=now, next_due_at=now, dam_schedule=[],
     )
     db.add(run)
     db.flush()
@@ -39,6 +41,18 @@ def create_run(db: Session, portfolio: Portfolio, preset: str, now: datetime) ->
         WorldEvent(run_id=run.id, sim_at=_at(config, e["at"]), kind=e["kind"], payload=e["payload"], source="scenario")
         for e in config["events"]
     )
+    db.flush()
+    ctx = RunContext.load(db, run)
+    # The day-ahead position comes from forecasts made before the run starts.
+    issues = _store_forecasts(db, ctx, -1, horizon=run.total_blocks)
+    p50 = {(i.series, i.asset_code): np.array(i.p50) for i in issues}
+    net = (sum(p50[("load", a.code)] for a in ctx.assets if a.kind == "consumer")
+           - sum(p50[("re_avail", a.code)] for a in ctx.assets if a.kind in ("solar", "wind")))
+    ics = [a.params for a in ctx.assets if a.kind == "interconnection"]
+    run.dam_schedule = np.clip(net, -sum(p["export_max_mw"] for p in ics),
+                               sum(p["import_max_mw"] for p in ics)).round(2).tolist()
+    db.flush()
+    plan_block(db, ctx, ctx.world(), run, 0)
     db.commit()
     return run
 
@@ -85,6 +99,7 @@ class RunContext:
     line_limits: dict[str, float]
     line_ids: dict[str, int]
     events: list[WorldEvent]
+    market: dict[str, Any]
 
     @classmethod
     def load(cls, db: Session, run: Run) -> "RunContext":
@@ -100,6 +115,7 @@ class RunContext:
             line_limits={l.code: l.limit_mw for l in lines},
             line_ids={l.code: l.id for l in lines},
             events=list(events),
+            market=db.scalar(select(Portfolio.market).where(Portfolio.id == run.portfolio_id)),
         )
 
     def world(self, revealed_only: bool = False) -> World:
@@ -112,8 +128,20 @@ class RunContext:
                      self.run.total_blocks + forecast.HORIZON + 1, specs)
 
 
+def _store_forecasts(db: Session, ctx: "RunContext", block: int, horizon: int = forecast.HORIZON) -> list[forecast.Issue]:
+    issues = forecast.issue(ctx.world(revealed_only=True), block, ctx.assets, ctx.run.config, horizon)
+    db.add_all(
+        Forecast(run_id=ctx.run.id, issued_block=block, series=i.series,
+                 asset_id=ctx.asset_ids[i.asset_code] if i.asset_code else None, p10=i.p10, p50=i.p50, p90=i.p90)
+        for i in issues
+    )
+    db.flush()
+    return issues
+
+
 def advance(db: Session, run: Run, now: datetime) -> None:
-    """Settle the next block, issue forecasts after it, and move the clock. Caller holds the run lock."""
+    """Settle the next block for both policies, issue forecasts after it, plan the block that
+    follows, and move the clock. Caller holds the run lock."""
     b = run.current_block + 1
     if b >= run.total_blocks:
         run.status = "done"
@@ -122,41 +150,12 @@ def advance(db: Session, run: Run, now: datetime) -> None:
     db.flush()
     ctx = RunContext.load(db, run)
     truth = ctx.world()
-    available = {code: float(series[b]) for code, series in truth.available.items()}
-    for a in ctx.assets:
-        if a.kind == "interconnection":
-            available[a.code] = 0.0
-    limits = {code: float(series[b]) for code, series in truth.line_limit.items()}
-    s = settle(ctx.assets, ctx.lines, available, limits)
-
-    soc = run.config["initial_soc_pct"]
-    db.add_all(
-        AssetBlock(
-            run_id=run.id, block=b, asset_id=ctx.asset_ids[a.code], available_mw=available[a.code],
-            actual_mw=s.actual[a.code],
-            soc_mwh=a.params["energy_mwh"] * soc[a.code] / 100 if a.kind == "bess" else None,
-        )
-        for a in ctx.assets
-    )
-    db.add_all(
-        LineBlock(run_id=run.id, block=b, line_id=ctx.line_ids[code], limit_mw=limits[code], flow_mw=flow)
-        for code, flow in s.flow.items()
-    )
-    net = sum(s.actual[a.code] for a in ctx.assets if a.kind == "interconnection")
-    imports = sum(max(s.actual[a.code], 0) for a in ctx.assets if a.kind == "interconnection")
-    hours = BLOCK_MIN / 60
-    db.add(SystemBlock(
-        run_id=run.id, block=b, frequency_hz=float(truth.frequency[b]), dam_price=float(truth.dam[b]),
-        rtm_price=float(truth.rtm[b]), emission_factor=float(truth.emission_factor[b]), net_exchange_mw=net,
-        cost_inr=net * float(truth.rtm[b]) * hours,
-        carbon_t=imports * float(truth.emission_factor[b]) * hours,
-        curtailed_mwh=s.curtailed_mw * hours, unserved_mwh=s.unserved_mw * hours,
-    ))
-    db.add_all(
-        Forecast(run_id=run.id, issued_block=b, series=i.series,
-                 asset_id=ctx.asset_ids[i.asset_code] if i.asset_code else None, p10=i.p10, p50=i.p50, p90=i.p90)
-        for i in forecast.issue(ctx.world(revealed_only=True), b, ctx.assets, run.config)
-    )
+    for policy in POLICIES:
+        settle_block(db, ctx, truth, run, b, policy)
+    db.flush()
+    _store_forecasts(db, ctx, b)
+    if b + 1 < run.total_blocks:
+        plan_block(db, ctx, truth, run, b + 1)
     run.current_block = b
     run.block_started_at = now
     if run.paused_at:

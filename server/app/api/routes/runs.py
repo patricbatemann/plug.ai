@@ -1,6 +1,6 @@
 from datetime import datetime, timezone
 
-from fastapi import APIRouter, Body, Depends, HTTPException, status
+from fastapi import APIRouter, Body, Depends, HTTPException, Query, status
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
@@ -9,9 +9,10 @@ from app.api.routes.portfolio import current_portfolio
 from app.core.database import get_db
 from app.models.portfolio import Portfolio
 from app.models.run import Run
-from app.schemas.runs import InjectEvent, PresetInfo, RunCreate, RunState, SiteLive, SpeedUpdate
+from app.schemas.runs import ActionOut, InjectEvent, PresetInfo, RunCreate, RunState, RunSummary, SiteLive, SpeedUpdate
 from app.services import runs
 from app.services.live import site_live
+from app.services.summary import recent_actions, summary
 from app.sim.presets import PRESETS
 
 router = APIRouter(prefix="/runs", dependencies=[Depends(get_current_user)])
@@ -31,6 +32,13 @@ def _state(run: Run) -> RunState:
 
 def _locked_run(run_id: int, db: Session = Depends(get_db)) -> Run:
     run = runs.lock_run(db, run_id)
+    if run is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Run not found")
+    return run
+
+
+def _run(run_id: int, db: Session = Depends(get_db)) -> Run:
+    run = db.get(Run, run_id)
     if run is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Run not found")
     return run
@@ -106,14 +114,24 @@ def inject_event(
 
 @router.get("/{run_id}/sites/{code}/live", response_model=SiteLive)
 def live_overview(
-    run_id: int, code: str, db: Session = Depends(get_db), portfolio: Portfolio = Depends(current_portfolio)
+    code: str, run: Run = Depends(_run), db: Session = Depends(get_db),
+    portfolio: Portfolio = Depends(current_portfolio),
 ) -> SiteLive:
-    run = db.get(Run, run_id)
-    if run is None:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Run not found")
     site = next((s for s in portfolio.sites if s.code == code), None)
     if site is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Site not found")
     if run.current_block < 0:
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="The run has not settled a block yet")
     return site_live(db, run, site, _now())
+
+
+@router.get("/{run_id}/summary", response_model=RunSummary)
+def run_summary(run: Run = Depends(_run), db: Session = Depends(get_db)) -> RunSummary:
+    return summary(db, run)
+
+
+@router.get("/{run_id}/actions", response_model=list[ActionOut])
+def run_actions(
+    run: Run = Depends(_run), db: Session = Depends(get_db), limit: int = Query(default=20, ge=1, le=200)
+) -> list[ActionOut]:
+    return recent_actions(db, run, limit)

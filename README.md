@@ -27,7 +27,7 @@ make server-dev
 make worker
 ```
 
-The API runs at `http://localhost:8000` (interactive docs at `/docs`); Vite serves the client at `http://localhost:5173`. Create an account on the sign-up page, then start a run from the header (**New run** → a preset). Runs fast-forward to 10:45, then advance one 15-minute block every 30 s at 30×. Open a site to see its Live overview; pause, step, change speed or inject events from the header. The worker can run as several processes; each block is settled exactly once.
+The API runs at `http://localhost:8000` (interactive docs at `/docs`); Vite serves the client at `http://localhost:5173`. Create an account on the sign-up page, then start a run from the header (**New run** → a preset). Runs fast-forward to 10:45, then advance one 15-minute block every 30 s at 30×. Every block, BOB plans the next 24 hours with a mixed-integer optimiser (HiGHS) and executes the first block's actions through mock adapters; the same day is also settled with today's rule-based practice, and the portfolio page compares the two. Open a site to see its Live overview; pause, step, change speed or inject events from the header. The worker can run as several processes; each block is settled exactly once.
 
 Other targets: `make test` runs backend tests (needs `make db-up`) and the colour-token check; `make build` builds the client; `make db-down` stops PostgreSQL; `make clean` removes the web build.
 
@@ -53,6 +53,8 @@ Other targets: `make test` runs backend tests (needs `make db-up`) and the colou
 | `PATCH` | `/api/runs/{id}` | Speed (10, 30 or 60×) |
 | `POST` | `/api/runs/{id}/events` | Inject a world event |
 | `GET` | `/api/runs/{id}/sites/{code}/live` | Site live overview |
+| `GET` | `/api/runs/{id}/summary` | BOB vs today's practice totals |
+| `GET` | `/api/runs/{id}/actions` | BOB's latest actions |
 
 All endpoints except register and login need `Authorization: Bearer <token>`.
 
@@ -72,7 +74,8 @@ server/
   app/schemas/       Request/response models and asset parameter validation
   app/services/      Business logic
   app/seed.py        Demo portfolio seed
-  app/sim/           Simulated world: presets, truth, forecasts, plant settlement
+  app/sim/           Simulated world: presets, truth, forecasts, plant settlement, market rules, mock adapters
+  app/optimize/      Dispatch optimiser, validator, today's-practice rules
   app/worker.py      Simulation clock worker
   migrations/        Alembic migrations
   tests/             API tests against PostgreSQL

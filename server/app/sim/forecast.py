@@ -30,15 +30,16 @@ def _band(known: np.ndarray, scale: np.ndarray, sigma: np.ndarray, z: np.ndarray
             np.clip(p50 + spread, 0, upper).round(2).tolist())
 
 
-def issue(known: World, block: int, assets: list[AssetSpec], config: dict[str, Any]) -> list[Issue]:
-    """Forecasts issued at the end of `block` for the next HORIZON blocks."""
-    span = slice(block + 1, block + 1 + HORIZON)
-    hours = np.arange(1, HORIZON + 1) * 0.25
+def issue(known: World, block: int, assets: list[AssetSpec], config: dict[str, Any],
+          horizon: int = HORIZON) -> list[Issue]:
+    """Forecasts issued at the end of `block` for the next `horizon` blocks."""
+    span = slice(block + 1, block + 1 + horizon)
+    hours = np.arange(1, horizon + 1) * 0.25
     noise = config["noise"]
     phi = 0.9
 
     def error(key: str) -> np.ndarray:
-        return ar1(config["seed"], f"fc:{key}:{block}", HORIZON, phi, math.sqrt(1 - phi * phi))
+        return ar1(config["seed"], f"fc:{key}:{block}", horizon, phi, math.sqrt(1 - phi * phi))
 
     def sigma(series: str) -> np.ndarray:
         base, growth = noise[series]
@@ -48,7 +49,9 @@ def issue(known: World, block: int, assets: list[AssetSpec], config: dict[str, A
     for a in assets:
         if a.kind in ("solar", "wind"):
             values = known.available[a.code][span]
-            band = _band(values, np.full(HORIZON, a.capacity), sigma("re_avail"), error(a.code), a.capacity)
+            # Solar is certain to be zero at night; elsewhere the error scales with capacity.
+            scale = a.capacity * (known.irradiance[a.node][span] > 0 if a.kind == "solar" else np.ones(horizon))
+            band = _band(values, scale, sigma("re_avail"), error(a.code), a.capacity)
             issues.append(Issue("re_avail", a.code, *band))
         elif a.kind == "consumer":
             values = known.available[a.code][span]

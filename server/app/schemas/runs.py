@@ -116,6 +116,7 @@ class GenerationCard(BaseModel):
 class BatteryCard(BaseModel):
     code: str
     name: str
+    mw: float  # + discharge, − charge, in the last settled block
     soc_pct: float
     energy_mwh: float
     power_mw: float
@@ -154,3 +155,36 @@ class SiteLive(BaseModel):
     chart: list[ChartPoint]
     sources: list[FlowItem]
     uses: list[FlowItem]
+
+
+class PolicyTotals(BaseModel):
+    cost_inr: float
+    market_inr: float
+    dsm_inr: float
+    dr_inr: float
+    wear_inr: float
+    curtail_inr: float
+    curtailed_mwh: float
+    carbon_t: float
+    deviation_mwh: float
+    unserved_mwh: float
+
+
+class RunSummary(BaseModel):
+    block: int
+    bob: PolicyTotals
+    baseline: PolicyTotals
+    saving_inr: float
+
+
+class ActionOut(BaseModel):
+    id: int
+    time: datetime
+    kind: str
+    site: str | None
+    asset: str | None
+    mw: float
+    delivered_mw: float | None
+    actual_mw: float | None
+    status: str
+    reason: str | None

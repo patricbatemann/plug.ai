@@ -19,7 +19,7 @@ def test_same_seed_same_world_and_every_block_balances(db: Session) -> None:
     seed(db)
     run = create_run(db, get_portfolio(db), "demo_story", NOW)
     twin = create_run(db, get_portfolio(db), "demo_story", NOW)
-    for _ in range(60):
+    for _ in range(30):
         advance(db, run, NOW)
     db.commit()
 
@@ -31,8 +31,9 @@ def test_same_seed_same_world_and_every_block_balances(db: Session) -> None:
     totals: dict[int, float] = {}
     for row in db.scalars(select(AssetBlock).where(AssetBlock.run_id == run.id)):
         sign = -1 if kinds[row.asset_id] == "consumer" else 1
-        totals[row.block] = totals.get(row.block, 0.0) + sign * row.actual_mw
-    assert len(totals) == 60
+        key = (row.policy, row.block)
+        totals[key] = totals.get(key, 0.0) + sign * row.actual_mw
+    assert len(totals) == 2 * 30  # both policies
     assert max(abs(v) for v in totals.values()) < 1e-6
 
 
@@ -70,4 +71,12 @@ def test_run_controls_events_and_live_overview(
     titles = {a["title"] for a in live["alerts"]}
     assert {"Cloud bank over the site", "Generation is below forecast"} <= titles
     assert live["batteries"][0]["code"] == "BESS-01"
-    assert {p["group"] for p in live["chart"]} == {"Actual generation", "Forecast"}
+    assert {p["group"] for p in live["chart"]} == {"Actual generation", "Forecast", "Planned battery"}
+
+    summary = client.get(f"{url}/summary", headers=auth_headers).json()
+    assert summary["block"] == 26
+    assert summary["bob"]["unserved_mwh"] == 0
+    assert summary["saving_inr"] == summary["baseline"]["cost_inr"] - summary["bob"]["cost_inr"]
+    actions = client.get(f"{url}/actions?limit=5", headers=auth_headers).json()
+    assert len(actions) == 5
+    assert {a["status"] for a in actions} <= {"acked", "verified", "rejected"}

@@ -9,7 +9,7 @@ import {
 import { InlineNotification, ProgressBar, SkeletonText, Tile } from '@carbon/react'
 import type { RunState, SiteLive } from '../api/client'
 import { runApi } from '../api/client'
-import { mw, simTime } from '../format'
+import { batteryState, mw, simTime } from '../format'
 import { SERIES } from '../theme/tokens'
 
 interface Props {
@@ -77,7 +77,7 @@ export function LiveOverview({ run, siteCode, generationSeries }: Props) {
             <div className="stat-label">{b.name}</div>
             <div className="stat-value">{b.soc_pct} %</div>
             <ProgressBar label={`${b.energy_mwh} MWh · ${mw(b.power_mw)}`} value={b.soc_pct} max={100} size="small" />
-            <div className="stat-label">{b.available ? 'Idle' : 'Unavailable'}</div>
+            <div className="stat-label">{batteryState(b.mw, b.available)}</div>
           </Tile>
         ))}
         {data.demand_mw !== null && (
@@ -101,7 +101,7 @@ export function LiveOverview({ run, siteCode, generationSeries }: Props) {
       </Tile>
 
       <Tile>
-        <div className="card-title">Live generation and forecast</div>
+        <div className="card-title">Live generation, forecast and BOB's battery plan</div>
         <ComboChart data={chartData(data)} options={chartOptions(data, generationSeries)} />
       </Tile>
 
@@ -162,7 +162,7 @@ function chartOptions(data: SiteLive, generationSeries: 'solar' | 'wind'): Chart
     },
     comboChartTypes: [
       { type: 'area', correspondingDatasets: ['Forecast range'] },
-      { type: 'line', correspondingDatasets: ['Actual generation', 'Forecast', 'Demand'] },
+      { type: 'line', correspondingDatasets: ['Actual generation', 'Forecast', 'Demand', 'Planned battery'] },
     ],
     color: {
       scale: {
@@ -170,6 +170,7 @@ function chartOptions(data: SiteLive, generationSeries: 'solar' | 'wind'): Chart
         Forecast: SERIES[generationSeries],
         'Forecast range': SERIES[generationSeries],
         Demand: SERIES.demand,
+        'Planned battery': SERIES.battery,
       },
     },
     timeScale: { addSpaceOnEdges: 0 },

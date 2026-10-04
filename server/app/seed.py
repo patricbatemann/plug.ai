@@ -9,6 +9,7 @@ from sqlalchemy.orm import Session
 from app.core.database import SessionLocal
 from app.models.portfolio import Asset, Line, Node, Portfolio, Site
 from app.schemas.portfolio import validate_params
+from app.sim.market import DEFAULT_MARKET
 
 NODES = {"NORTH": "North wind corridor", "SOUTH": "South solar corridor", "HUB": "Sri City load hub"}
 LINES = [("L-NORTH-HUB", "NORTH", "HUB", 120), ("L-SOUTH-HUB", "SOUTH", "HUB", 260)]
@@ -84,7 +85,8 @@ SITES = [
 def seed(db: Session) -> bool:
     if db.scalar(select(Portfolio.id).limit(1)) is not None:
         return False
-    portfolio = Portfolio(name="Andhra Pradesh renewable portfolio", tz="Asia/Kolkata", mode_code="balanced")
+    portfolio = Portfolio(name="Andhra Pradesh renewable portfolio", tz="Asia/Kolkata", mode_code="balanced",
+                          market=DEFAULT_MARKET)
     db.add(portfolio)
     db.flush()
     nodes = {code: Node(portfolio_id=portfolio.id, code=code, name=name) for code, name in NODES.items()}
