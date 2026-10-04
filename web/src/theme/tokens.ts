@@ -1,4 +1,4 @@
-import { blue80, cyan50, gray100, gray50, gray60, magenta70, orange70, purple70, teal50, yellow50 } from '@carbon/colors/es/index.js'
+import { blue80, cyan50, gray100, gray50, gray60, gray70, magenta70, orange70, purple70, teal50, yellow50 } from '@carbon/colors/es/index.js'
 
 // One colour per energy series, the same in every chart (docs/spec/07-design-tokens.md).
 export const SERIES = {
@@ -12,4 +12,5 @@ export const SERIES = {
   emissions: gray60,
   bob: purple70,
   baseline: gray50,
+  forecast: gray70, // expectations are neutral, so the actual series stands out
 }

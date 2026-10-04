@@ -13,7 +13,7 @@ import {
   Tag,
   Tile,
 } from '@carbon/react'
-import { portfolioApi } from '../api/client'
+import { portfolioApi, runApi } from '../api/client'
 import { kindLabel, mw, mwh } from '../format'
 import { ModeTag } from '../runs/ModeTag'
 import { Recommendation } from '../runs/Recommendation'
@@ -23,6 +23,12 @@ import { useCurrentRun } from '../runs/useCurrentRun'
 export function PortfolioPage() {
   const { data, error } = useQuery({ queryKey: ['portfolio'], queryFn: portfolioApi.get })
   const { data: run } = useCurrentRun()
+  const live = useQuery({
+    queryKey: ['sites-status', run?.id, run?.block],
+    queryFn: () => runApi.sites(run!.id),
+    enabled: !!run && run.block >= 0,
+  })
+  const now = Object.fromEntries((live.data ?? []).map((s) => [s.code, s]))
 
   if (error) return <InlineNotification kind="error" title="Could not load the portfolio" subtitle={error.message} hideCloseButton lowContrast />
   if (!data) return <SkeletonText paragraph lineCount={6} />
@@ -69,11 +75,11 @@ export function PortfolioPage() {
         <TableHead>
           <TableRow>
             <TableHeader>Site</TableHeader>
-            <TableHeader>Type</TableHeader>
-            <TableHeader>Location</TableHeader>
-            <TableHeader>Generation capacity</TableHeader>
+            <TableHeader>Output now</TableHeader>
             <TableHeader>Storage</TableHeader>
-            <TableHeader>Action</TableHeader>
+            <TableHeader>Status</TableHeader>
+            <TableHeader>What BOB is doing</TableHeader>
+            <TableHeader />
           </TableRow>
         </TableHead>
         <TableBody>
@@ -81,12 +87,32 @@ export function PortfolioPage() {
             <TableRow key={site.code}>
               <TableCell>
                 {site.name}
-                <div className="stat-label">{site.code}</div>
+                <div className="stat-label">{kindLabel(site.kind)} · {site.location}</div>
               </TableCell>
-              <TableCell>{kindLabel(site.kind)}</TableCell>
-              <TableCell>{site.location}</TableCell>
-              <TableCell>{site.generation_mw ? mw(site.generation_mw) : '—'}</TableCell>
-              <TableCell>{site.battery_mwh ? mwh(site.battery_mwh) : '—'}</TableCell>
+              <TableCell>
+                {now[site.code]?.output_mw != null ? mw(now[site.code].output_mw!) : site.generation_mw ? '—' : 'No generation'}
+                {site.generation_mw > 0 && (
+                  <div className="stat-label">
+                    {now[site.code]?.forecast_mw != null ? `forecast ${mw(now[site.code].forecast_mw!)} · ` : ''}
+                    capacity {mw(site.generation_mw)}
+                  </div>
+                )}
+              </TableCell>
+              <TableCell>
+                {site.battery_mwh ? mwh(site.battery_mwh) : '—'}
+                {now[site.code]?.storage_pct != null && <div className="stat-label">{now[site.code].storage_pct} % charged</div>}
+              </TableCell>
+              <TableCell>
+                {now[site.code] && (
+                  <Tag size="sm" type={now[site.code].status === 'Normal' ? 'green' : 'warm-gray'}>{now[site.code].status}</Tag>
+                )}
+              </TableCell>
+              <TableCell>
+                {now[site.code] && (now[site.code].bob_now.length ? now[site.code].bob_now.join('; ') : 'Holding')}
+                {now[site.code]?.pending > 0 && (
+                  <div><Tag size="sm" type="warm-gray">{now[site.code].pending} awaiting approval</Tag></div>
+                )}
+              </TableCell>
               <TableCell>
                 <Link to={`/sites/${site.code}`} className="cds--link">Open site</Link>
               </TableCell>

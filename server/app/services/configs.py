@@ -9,7 +9,7 @@ from sqlalchemy import func, select, update
 from sqlalchemy.orm import Session
 
 from app.models.portfolio import ActionConfig, Asset, Site
-from app.models.run import Action, AssetBlock, Run
+from app.models.run import Action, AssetBlock, Cycle, Run
 from app.optimize.dispatch import Inputs, plan
 from app.optimize.robust import scenarios
 from app.optimize.validator import check
@@ -155,7 +155,7 @@ def activate(db: Session, draft: ActionConfig, user: str, now: datetime) -> Acti
 
 
 def watch_hits(db: Session, run: Run, block: int, forecast_p50: dict[str, float]) -> list[str]:
-    """Watch conditions crossed in the block just settled; BOB re-plans with them as the trigger."""
+    """Watch conditions newly crossed in the block just settled; BOB re-plans with them as the trigger."""
     configs = db.execute(
         select(ActionConfig, Asset).join(Asset, Asset.id == ActionConfig.asset_id)
         .where(Asset.portfolio_id == run.portfolio_id, ActionConfig.current, ActionConfig.status == "active",
@@ -171,7 +171,10 @@ def watch_hits(db: Session, run: Run, block: int, forecast_p50: dict[str, float]
             value = watch_value(w["metric"], asset, rows.get(asset.id), forecast_p50)
             if value is not None and crossed(w["metric"], value, w["value"]):
                 hits.append(f"{asset.name}: {watch_label(w)}")
-    return hits
+    # Once per crossing: a condition already reported for the previous block is not news.
+    reported = " ".join(db.scalars(select(Cycle.trigger_detail).where(
+        Cycle.run_id == run.id, Cycle.block == block, Cycle.trigger == "watch")))
+    return [h for h in hits if h not in reported]
 
 
 def crossed(metric: str, value: float, threshold: float) -> bool:

@@ -1,7 +1,7 @@
 import { useQuery } from '@tanstack/react-query'
 import { SkeletonText, Table, TableBody, TableCell, TableHead, TableHeader, TableRow, Tag } from '@carbon/react'
 import { configApi, runApi, type RunState } from '../api/client'
-import { actionLabel, mw, simTime } from '../format'
+import { actionLabel, mw, simTime, statusOf } from '../format'
 import { ActionCard } from './ActionCard'
 import { useOpenActions } from './useActions'
 
@@ -12,12 +12,17 @@ export function SiteActions({ run, site }: { run: RunState; site: string }) {
     queryKey: ['actions', 'site', run.id, site, run.block],
     queryFn: () => runApi.actions(run.id, { status: ['acked', 'verified'], site, limit: 15 }),
   })
+  // Asked for by block: trades and calls placed for later blocks would crowd them out of `recent`.
+  const executing = useQuery({
+    queryKey: ['actions', 'site', 'now', run.id, site, run.block],
+    queryFn: () => runApi.actions(run.id, { status: ['acked'], site, block: run.block + 1, limit: 30 }),
+  })
   const watch = useQuery({
     queryKey: ['watch', run.id, site, run.block],
     queryFn: () => configApi.watch(run.id, site),
   })
-  if (!open.data || !recent.data) return <SkeletonText paragraph lineCount={4} />
-  const now = recent.data.filter((a) => a.block === run.block + 1)
+  if (!open.data || !recent.data || !executing.data) return <SkeletonText paragraph lineCount={4} />
+  const now = executing.data
   const earlier = recent.data.filter((a) => a.block <= run.block)
 
   return (
@@ -70,9 +75,7 @@ function ActionTable({ rows, empty }: { rows: Awaited<ReturnType<typeof runApi.a
             <TableCell>{mw(Math.abs(a.mw))}</TableCell>
             <TableCell>{a.actual_mw === null ? '—' : mw(a.actual_mw)}</TableCell>
             <TableCell>
-              <Tag size="sm" type={a.status === 'verified' ? 'green' : 'blue'}>
-                {a.status === 'acked' ? 'executing' : a.status}
-              </Tag>
+              <Tag size="sm" type={statusOf(a.status).tag}>{statusOf(a.status).label}</Tag>
             </TableCell>
           </TableRow>
         ))}

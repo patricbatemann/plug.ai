@@ -347,7 +347,8 @@ def plan_block(db: Session, ctx, truth: World, run: Run, t0: int) -> None:
         hits = configs.watch_hits(db, run, t0 - 1, {code: f.p50[0] for (series, code), f in made_for.items()
                                                     if series == "re_avail"})
     now = run.sim_start_at + t0 * BLOCK_SPAN
-    plan_bob(db, ctx, truth, run, t0, forecasts, now, trigger="watch" if hits else "tick", detail="; ".join(hits))
+    plan_bob(db, ctx, truth, run, t0, forecasts, now, trigger="watch" if hits else "tick",
+             detail="; ".join(hits)[:200])
     plan_baseline(db, ctx, truth, run, t0, forecasts)
     if t0 < run.live_from_block:
         return  # proposals need someone to answer them: none before the demo opens

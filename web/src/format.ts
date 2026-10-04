@@ -68,6 +68,20 @@ const ACTION_LABELS: Record<string, string> = {
   inspection_dispatch: 'Send an inspection crew',
 }
 
+/** An action's status in words, with its tag colour. */
+export const STATUS = {
+  acked: { label: 'Executing', tag: 'blue' },
+  verified: { label: 'Done', tag: 'green' },
+  awaiting_approval: { label: 'Awaiting approval', tag: 'warm-gray' },
+  recommended: { label: 'Recommended', tag: 'cool-gray' },
+  declined: { label: 'Declined', tag: 'gray' },
+  expired: { label: 'Expired unanswered', tag: 'gray' },
+  rejected: { label: 'Blocked by a safety check', tag: 'red' },
+  superseded: { label: 'Replaced', tag: 'gray' },
+} as const
+export const statusOf = (status: string) =>
+  STATUS[status as keyof typeof STATUS] ?? { label: status, tag: 'gray' as const }
+
 /** Work orders to the maintenance system: no MW, no fallback plan. */
 export const WORK_ORDERS = ['maintenance_schedule', 'inspection_dispatch']
 

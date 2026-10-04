@@ -127,8 +127,10 @@ def default_configs(assets: list[Asset]) -> list[ActionConfig]:
         if a.kind == "bess":
             out.append(config(a, "battery_charge", f"Charge {a.name} from surplus", max_mw=a.capacity_mw,
                               auto_max_mw=a.capacity_mw))
-            out.append(config(a, "battery_discharge", f"Discharge {a.name} to support demand", max_mw=a.capacity_mw,
-                              auto_max_mw=round(a.capacity_mw * 0.6), reserve_pct=PROTECTED["battery_soc_floor_pct"]))
+            discharge = config(a, "battery_discharge", f"Discharge {a.name} to support demand", max_mw=a.capacity_mw,
+                               auto_max_mw=round(a.capacity_mw * 0.6), reserve_pct=PROTECTED["battery_soc_floor_pct"])
+            discharge.watch = [{"metric": "soc_below_pct", "value": 35}]  # nearing the protected reserve
+            out.append(discharge)
         elif a.kind in ("solar", "wind"):
             out.append(config(a, "curtail", f"Limit {a.name} output", auto_max_mw=50))
         elif a.kind == "consumer":

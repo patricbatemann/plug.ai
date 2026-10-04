@@ -8,7 +8,11 @@ import { EVENT_FORMS, InjectEventModal } from './InjectEventModal'
 import { useCurrentRun, useRunAction } from './useCurrentRun'
 
 const SPEEDS = [10, 30, 60]
-const STATUS_TAG = { running: 'green', paused: 'warm-gray', done: 'gray' } as const
+const STATUS_TAG = {
+  running: { tag: 'green', label: 'Running' },
+  paused: { tag: 'warm-gray', label: 'Paused' },
+  done: { tag: 'gray', label: 'Finished' },
+} as const
 
 export function RunControl() {
   const { data: run } = useCurrentRun()
@@ -35,9 +39,13 @@ export function RunControl() {
       {!run.live && run.status === 'running' ? (
         <InlineLoading description="Fast-forwarding" />
       ) : (
-        <Tag size="sm" type={STATUS_TAG[run.status]}>
-          {run.status} · {run.bob_online ? 'BOB' : 'rules only'}
-        </Tag>
+        <>
+          <Tag size="sm" type={STATUS_TAG[run.status].tag}>{STATUS_TAG[run.status].label}</Tag>
+          <Tag size="sm" type={run.bob_online ? 'purple' : 'gray'}
+            title={run.bob_online ? 'BOB decides on material events' : 'BOB is off or not configured: rules decide'}>
+            {run.bob_online ? 'BOB online' : 'Rules only'}
+          </Tag>
+        </>
       )}
       {run.status !== 'done' && (
         <>

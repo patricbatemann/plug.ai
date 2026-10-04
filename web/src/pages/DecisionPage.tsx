@@ -1,6 +1,6 @@
 import { Link, useParams } from 'react-router-dom'
 import { useQuery } from '@tanstack/react-query'
-import { BubbleChart, type BubbleChartOptions } from '@carbon/charts-react'
+import { BubbleChart, LegendItemType, type BubbleChartOptions } from '@carbon/charts-react'
 import {
   Breadcrumb,
   BreadcrumbItem,
@@ -26,6 +26,7 @@ export function DecisionPage() {
   if (!data) return <SkeletonText paragraph lineCount={8} />
   const scenarios = Object.entries(data.scenarios)
 
+  const chosenActions = new Set(data.options.find((o) => o.chosen)?.actions ?? [])
   return (
     <>
       <Breadcrumb noTrailingSlash>
@@ -38,19 +39,19 @@ export function DecisionPage() {
       <div className="tag-row">
         <Tag type="purple">Mode: {modeLabel(data.mode)}</Tag>
         <Tag type="gray">{data.mode_by === 'operator' ? 'Operator default' : `Mode set by ${data.mode_by === 'bob' ? 'BOB' : 'rule'}`}</Tag>
-        <Tag type="gray">{data.selected_by === 'bob' ? 'Option chosen by BOB' : 'Option chosen by rule'}</Tag>
+        <Tag type="gray">{data.selected_by === 'bob' ? 'Option chosen by BOB' : 'Option chosen by BOB (rules)'}</Tag>
         <Tag type="gray">{data.trigger === 'tick' ? 'Scheduled block' : `Re-planned: ${data.trigger_detail}`}</Tag>
       </div>
 
       <Tile className="decision__why">
         <div className="card-title">
-          Why {data.selected_by === 'bob' ? 'BOB' : 'the rule'} chose “{data.chosen ?? 'nothing'}”
+          Why BOB{data.selected_by === 'bob' ? '' : ' (rules)'} chose “{data.chosen ?? 'nothing'}”
         </div>
         <p>{data.rationale}</p>
         {data.agent?.startsWith('fallback') && (
           <p className="stat-label">BOB was asked but could not decide ({data.agent.replace('fallback: ', '')}); rules decided.</p>
         )}
-        <p className="page-meta">Mode: {data.mode_reason}</p>
+        <p className="page-meta">{data.mode_reason}</p>
         {data.floors.map((f) => (
           <p key={f} className="stat-label">Guard floor: {f}</p>
         ))}
@@ -85,7 +86,7 @@ export function DecisionPage() {
         <TableHead>
           <TableRow>
             <TableHeader>Option</TableHeader>
-            <TableHeader>Commits to now</TableHeader>
+            <TableHeader>Commits to now (others: only what differs)</TableHeader>
             <TableHeader>Expected cost, 24 h</TableHeader>
             <TableHeader>Carbon</TableHeader>
             <TableHeader>Curtailment</TableHeader>
@@ -99,9 +100,12 @@ export function DecisionPage() {
                 {o.label} {o.chosen && <Tag type="purple" size="sm">chosen</Tag>}
               </TableCell>
               <TableCell>
-                {o.actions.map((a) => (
+                {(o.chosen ? o.actions : o.actions.filter((a) => !chosenActions.has(a))).map((a) => (
                   <div key={a}>{a}</div>
                 ))}
+                {!o.chosen && o.actions.every((a) => chosenActions.has(a)) && (
+                  <span className="stat-label">The same as the chosen option</span>
+                )}
               </TableCell>
               <TableCell>{inr(o.cost_inr)}</TableCell>
               <TableCell>{o.carbon_t} t</TableCell>
@@ -159,9 +163,11 @@ export function DecisionPage() {
   )
 }
 
+const legendLabel = (o: DecisionDetail['options'][number]) => (o.chosen ? `${o.label} (chosen)` : o.label)
+
 function tradeOff(data: DecisionDetail) {
   return data.options.map((o) => ({
-    group: o.label,
+    group: legendLabel(o),
     cost: o.cost_inr,
     carbon: o.carbon_t,
     regret: Math.max(o.worst_regret_inr ?? 0, 1),
@@ -176,10 +182,14 @@ function tradeOffOptions(data: DecisionDetail): BubbleChartOptions {
       bottom: { mapsTo: 'cost', title: 'Expected cost over 24 h (₹)', includeZero: false },
       left: { mapsTo: 'carbon', title: 'Carbon from imports (t)', includeZero: false },
     },
-    bubble: { radiusMapsTo: 'regret', radiusLabel: 'Worst-case regret (₹)' },
+    // Size shows worst-case regret; a floor keeps the least-regret option visible.
+    bubble: { radiusMapsTo: 'regret', radiusLabel: 'Worst-case regret (₹)', radiusRange: () => [8, 26] },
     color: {
-      scale: Object.fromEntries(data.options.map((o) => [o.label, o.chosen ? SERIES.bob : SERIES.baseline])),
+      scale: Object.fromEntries(data.options.map((o) => [legendLabel(o), o.chosen ? SERIES.bob : SERIES.baseline])),
     },
-    legend: { truncation: { numCharacter: 40 } },
+    legend: {
+      truncation: { numCharacter: 40 },
+      additionalItems: [{ type: LegendItemType.RADIUS, name: 'Size: worst-case regret' }],
+    },
   }
 }

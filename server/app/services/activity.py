@@ -38,11 +38,11 @@ def site_activity(db: Session, run: Run, site: Site, categories: set[str]) -> li
         mode = None
         for c in cycles:
             if c.mode != mode and mode is not None:
-                by = {"bob": "BOB", "rule": "Rule", "operator": "Operator default"}[c.mode_by]
+                by = {"bob": "BOB", "rule": "BOB (rules)", "operator": "Operator default"}[c.mode_by]
                 out.append(entry(when(c.block), "decisions", f"Mode: {c.mode.replace('_', ' ')}", c.mode_reason, by))
             if c.trigger != "tick":
                 out.append(entry(when(c.block), "decisions", f"Re-planned: {c.trigger_detail or c.trigger}",
-                                 c.rationale, "BOB" if c.selected_by == "bob" else "Rule"))
+                                 c.rationale, "BOB" if c.selected_by == "bob" else "BOB (rules)"))
             mode = c.mode
     if categories & {"actions", "maintenance"}:
         for a in recent_actions(db, run, LIMIT, site=site.code, notable=True):

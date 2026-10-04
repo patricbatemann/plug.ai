@@ -4,6 +4,7 @@ declare module '@carbon/colors/es/index.js' {
   export const cyan50: string
   export const gray50: string
   export const gray60: string
+  export const gray70: string
   export const gray100: string
   export const magenta70: string
   export const orange70: string

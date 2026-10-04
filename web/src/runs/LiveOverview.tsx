@@ -52,8 +52,11 @@ export function LiveOverview({ run, siteCode, generationSeries }: Props) {
       </Tile>
 
       {data.alerts.map((a) => (
-        <InlineNotification key={a.title} kind={a.severity} title={a.title} subtitle={a.detail} hideCloseButton lowContrast />
+        <InlineNotification key={a.title} kind={a.severity} title={a.title} subtitle={a.detail} hideCloseButton lowContrast
+          className="page-banner" />
       ))}
+      <InlineNotification kind="info" hideCloseButton lowContrast className="page-banner" title="What BOB is doing"
+        subtitle={data.bob_now.length ? `This block: ${data.bob_now.join('; ')}.` : 'This block: holding, no change at this site.'} />
 
       <div className="card-grid">
         {data.generation && (
@@ -127,7 +130,7 @@ function FlowList({ title, items }: { title: string; items: SiteLive['sources'] 
     <div>
       <div className="stat-label">{title}</div>
       {items.map((i) => (
-        <ProgressBar key={i.label} label={i.label} helperText={mw(i.mw)} value={i.mw} max={max} size="small" />
+        <ProgressBar key={i.label} label={`${i.label}: ${mw(i.mw)}`} value={i.mw} max={max} size="small" />
       ))}
     </div>
   )
@@ -172,8 +175,8 @@ function chartOptions(data: SiteLive, generationSeries: 'solar' | 'wind'): Chart
     color: {
       scale: {
         'Actual generation': SERIES[generationSeries],
-        Forecast: SERIES[generationSeries],
-        'Forecast range': SERIES[generationSeries],
+        Forecast: SERIES.forecast,
+        'Forecast range': SERIES.forecast,
         Demand: SERIES.demand,
         'Planned battery': SERIES.battery,
       },

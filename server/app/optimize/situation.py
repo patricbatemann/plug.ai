@@ -66,7 +66,7 @@ def choose_mode(signals: list[Signal], default: str) -> tuple[str, str]:
     for mode in PRECEDENCE:
         hit = next((s for s in signals if s.material and s.mode == mode), None)
         if hit:
-            return mode, f"{hit.label}: {hit.value} ({hit.threshold})."
+            return mode, f"{mode.replace('_', ' ').capitalize()} because: {hit.label.lower()} ({hit.value})."
     return default, "No material signal; the operator's default mode applies."
 
 

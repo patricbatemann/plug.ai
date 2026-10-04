@@ -158,6 +158,10 @@ def test_configure_test_activate_watch_and_pause(client: TestClient, db: Session
     db.expire_all()
     latest = db.scalar(select(Cycle).where(Cycle.run_id == run["id"]).order_by(Cycle.id.desc()).limit(1))
     assert latest.trigger == "watch" and "Battery 1" in latest.trigger_detail
+    client.post(f"{url}/step", headers=auth_headers)  # still below: once per crossing, not every block
+    db.expire_all()
+    latest = db.scalar(select(Cycle).where(Cycle.run_id == run["id"]).order_by(Cycle.id.desc()).limit(1))
+    assert latest.trigger == "tick"
     watch = client.get(f"{url}/sites/KUP-SOLAR-001/watch", headers=auth_headers).json()
     assert watch and watch[0]["met"]
 

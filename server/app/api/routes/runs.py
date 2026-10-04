@@ -15,12 +15,12 @@ from app.models.portfolio import Portfolio
 from app.models.run import Action, Cycle, Run, WorldEvent
 from app.models.user import User
 from app.schemas.runs import (
-    ActionOut, ChatAsk, ChatItem, DecisionDetail, DecisionSummary, EventOut, InjectEvent, PresetInfo, RunCreate, RunState, RunSummary, SiteLive,
-    SpeedUpdate,
+    ActionOut, ChatAsk, ChatItem, DecisionDetail, DecisionSummary, EventOut, InjectEvent, PresetInfo, RunCreate,
+    RunState, RunSummary, SiteLive, SiteStatus, SpeedUpdate,
 )
 from app.services import runs
 from app.services import decisions, policy
-from app.services.live import site_live
+from app.services import live
 from app.services.summary import recent_actions, summary
 from app.sim.presets import PRESETS
 
@@ -135,7 +135,13 @@ def live_overview(
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Site not found")
     if run.current_block < 0:
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="The run has not settled a block yet")
-    return site_live(db, run, site, _now())
+    return live.site_live(db, run, site, _now())
+
+
+@router.get("/{run_id}/sites", response_model=list[SiteStatus])
+def sites_status(run: Run = Depends(_run), db: Session = Depends(get_db),
+                 portfolio: Portfolio = Depends(current_portfolio)) -> list[SiteStatus]:
+    return live.sites_status(db, run, portfolio.sites) if run.current_block >= 0 else []
 
 
 @router.get("/{run_id}/summary", response_model=RunSummary)

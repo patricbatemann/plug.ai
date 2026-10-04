@@ -208,9 +208,20 @@ class SiteLive(BaseModel):
     demand_mw: float | None
     grid_mw: float | None
     alerts: list[Alert]
+    bob_now: list[str]  # what BOB is doing at the site in the block in progress
     chart: list[ChartPoint]
     sources: list[FlowItem]
     uses: list[FlowItem]
+
+
+class SiteStatus(BaseModel):
+    code: str
+    output_mw: float | None
+    forecast_mw: float | None
+    storage_pct: float | None
+    status: Literal["Normal", "Below forecast", "Battery unavailable"]
+    bob_now: list[str]
+    pending: int
 
 
 class PolicyTotals(BaseModel):

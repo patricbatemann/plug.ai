@@ -3,7 +3,9 @@ import { useQuery } from '@tanstack/react-query'
 import { Button, Tag, Tile } from '@carbon/react'
 import { runApi, type RunState } from '../api/client'
 import { modeLabel, simTime } from '../format'
+import { ActionCard } from './ActionCard'
 import { useAskBob } from './AskBob'
+import { useOpenActions } from './useActions'
 
 /** BOB's latest decision, as on the Monitor Sites screen, with a link to its evidence. */
 export function Recommendation({ run }: { run: RunState }) {
@@ -12,9 +14,22 @@ export function Recommendation({ run }: { run: RunState }) {
     queryFn: () => runApi.latestDecision(run.id),
   })
   const ask = useAskBob()
+  const open = useOpenActions(run).data ?? []
   if (!data) return null
   return (
     <Tile className="recommendation">
+      {open.length > 0 && (
+        <>
+          <div className="recommendation__head">
+            <Tag type="warm-gray">Waiting for you</Tag>
+            <span className="stat-label">
+              {open.length} {open.length === 1 ? 'action needs' : 'actions need'} a decision ·{' '}
+              <Link className="cds--link" to="/actions">all of them</Link>
+            </span>
+          </div>
+          <ActionCard action={open[0]} run={run} />
+        </>
+      )}
       <div className="recommendation__head">
         <Tag type="purple">BOB · AI energy operations</Tag>
         <span className="stat-label">Decision for {simTime(data.time)} IST</span>

@@ -10,12 +10,59 @@ from sqlalchemy.orm import Session
 from app.models.portfolio import Site
 from app.models.run import AssetBlock, Cycle, Forecast, Plan, Run, WorldEvent
 from app.schemas.runs import (
-    Alert, BatteryCard, ChartPoint, FlowItem, GenerationCard, SiteLive, Weather,
+    Alert, BatteryCard, ChartPoint, FlowItem, GenerationCard, SiteLive, SiteStatus, Weather,
 )
 from app.services.runs import BLOCK, IST, RunContext, sim_now
+from app.services.summary import recent_actions
 
 CHART_BLOCKS = 48  # 12 hours back and ahead
 GENERATION = ("solar", "wind")
+DOING = {"bess_charge": "charging {asset} at {mw:.1f} MW", "bess_discharge": "discharging {asset} at {mw:.1f} MW",
+         "curtail": "limiting {asset} to {mw:.1f} MW", "dr_call": "calling {mw:.1f} MW of demand response at {asset}",
+         "load_shift": "moving {mw:.1f} MW of load at {asset}", "rtm_buy": "buying {mw:.1f} MW",
+         "rtm_sell": "selling {mw:.1f} MW"}
+
+
+def doing(run: Run, block: int, db: Session) -> dict[str | None, list[str]]:
+    """BOB's setpoints for the block in progress, in words, by site name."""
+    out = defaultdict(list)
+    for a in recent_actions(db, run, 100, status=["acked"], block=block):
+        if a.kind in DOING:
+            out[a.site].append(DOING[a.kind].format(asset=a.asset, mw=abs(a.mw)))
+    return out
+
+
+def below_forecast(actual: float, expected: float | None, capacity: float) -> bool:
+    return expected is not None and actual < expected - max(2.0, 0.1 * capacity)
+
+
+def sites_status(db: Session, run: Run, sites: list[Site]) -> list[SiteStatus]:
+    """Each site now, for the portfolio table: output against the forecast made for this block,
+    battery charge, any trouble, what BOB is doing and how many approvals wait."""
+    b = run.current_block
+    rows = {r.asset_id: r for r in db.scalars(select(AssetBlock).where(
+        AssetBlock.run_id == run.id, AssetBlock.policy == "bob", AssetBlock.block == b))}
+    made_for = {f.asset_id: f.p50[0] for f in db.scalars(select(Forecast).where(
+        Forecast.run_id == run.id, Forecast.issued_block == b - 1, Forecast.series == "re_avail"))}
+    now = doing(run, b + 1, db)
+    waiting = defaultdict(int)
+    for a in recent_actions(db, run, 200, status=["awaiting_approval"]):
+        waiting[a.site] += 1
+    out = []
+    for site in sites:
+        gens = [a for a in site.assets if a.kind in GENERATION and a.id in rows]
+        bess = [a for a in site.assets if a.kind == "bess" and a.id in rows]
+        output = sum(rows[a.id].actual_mw for a in gens) if gens else None
+        expected = sum(made_for.get(a.id, 0) for a in gens) if gens and b > 0 else None
+        status = ("Battery unavailable" if any(rows[a.id].available_mw <= 0 for a in bess) else
+                  "Below forecast" if output is not None and below_forecast(
+                      output, expected, sum(a.capacity_mw for a in gens)) else "Normal")
+        out.append(SiteStatus(
+            code=site.code, output_mw=output and round(output, 1), forecast_mw=expected and round(expected, 1),
+            storage_pct=round(sum(rows[a.id].soc_mwh for a in bess) / sum(a.params["energy_mwh"] for a in bess) * 100)
+            if bess else None,
+            status=status, bob_now=now.get(site.name, []), pending=waiting[site.name]))
+    return out
 
 
 def _condition(cloud: float) -> str:
@@ -128,7 +175,7 @@ def site_live(db: Session, run: Run, site: Site, now: datetime) -> SiteLive:
         expected = earlier[3][1] if earlier else None
         generation = GenerationCard(actual_mw=round(actual, 2), forecast_mw=expected and round(expected, 2),
                                     capacity_mw=capacity)
-        if expected is not None and actual < expected - max(2.0, 0.1 * capacity):
+        if below_forecast(actual, expected, capacity):
             alerts.append(Alert(severity="warning", title="Generation is below forecast",
                                 detail=f"{expected - actual:.1f} MW below the forecast made an hour ago."))
 
@@ -171,7 +218,7 @@ def site_live(db: Session, run: Run, site: Site, now: datetime) -> SiteLive:
         generation=generation, batteries=batteries,
         demand_mw=round(demand[b], 2) if has("consumer") else None,
         grid_mw=round(grid, 2) if has("interconnection") else None,
-        alerts=alerts, chart=chart,
+        alerts=alerts, bob_now=doing(run, b + 1, db).get(site.name, []), chart=chart,
         sources=[FlowItem(label=f.label, mw=round(f.mw, 2)) for f in sources],
         uses=[FlowItem(label=f.label, mw=round(f.mw, 2)) for f in uses],
     )

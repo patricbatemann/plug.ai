@@ -11,9 +11,7 @@ import {
   Tile,
 } from '@carbon/react'
 import { runApi, type RunState } from '../api/client'
-import { actionLabel, inr, mw, netCost, simTime } from '../format'
-
-const STATUS_TAG: Record<string, 'green' | 'blue' | 'red'> = { verified: 'green', acked: 'blue', rejected: 'red' }
+import { actionLabel, inr, mw, netCost, simTime, statusOf } from '../format'
 
 /** BOB against today's practice on the same simulated day, and BOB's latest actions. */
 export function RunComparison({ run }: { run: RunState }) {
@@ -57,6 +55,7 @@ export function RunComparison({ run }: { run: RunState }) {
             <TableHeader>Site</TableHeader>
             <TableHeader>Commanded</TableHeader>
             <TableHeader>Delivered</TableHeader>
+            <TableHeader>Initiated by</TableHeader>
             <TableHeader>Status</TableHeader>
           </TableRow>
         </TableHead>
@@ -71,9 +70,10 @@ export function RunComparison({ run }: { run: RunState }) {
               <TableCell>{a.site ?? 'Portfolio'}</TableCell>
               <TableCell>{mw(Math.abs(a.mw))}</TableCell>
               <TableCell>{a.delivered_mw === null ? '—' : mw(Math.abs(a.delivered_mw))}</TableCell>
+              <TableCell>{a.decided_by ? `BOB, approved by ${a.decided_by}` : 'BOB'}</TableCell>
               <TableCell>
-                <Tag size="sm" type={STATUS_TAG[a.status] ?? 'gray'} title={a.reason ?? undefined}>
-                  {a.status}
+                <Tag size="sm" type={statusOf(a.status).tag} title={a.reason ?? undefined}>
+                  {statusOf(a.status).label}
                 </Tag>
               </TableCell>
             </TableRow>

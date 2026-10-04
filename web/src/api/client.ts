@@ -114,6 +114,7 @@ export interface SiteLive {
   demand_mw: number | null
   grid_mw: number | null
   alerts: Alert[]
+  bob_now: string[]
   chart: ChartPoint[]
   sources: Array<{ label: string; mw: number }>
   uses: Array<{ label: string; mw: number }>
@@ -325,6 +326,7 @@ export const runApi = {
   chat: (id: number) => request<ChatItem[]>(`/api/runs/${id}/chat`),
   ask: (id: number, message: string, context: string | undefined, onEvent: (e: ChatEvent) => void) =>
     stream(`/api/runs/${id}/chat`, { message, context }, onEvent),
+  sites: (id: number) => request<SiteStatus[]>(`/api/runs/${id}/sites`),
   siteLive: (id: number, code: string) =>
     request<SiteLive>(`/api/runs/${id}/sites/${encodeURIComponent(code)}/live`),
 }
@@ -422,6 +424,16 @@ export const simulationApi = {
   bobCalls: () =>
     request<{ calls: number; ok: number; by_purpose: Record<string, number>; failures: Record<string, number>
       median_ms: number | null }>('/api/bob-calls'),
+}
+
+export interface SiteStatus {
+  code: string
+  output_mw: number | null
+  forecast_mw: number | null
+  storage_pct: number | null
+  status: 'Normal' | 'Below forecast' | 'Battery unavailable'
+  bob_now: string[]
+  pending: number
 }
 
 export interface ActivityEntry {

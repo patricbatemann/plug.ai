@@ -3,7 +3,7 @@ import {
   SkeletonText, Table, TableBody, TableCell, TableHead, TableHeader, TableRow, Tag,
 } from '@carbon/react'
 import { documentApi, type RunState } from '../api/client'
-import { actionLabel, simTime } from '../format'
+import { actionLabel, simTime, statusOf } from '../format'
 import { ActionCard } from './ActionCard'
 
 const STATUS_TAG = { planned: 'gray', 'in progress': 'blue', done: 'green' } as const
@@ -59,7 +59,7 @@ export function SiteMaintenance({ run, site }: { run: RunState; site: string }) 
           <h2 className="section-title">Earlier proposals</h2>
           {decided.map((a) => (
             <div key={a.id} className="action-card__head">
-              <Tag size="sm" type="gray">{a.status.replace('_', ' ')}</Tag>
+              <Tag size="sm" type={statusOf(a.status).tag}>{statusOf(a.status).label}</Tag>
               <span>{simTime(a.time)} · {actionLabel(a.kind, 0)} · {a.asset}: {a.reason}</span>
             </div>
           ))}

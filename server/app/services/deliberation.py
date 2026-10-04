@@ -107,8 +107,10 @@ class Deliberation:
             return "Fast-forward block: one option planned for the active mode."
         holds = sum(s["holds"] for s in self.robust[chosen].values())
         tests = len(self.robust[chosen])
-        others = sorted(self.worst(n) for n in self.robust if n != chosen)
-        runner_up = f"; next best ₹{others[0]:,.0f}" if others else ""
+        others = sorted((self.worst(n), n) for n in self.robust if n != chosen)
+        runner_up = ("" if not others else
+                     f"; tied with “{VARIANT_LABELS[others[0][1]]}”, and cheaper on the expected day"
+                     if others[0][0] == self.worst(chosen) else f"; next best ₹{others[0][0]:,.0f}")
         return (f"Chose “{VARIANT_LABELS[chosen]}”: the smallest worst-case regret, ₹{self.worst(chosen):,.0f}, "
                 f"across {tests} stress tests{runner_up}. Keeps all load served in {holds} of {tests}.")
 
