@@ -1,4 +1,4 @@
-# PLUG.AI — Renewable Energy Orchestrator
+# PlugAI — Renewable Energy Orchestrator
 
 A demo of BOB, an AI agent that orchestrates a renewable energy portfolio (solar, wind, batteries, industrial demand, grid and market) in 15-minute blocks. The client is React + TypeScript with IBM Carbon; the API is FastAPI on PostgreSQL.
 
