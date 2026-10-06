@@ -195,95 +195,182 @@ body {
   margin-bottom: $spacing-04;
 }
 
+.ask-bob__title {
+  display: flex;
+  align-items: center;
+  gap: $spacing-03;
+  font-size: 1rem;
+  font-weight: 600;
+}
+
 .assistant {
   display: flex;
-  padding: $spacing-05;
-  background: theme.$layer-01;
-  height: calc(100vh - 16rem);
-  max-width: 56rem;
+  height: calc(100vh - #{$nav-height} - 9.5rem);
+}
+
+.assistant__back {
+  margin-top: $spacing-06;
 }
 
 .chat {
   display: flex;
   flex: 1;
   flex-direction: column;
-  gap: $spacing-04;
+  gap: $spacing-03;
+  min-width: 0;
   min-height: 0;
+  font-size: 0.875rem;
+
+  p {
+    font-size: inherit;
+  }
 }
 
 .chat__messages {
   display: flex;
   flex: 1;
   flex-direction: column;
-  gap: $spacing-04;
+  gap: $spacing-06;
   overflow-y: auto;
+  padding-bottom: $spacing-05;
 }
 
-.chat__suggestions {
+.chat__welcome {
   display: grid;
-  gap: $spacing-02;
-  justify-items: start;
+  gap: $spacing-05;
+
+  strong {
+    font-size: 0.9375rem;
+  }
+
+  p {
+    margin-top: $spacing-02;
+    color: theme.$text-secondary;
+  }
 }
 
-.chat__message {
-  display: grid;
+.chat__chips,
+.composer__chips {
+  display: flex;
+  flex-wrap: wrap;
   gap: $spacing-03;
-  max-width: 85%;
-  padding: $spacing-04;
+
+  button {
+    padding: $spacing-03 $spacing-04;
+    border: 0;
+    background: transparent;
+    font: inherit;
+    font-size: 0.8125rem;
+    font-weight: 500;
+    color: theme.$text-secondary;
+    cursor: pointer;
+
+    &:hover {
+      background: theme.$layer-hover-01;
+      color: theme.$text-primary;
+    }
+  }
+}
+
+.composer__chips button {
+  background: theme.$layer-02;
+  font-size: 0.75rem;
+}
+
+.chat__user {
+  align-self: flex-end;
+  max-width: 80%;
+  padding: $spacing-05;
+  background: theme.$layer-accent-01;
+  font-size: 0.9375rem;
+  font-weight: 600;
   white-space: pre-wrap;
 }
 
-.chat__message--user {
-  align-self: flex-end;
-  background: theme.$highlight;
-}
-
-.chat__message--assistant {
-  align-self: stretch;
-  max-width: none;
-  background: theme.$layer-02;
-}
-
-.chat__input {
+.chat__bot {
   display: flex;
-  align-items: flex-end;
+  align-items: flex-start;
+  gap: $spacing-04;
+}
+
+.chat__answer {
+  display: grid;
+  flex: 1;
+  gap: $spacing-04;
+  min-width: 0;
+  line-height: 1.6;
+  white-space: pre-wrap;
+}
+
+.composer {
+  display: flex;
+  align-items: center;
   gap: $spacing-03;
+  padding: $spacing-03;
+  border: 1px solid theme.$border-subtle-01;
+  background: theme.$layer-01;
 
   .cds--form-item {
     flex: 1;
   }
+
+  .cds--text-area {
+    min-height: 2.5rem;
+    border-bottom: 0;
+    background: transparent;
+    resize: none;
+  }
+}
+
+.composer__send.cds--btn {
+  background: theme.$background-brand;
+}
+
+.chat .chat__note {
+  font-size: 0.75rem;
+  color: theme.$text-helper;
 }
 
 .chat-card {
   display: grid;
-  gap: $spacing-03;
-  background: theme.$layer-01;
+  gap: $spacing-04;
+  padding: $spacing-05;
   white-space: normal;
+}
+
+.chat-card__head,
+.chat-card__foot {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: $spacing-03;
+
+  strong {
+    display: flex;
+    align-items: center;
+    gap: $spacing-03;
+    font-size: 0.9375rem;
+  }
+}
+
+.chat-card__foot {
+  justify-content: flex-end;
 }
 
 .chat-card--blocked {
   border-left: 3px solid theme.$support-error;
 }
 
-.chat-card__table {
-  @include type-style('body-compact-01');
-  width: 100%;
-
-  td:first-child {
-    white-space: nowrap;
-  }
-
-  th,
-  td {
-    padding: $spacing-02 $spacing-04 $spacing-02 0;
-    text-align: left;
-  }
-}
-
 .chat-card__quote {
   padding-left: $spacing-04;
   border-left: 3px solid theme.$border-strong-01;
   font-style: italic;
+}
+
+// The drawer is narrow: quick chips would crowd the input.
+.ask-bob .composer__chips {
+  display: none;
 }
 
 .simulation__panel {
@@ -2158,6 +2245,17 @@ body {
   background: theme.$support-info;
 }
 
+.ftable--compact {
+  th,
+  td {
+    padding: $spacing-03 $spacing-04;
+  }
+
+  td:first-child {
+    white-space: nowrap;
+  }
+}
+
 @include breakpoint-down(md) {
   .page {
     padding-inline: $spacing-05;
@@ -2178,6 +2276,15 @@ body {
 
   .review__main {
     padding-right: $spacing-05;
+  }
+
+  .composer {
+    flex-wrap: wrap;
+  }
+
+  .composer__chips {
+    order: 1;
+    width: 100%;
   }
 
   .ledger,

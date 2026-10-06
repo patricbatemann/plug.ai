@@ -16,7 +16,7 @@ export function WhatIfTable({ current, whatIf, actions = false }: {
 }) {
   const plans = [current, whatIf]
   return (
-    <table className="chat-card__table">
+    <table className="ftable ftable--compact">
       <thead><tr><th /><th>Now</th><th>What-if</th></tr></thead>
       <tbody>
         {ROWS.map(([label, value]) => (

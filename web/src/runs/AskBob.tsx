@@ -2,19 +2,19 @@ import { createContext, useContext, useEffect, useRef, useState, type ReactNode 
 import { Link, useLocation } from 'react-router-dom'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import {
-  Button, IconButton, InlineLoading, InlineNotification, OverflowMenu, OverflowMenuItem, Tag, TextArea, Tile,
+  Button, IconButton, InlineLoading, InlineNotification, OverflowMenu, OverflowMenuItem, TextArea,
 } from '@carbon/react'
-import { Attachment, Close, Locked, Send } from '@carbon/icons-react'
+import { Attachment, Bot, Close, Locked, Send } from '@carbon/icons-react'
 import { documentApi, fileUpload, runApi, type ChatCard } from '../api/client'
 import { AUTONOMY, configKindLabel, limitsSummary } from '../format'
 import { useCurrentRun } from './useCurrentRun'
 import { WhatIfTable } from './WhatIfTable'
 
 const SUGGESTIONS = [
-  'What is happening right now, and what needs my attention?',
-  'Why did you choose the plan for the latest block?',
-  'What if the largest battery trips and demand rises 10 %?',
-  'Remove the minimum battery reserve on Battery 1.',
+  { label: 'What needs my attention?', question: 'What is happening right now, and what needs my attention?' },
+  { label: 'Why this plan?', question: 'Why did you choose the plan for the latest block?' },
+  { label: 'What if a battery trips?', question: 'What if the largest battery trips and demand rises 10 %?' },
+  { label: 'Remove a battery reserve', question: 'Remove the minimum battery reserve on Battery 1.' },
 ]
 
 const AskBobContext = createContext<(question?: string) => void>(() => {})
@@ -30,7 +30,7 @@ export function AskBobProvider({ children }: { children: ReactNode }) {
       {open && (
         <aside className="ask-bob" aria-label="Ask BOB">
           <div className="ask-bob__head">
-            <span className="card-title">Ask BOB</span>
+            <span className="ask-bob__title"><span className="icon-box icon-box--brand"><Bot size={16} /></span>Ask BOB</span>
             <IconButton label="Close" kind="ghost" size="sm" onClick={() => setOpen(null)}>
               <Close />
             </IconButton>
@@ -101,27 +101,28 @@ export function Chat({ question }: { question?: string }) {
     <div className="chat">
       <div className="chat__messages">
         {items.length === 0 && !send.isPending && (
-          <div className="chat__suggestions">
-            <p className="stat-label">BOB answers from the live decision records. Try:</p>
-            {SUGGESTIONS.map((s) => (
-              <Button key={s} kind="ghost" size="sm" onClick={() => submit(s)}>{s}</Button>
-            ))}
+          <div className="chat__welcome">
+            <div className="chat__bot">
+              <span className="icon-box icon-box--brand"><Bot size={16} /></span>
+              <div>
+                <strong>Welcome to Ask BOB</strong>
+                <p>BOB answers from the live decision records: decisions, assets, approvals, what-if plans and action setups.</p>
+              </div>
+            </div>
+            <div className="chat__chips">
+              {SUGGESTIONS.map((s) => (
+                <button key={s.label} type="button" onClick={() => submit(s.question)}>{s.label}</button>
+              ))}
+            </div>
           </div>
         )}
-        {items.map((m) => (
-          <div key={m.id} className={`chat__message chat__message--${m.role}`}>
-            {m.text && <p>{withBold(m.text)}</p>}
-            {m.cards.map((c, i) => <CardView key={i} card={c} last={i === m.cards.length - 1} />)}
-          </div>
-        ))}
+        {items.map((m) => <Message key={m.id} role={m.role} text={m.text}>
+          {m.cards.map((c, i) => <CardView key={i} card={c} last={i === m.cards.length - 1} />)}
+        </Message>)}
         {send.isPending && (
           <>
-            <div className="chat__message chat__message--user"><p>{send.variables}</p></div>
-            {live.text ? (
-              <div className="chat__message chat__message--assistant"><p>{withBold(live.text)}</p></div>
-            ) : (
-              <InlineLoading description={`${live.status || 'BOB is thinking'}…`} />
-            )}
+            <Message role="user" text={send.variables} />
+            {live.text ? <Message role="assistant" text={live.text} /> : <InlineLoading description={`${live.status || 'BOB is thinking'}…`} />}
           </>
         )}
         {upload.isPending && (
@@ -133,15 +134,37 @@ export function Chat({ question }: { question?: string }) {
         )}
         <div ref={end} />
       </div>
-      {!run.bob_online && <p className="stat-label">BOB is offline; decisions continue on rules.</p>}
-      <div className="chat__input">
-        <Attach disabled={upload.isPending} onPick={(doc) => upload.mutate(doc)} />
-        <TextArea labelText="Message" hideLabel rows={2} value={text} placeholder="Ask BOB…"
+      <div className="composer">
+        <TextArea labelText="Message" hideLabel rows={1} value={text}
+          placeholder="Ask about decisions, assets, approvals or what-if plans…"
           onChange={(e) => setText(e.target.value)}
           onKeyDown={(e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); submit(text) } }} />
-        <IconButton label="Send" disabled={!text.trim() || send.isPending} onClick={() => submit(text)}>
+        <div className="composer__chips">
+          {SUGGESTIONS.slice(0, 3).map((s) => (
+            <button key={s.label} type="button" onClick={() => submit(s.question)}>{s.label}</button>
+          ))}
+        </div>
+        <Attach disabled={upload.isPending} onPick={(doc) => upload.mutate(doc)} />
+        <IconButton label="Send" className="composer__send" disabled={!text.trim() || send.isPending} onClick={() => submit(text)}>
           <Send />
         </IconButton>
+      </div>
+      <p className="chat__note">
+        {run.bob_online ? 'BOB never executes or approves actions from chat.' : 'BOB is offline; decisions continue on rules.'}{' '}
+        Shift + Enter for a new line.
+      </p>
+    </div>
+  )
+}
+
+function Message({ role, text, children }: { role: string; text: string; children?: ReactNode }) {
+  if (role === 'user') return <div className="chat__user">{text}</div>
+  return (
+    <div className="chat__bot">
+      <span className="icon-box icon-box--brand"><Bot size={16} /></span>
+      <div className="chat__answer">
+        {text && <p>{withBold(text)}</p>}
+        {children}
       </div>
     </div>
   )
@@ -178,50 +201,53 @@ function CardView({ card, last }: { card: ChatCard; last: boolean }) {
   if (card.type === 'constraint') return <ConstraintCard card={card} />
   if (card.type === 'blocked') {
     return (
-      <Tile className="chat-card chat-card--blocked">
-        <div className="card-title"><Locked /> Safety rule blocked this setting</div>
+      <div className="panel chat-card chat-card--blocked">
+        <div className="chat-card__head"><strong><Locked /> Safety rule blocked this setting</strong></div>
         <p>{configKindLabel(card.kind)} on {card.asset_name}: {card.text}</p>
-      </Tile>
+      </div>
     )
   }
   if (card.type === 'what_if') {
     return (
-      <Tile className="chat-card">
-        <div className="card-title">What-if, not executed</div>
+      <div className="panel chat-card">
+        <div className="chat-card__head"><strong>What-if</strong><span className="badge badge--gray">Not executed</span></div>
         <WhatIfTable current={card.current} whatIf={card.what_if} />
-        <p className="stat-label">What-if actions: {card.what_if.actions?.join('; ') ?? '—'}</p>
-      </Tile>
+        <p className="cell-sub">What-if actions: {card.what_if.actions?.join('; ') ?? '—'}</p>
+      </div>
     )
   }
 
   const link = `/sites/${card.site}/bob/setup?asset=${card.asset}&kind=${card.kind}&draft=${card.config_id}`
   return (
-    <Tile className="chat-card">
+    <div className="panel chat-card">
       {card.type === 'draft' ? (
         <>
-          <div className="card-title">Draft v{card.version}: {configKindLabel(card.kind)} · {card.asset_name}</div>
+          <div className="chat-card__head">
+            <strong>{configKindLabel(card.kind)} · {card.asset_name}</strong><span className="badge badge--blue">Draft v{card.version}</span>
+          </div>
           <p>{AUTONOMY[card.autonomy].label}. {limitsSummary(card.limits).join('; ')}</p>
         </>
       ) : (
         <>
-          <div className="card-title">Tests: {configKindLabel(card.kind)} · {card.asset_name}</div>
+          <div className="chat-card__head"><strong>Tests: {configKindLabel(card.kind)} · {card.asset_name}</strong></div>
           {Object.entries(card.tests).map(([key, t]) => (
-            <div key={key} className="action-card__head">
-              <Tag size="sm" type={t.passed ? 'green' : 'red'}>{t.passed ? 'Passed' : 'Failed'}</Tag> {t.label}
+            <div key={key} className="kv-line">
+              <span>{t.label}</span>
+              <span className={`badge badge--${t.passed ? 'green' : 'red'}`}>{t.passed ? 'Passed' : 'Failed'}</span>
             </div>
           ))}
         </>
       )}
-      {last && <Link className="cds--link" to={link}>Review and activate in setup</Link>}
-    </Tile>
+      {last && <Link className="text-link" to={link}>Review and activate in setup</Link>}
+    </div>
   )
 }
 
 const CONSTRAINT_STATUS = {
-  active: { tag: 'green', label: 'Applied' },
-  pending: { tag: 'warm-gray', label: 'Needs your confirmation' },
-  rejected: { tag: 'red', label: 'Not applied' },
-  withdrawn: { tag: 'gray', label: 'Withdrawn' },
+  active: { tone: 'green', label: 'Applied' },
+  pending: { tone: 'amber', label: 'Needs your confirmation' },
+  rejected: { tone: 'red', label: 'Not applied' },
+  withdrawn: { tone: 'gray', label: 'Withdrawn' },
 } as const
 
 /** A constraint read from a document, with its quote and what a person can still do. */
@@ -237,30 +263,30 @@ function ConstraintCard({ card }: { card: Extract<ChatCard, { type: 'constraint'
   })
   const status = CONSTRAINT_STATUS[card.status]
   return (
-    <Tile className="chat-card">
-      <div className="action-card__head">
-        <span className="card-title">{card.label}</span>
-        <Tag size="sm" type={status.tag}>{status.label}</Tag>
+    <div className="panel chat-card">
+      <div className="chat-card__head">
+        <strong>{card.label}</strong>
+        <span className={`badge badge--${status.tone}`}>{status.label}</span>
       </div>
       <blockquote className="chat-card__quote">“{card.quote}”</blockquote>
-      <p className="stat-label">
+      <p className="cell-sub">
         {card.note}. {card.filename && `From ${card.filename}; `}confidence {Math.round(card.confidence * 100)} %
         {card.verified ? ', quote found in the document' : ''}.
       </p>
       {decide.error && <InlineNotification kind="error" lowContrast hideCloseButton title={decide.error.message} />}
       {card.status === 'pending' && (
-        <div className="action-card__foot">
+        <div className="chat-card__foot">
           <Button kind="tertiary" size="sm" disabled={decide.isPending} onClick={() => decide.mutate('reject')}>Reject</Button>
           <Button size="sm" disabled={decide.isPending} onClick={() => decide.mutate('apply')}>Apply</Button>
         </div>
       )}
       {card.status === 'active' && (
-        <div className="action-card__foot">
+        <div className="chat-card__foot">
           <Button kind="ghost" size="sm" disabled={decide.isPending} onClick={() => decide.mutate('withdraw')}>
             Withdraw
           </Button>
         </div>
       )}
-    </Tile>
+    </div>
   )
 }
