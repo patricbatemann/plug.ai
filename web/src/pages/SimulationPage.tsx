@@ -3,7 +3,6 @@ import { useMutation, useQuery } from '@tanstack/react-query'
 import { BoxplotChart, ScaleTypes, type BoxplotChartOptions } from '@carbon/charts-react'
 import {
   Button, FilterableMultiSelect, InlineNotification, NumberInput, ProgressBar, Select, SelectItem, SkeletonText,
-  Table, TableBody, TableCell, TableHead, TableHeader, TableRow, Tag, Tile,
 } from '@carbon/react'
 import { portfolioApi, runApi, simulationApi, type Study, type WhatIfChange } from '../api/client'
 import { inr, MODES, modeLabel, simTime } from '../format'
@@ -14,13 +13,15 @@ import { SERIES } from '../theme/tokens'
 export function SimulationPage() {
   return (
     <>
-      <h1 className="page-title">Simulation</h1>
-      <p className="page-meta">
+      <h1 className="page-title page-title--bold">Simulation</h1>
+      <p className="page-intro">
         Try a change against the block in progress, or replay a scenario over many seeds to compare BOB with
         today&apos;s practice. Nothing here is sent to any asset.
       </p>
-      <WhatIf />
-      <Replay />
+      <div className="stack">
+        <WhatIf />
+        <Replay />
+      </div>
     </>
   )
 }
@@ -44,8 +45,11 @@ function WhatIf() {
   })
 
   return (
-    <Tile className="simulation__panel">
-      <h2 className="section-title">What-if</h2>
+    <section className="panel panel--padded simulation__panel">
+      <div className="panel__head">
+        <h2 className="panel__title">What-if</h2>
+        <span className="badge badge--gray">Plans the block in progress</span>
+      </div>
       <div className="simulation__form">
         <FilterableMultiSelect id="assets-out" titleText="Assets out of service" placeholder="None"
           items={outable} itemToString={(a) => a?.name ?? ''}
@@ -65,13 +69,13 @@ function WhatIf() {
           {MODES.map((m) => <SelectItem key={m} value={m} text={modeLabel(m)} />)}
         </Select>
       </div>
-      <Button size="md" disabled={!run || compare.isPending} onClick={() => compare.mutate()}>
+      <Button className="btn-tall" disabled={!run || compare.isPending} onClick={() => compare.mutate()}>
         {compare.isPending ? 'Planning…' : 'Compare plans'}
       </Button>
-      {!run && <p className="stat-label">Start a run first: the what-if plans the block in progress.</p>}
+      {!run && <p className="cell-sub">Start a run first: the what-if plans the block in progress.</p>}
       {compare.error && <InlineNotification kind="error" lowContrast hideCloseButton title={compare.error.message} />}
       {compare.data && <WhatIfTable current={compare.data.current} whatIf={compare.data.what_if} actions />}
-    </Tile>
+    </section>
   )
 }
 
@@ -94,9 +98,9 @@ function Replay() {
   })
 
   return (
-    <Tile className="simulation__panel">
-      <h2 className="section-title">Replay: BOB vs today&apos;s practice</h2>
-      <p className="stat-label">
+    <section className="panel panel--padded simulation__panel">
+      <h2 className="panel__title">Replay: BOB vs today&apos;s practice</h2>
+      <p className="cell-sub">
         Each seed is a different day of weather, demand and prices with the same events. Replays fast-forward every
         block: the rules choose the mode and one plan per block, without the live run&apos;s options, stress tests
         or model calls. Nobody answers approvals, so BOB&apos;s fallback does only what it may do alone.
@@ -115,12 +119,12 @@ function Replay() {
           </Select>
         )}
       </div>
-      <Button size="md" disabled={start.isPending || seeds < 1 || seeds > 20} onClick={() => start.mutate()}>
+      <Button className="btn-tall" disabled={start.isPending || seeds < 1 || seeds > 20} onClick={() => start.mutate()}>
         {start.isPending ? 'Starting…' : 'Start replay'}
       </Button>
       {start.error && <InlineNotification kind="error" lowContrast hideCloseButton title={start.error.message} />}
       {study.data && <StudyResult study={study.data} />}
-    </Tile>
+    </section>
   )
 }
 
@@ -139,49 +143,49 @@ function StudyResult({ study }: { study: Study }) {
         <>
           <div className="card-grid">
             {Object.entries(study.metrics).map(([key, label]) => (
-              <Tile key={key} className="simulation__chart">
+              <div key={key} className="panel panel--padded simulation__chart">
                 <BoxplotChart data={done.flatMap((s) => [
                   { group: 'BOB', value: s.bob![key as keyof typeof s.bob] },
                   { group: "Today's practice", value: s.baseline![key as keyof typeof s.baseline] },
                 ])} options={boxOptions(label)} />
-              </Tile>
+              </div>
             ))}
           </div>
-          <h3 className="section-title">Reliability</h3>
-          <div className="tag-row">
-            <Tag type={r.hard_limit_violations ? 'red' : 'green'}>Hard-limit violations: {r.hard_limit_violations}</Tag>
-            <Tag type={r.unserved_mwh.bob ? 'red' : 'green'}>Unserved energy, BOB: {r.unserved_mwh.bob} MWh</Tag>
-            <Tag type="gray">Today&apos;s practice: {r.unserved_mwh.baseline} MWh</Tag>
-            <Tag type={r.safe_holds ? 'warm-gray' : 'gray'}>Safe holds: {r.safe_holds}</Tag>
-            <Tag type="gray">Approvals nobody answered: {r.approvals_expired}</Tag>
+          <h3 className="subhead">Reliability</h3>
+          <div className="chip-row chip-row--tight">
+            <span className={`badge badge--${r.hard_limit_violations ? 'red' : 'green'}`}>Hard-limit violations: {r.hard_limit_violations}</span>
+            <span className={`badge badge--${r.unserved_mwh.bob ? 'red' : 'green'}`}>Unserved energy, BOB: {r.unserved_mwh.bob} MWh</span>
+            <span className="badge badge--gray">Today&apos;s practice: {r.unserved_mwh.baseline} MWh</span>
+            <span className={`badge badge--${r.safe_holds ? 'amber' : 'gray'}`}>Safe holds: {r.safe_holds}</span>
+            <span className="badge badge--gray">Approvals nobody answered: {r.approvals_expired}</span>
           </div>
           {calls.data && (
-            <p className="stat-label">
+            <p className="cell-sub">
               BOB&apos;s model calls in live runs: {calls.data.ok} of {calls.data.calls} answered
               {Object.entries(calls.data.failures).map(([cause, n]) => `; ${n} fell back to rules (${cause})`).join('')}
               {calls.data.median_ms !== null && `; median ${(calls.data.median_ms / 1000).toFixed(1)} s`}.
             </p>
           )}
-          <Table aria-label="Replay seeds" size="sm">
-            <TableHead>
-              <TableRow>
-                {['Seed', 'BOB net cost', "Today's practice", 'Saving', 'Carbon, BOB / practice', 'Violations']
-                  .map((h) => <TableHeader key={h}>{h}</TableHeader>)}
-              </TableRow>
-            </TableHead>
-            <TableBody>
-              {done.map((s) => (
-                <TableRow key={s.seed}>
-                  <TableCell>{s.seed}</TableCell>
-                  <TableCell>{inr(s.bob!.cost_inr)}</TableCell>
-                  <TableCell>{inr(s.baseline!.cost_inr)}</TableCell>
-                  <TableCell>{inr(s.saving_inr!)}</TableCell>
-                  <TableCell>{s.bob!.carbon_t.toFixed(1)} / {s.baseline!.carbon_t.toFixed(1)} t</TableCell>
-                  <TableCell>{s.violations.length || '—'}</TableCell>
-                </TableRow>
-              ))}
-            </TableBody>
-          </Table>
+          <div className="table-scroll">
+            <table className="ftable ftable--compact">
+              <thead>
+                <tr>{['Seed', 'BOB net cost', "Today's practice", 'Saving', 'Carbon, BOB / practice', 'Violations']
+                  .map((h) => <th key={h}>{h}</th>)}</tr>
+              </thead>
+              <tbody>
+                {done.map((s) => (
+                  <tr key={s.seed}>
+                    <td><strong>{s.seed}</strong></td>
+                    <td>{inr(s.bob!.cost_inr)}</td>
+                    <td>{inr(s.baseline!.cost_inr)}</td>
+                    <td className={s.saving_inr! >= 0 ? 'text-success' : 'text-error'}>{inr(s.saving_inr!)}</td>
+                    <td>{s.bob!.carbon_t.toFixed(1)} / {s.baseline!.carbon_t.toFixed(1)} t</td>
+                    <td>{s.violations.length || '—'}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
         </>
       )}
     </div>

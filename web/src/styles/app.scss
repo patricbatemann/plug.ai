@@ -96,11 +96,6 @@ body {
   color: theme.$text-error;
 }
 
-.section-title {
-  @include type-style('heading-03');
-  margin: $spacing-08 0 $spacing-05;
-}
-
 .toasts {
   position: fixed;
   top: calc(#{$nav-height} + #{$spacing-05});
@@ -324,12 +319,11 @@ body {
   display: grid;
   gap: $spacing-05;
   justify-items: start;
-  margin-bottom: $spacing-07;
 }
 
 .simulation__form {
   display: grid;
-  grid-template-columns: repeat(4, minmax(12rem, 1fr));
+  grid-template-columns: repeat(auto-fill, minmax(12rem, 1fr));
   gap: $spacing-05;
   width: 100%;
   align-items: end;
@@ -1546,7 +1540,6 @@ body {
   td {
     padding: $spacing-05;
     border-bottom: 1px solid theme.$border-subtle-01;
-    color: theme.$text-secondary;
     vertical-align: middle;
   }
 
@@ -1557,6 +1550,11 @@ body {
   tr:last-child td {
     border-bottom: 0;
   }
+}
+
+// Zero specificity so colour utilities such as .text-success win.
+:where(.ftable td) {
+  color: theme.$text-secondary;
 }
 
 .checklist {
