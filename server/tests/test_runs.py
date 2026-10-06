@@ -81,6 +81,9 @@ def test_run_controls_events_and_live_overview(
     assert {"Cloud bank over the site", "Generation is below forecast"} <= titles
     assert live["batteries"][0]["code"] == "BESS-01"
     assert {p["group"] for p in live["chart"]} == {"Actual generation", "Forecast", "Planned battery"}
+    sites = {s["code"]: s for s in client.get(f"{url}/sites", headers=auth_headers).json()}
+    assert sites["KUP-SOLAR-001"]["battery_mw"] == round(sum(b["mw"] for b in live["batteries"]), 1)
+    assert sites["SRC-IND-009"]["net_mw"] < 0  # load only: it draws from the network
 
     summary = client.get(f"{url}/summary", headers=auth_headers).json()
     assert summary["block"] == 26

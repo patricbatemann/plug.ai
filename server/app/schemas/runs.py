@@ -219,6 +219,8 @@ class SiteStatus(BaseModel):
     output_mw: float | None
     forecast_mw: float | None
     storage_pct: float | None
+    battery_mw: float | None  # + discharging, - charging
+    net_mw: float  # + sent to the network, - drawn from it
     status: Literal["Normal", "Below forecast", "Battery unavailable"]
     bob_now: list[str]
     pending: int

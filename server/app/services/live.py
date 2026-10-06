@@ -38,7 +38,7 @@ def below_forecast(actual: float, expected: float | None, capacity: float) -> bo
 
 def sites_status(db: Session, run: Run, sites: list[Site]) -> list[SiteStatus]:
     """Each site now, for the portfolio table: output against the forecast made for this block,
-    battery charge, any trouble, what BOB is doing and how many approvals wait."""
+    battery charge and flow, exchange with the network, any trouble, what BOB is doing and how many approvals wait."""
     b = run.current_block
     rows = {r.asset_id: r for r in db.scalars(select(AssetBlock).where(
         AssetBlock.run_id == run.id, AssetBlock.policy == "bob", AssetBlock.block == b))}
@@ -53,6 +53,8 @@ def sites_status(db: Session, run: Run, sites: list[Site]) -> list[SiteStatus]:
         gens = [a for a in site.assets if a.kind in GENERATION and a.id in rows]
         bess = [a for a in site.assets if a.kind == "bess" and a.id in rows]
         output = sum(rows[a.id].actual_mw for a in gens) if gens else None
+        battery = sum(rows[a.id].actual_mw for a in bess) if bess else None
+        demand = sum(rows[a.id].actual_mw for a in site.assets if a.kind == "consumer" and a.id in rows)
         expected = sum(made_for.get(a.id, 0) for a in gens) if gens and b > 0 else None
         status = ("Battery unavailable" if any(rows[a.id].available_mw <= 0 for a in bess) else
                   "Below forecast" if output is not None and below_forecast(
@@ -61,6 +63,7 @@ def sites_status(db: Session, run: Run, sites: list[Site]) -> list[SiteStatus]:
             code=site.code, output_mw=output and round(output, 1), forecast_mw=expected and round(expected, 1),
             storage_pct=round(sum(rows[a.id].soc_mwh for a in bess) / sum(a.params["energy_mwh"] for a in bess) * 100)
             if bess else None,
+            battery_mw=battery and round(battery, 1), net_mw=round((output or 0) + (battery or 0) - demand, 1),
             status=status, bob_now=now.get(site.name, []), pending=waiting[site.name]))
     return out
 

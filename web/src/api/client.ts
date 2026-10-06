@@ -431,6 +431,8 @@ export interface SiteStatus {
   output_mw: number | null
   forecast_mw: number | null
   storage_pct: number | null
+  battery_mw: number | null // + discharging, - charging
+  net_mw: number // + sent to the network, - drawn from it
   status: 'Normal' | 'Below forecast' | 'Battery unavailable'
   bob_now: string[]
   pending: number

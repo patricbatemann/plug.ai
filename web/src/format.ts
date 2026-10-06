@@ -22,10 +22,9 @@ export const kindLabel = (kind: string) => KIND_LABELS[kind] ?? kind
 
 export const MODES = ['balanced', 'economic', 'clean', 'resilience', 'grid_support']
 
-export const modeLabel = (code: string) => {
-  const words = code.replace(/_/g, ' ')
-  return words.charAt(0).toUpperCase() + words.slice(1)
-}
+export const sentence = (text: string) => text.charAt(0).toUpperCase() + text.slice(1)
+
+export const modeLabel = (code: string) => sentence(code.replace(/_/g, ' '))
 
 export function assetSummary({ kind, params: p }: Asset): string {
   const n = (key: string) => number.format(p[key] as number)
@@ -53,6 +52,9 @@ const clock = new Intl.DateTimeFormat('en-IN', {
 })
 
 export const simTime = (iso: string) => clock.format(new Date(iso))
+
+const day = new Intl.DateTimeFormat('en-GB', { timeZone: 'Asia/Kolkata', day: '2-digit', month: 'short', year: 'numeric' })
+export const simDateTime = (iso: string) => `${day.format(new Date(iso))}, ${simTime(iso)}`
 
 const rupees = new Intl.NumberFormat('en-IN', { style: 'currency', currency: 'INR', maximumFractionDigits: 0 })
 export const inr = (value: number) => rupees.format(value || 0)
