@@ -61,7 +61,7 @@ export function Chat({ question }: { question?: string }) {
   const queryClient = useQueryClient()
   const context = usePageContext()
   const [text, setText] = useState(question ?? '')
-  const end = useRef<HTMLDivElement>(null)
+  const list = useRef<HTMLDivElement>(null)
   const history = useQuery({ queryKey: ['chat', run?.id], queryFn: () => runApi.chat(run!.id), enabled: !!run })
   // The answer as it streams in; a new status means BOB moved on to a tool, so earlier text was a preamble.
   const [live, setLive] = useState({ status: '', text: '' })
@@ -89,8 +89,9 @@ export function Chat({ question }: { question?: string }) {
       queryClient.invalidateQueries() // an applied constraint re-plans the block
     },
   })
+  // Scroll the message list only: scrollIntoView would also scroll the page that holds the chat.
   useEffect(() => {
-    end.current?.scrollIntoView({ behavior: 'smooth' })
+    list.current?.scrollTo({ top: list.current.scrollHeight, behavior: 'smooth' })
   }, [history.data, send.isPending, live, upload.isPending])
 
   if (!run) return <p className="page-meta">Start a run to talk to BOB.</p>
@@ -99,7 +100,7 @@ export function Chat({ question }: { question?: string }) {
 
   return (
     <div className="chat">
-      <div className="chat__messages">
+      <div className="chat__messages" ref={list}>
         {items.length === 0 && !send.isPending && (
           <div className="chat__welcome">
             <div className="chat__bot">
@@ -132,7 +133,6 @@ export function Chat({ question }: { question?: string }) {
         {(send.error ?? upload.error) && (
           <InlineNotification kind="error" lowContrast hideCloseButton title={(send.error ?? upload.error)!.message} />
         )}
-        <div ref={end} />
       </div>
       <div className="composer">
         <TextArea labelText="Message" hideLabel rows={1} value={text}

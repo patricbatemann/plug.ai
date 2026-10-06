@@ -1,32 +1,8 @@
-import { useState } from 'react'
+import { useState, type ReactNode } from 'react'
 import { Link, useNavigate, useParams, useSearchParams } from 'react-router-dom'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import {
-  Breadcrumb,
-  BreadcrumbItem,
-  Button,
-  Checkbox,
-  InlineNotification,
-  NumberInput,
-  ProgressIndicator,
-  ProgressStep,
-  RadioButton,
-  RadioButtonGroup,
-  Select,
-  SelectItem,
-  SkeletonText,
-  Stack,
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-  Tag,
-  TextInput,
-  Tile,
-} from '@carbon/react'
-import { Locked } from '@carbon/icons-react'
+import { Button, Checkbox, InlineNotification, NumberInput, SkeletonText, Stack, TextInput } from '@carbon/react'
+import { Bot, Checkmark, CheckmarkFilled, Locked } from '@carbon/icons-react'
 import { configApi, portfolioApi, type ConfigOut, type ConfigValues } from '../api/client'
 import { Chat } from '../runs/AskBob'
 import { useCurrentRun } from '../runs/useCurrentRun'
@@ -93,58 +69,86 @@ export function SetupWizardPage() {
   const allPassed = draft && Object.keys(draft.tests).length > 0 && Object.values(draft.tests).every((t) => t.passed)
   const protectedLimits = options.data.protected
 
+  const stepCard = (title: string, children: ReactNode) => (
+    <div className="chat__bot">
+      <span className="icon-box icon-box--brand"><Bot size={16} /></span>
+      <section className="panel setup__card">
+        <h2 className="setup__question">{title}</h2>
+        {children}
+      </section>
+    </div>
+  )
+
   return (
     <>
-      <Breadcrumb noTrailingSlash>
-        <BreadcrumbItem><Link to={`/sites/${code}`}>{site.data?.name ?? 'Site'}</Link></BreadcrumbItem>
-        <BreadcrumbItem><Link to={`/sites/${code}/bob`}>Configure BOB</Link></BreadcrumbItem>
-        <BreadcrumbItem isCurrentPage>BOB agent setup</BreadcrumbItem>
-      </Breadcrumb>
-      <h1 className="page-title">BOB agent setup</h1>
-      <ProgressIndicator currentIndex={step} spaceEqually className="wizard__steps">
-        {STEPS.map((label) => <ProgressStep key={label} label={label} />)}
-      </ProgressIndicator>
+      <div className="review-bar">
+        <span className="bob-mark"><Bot size={20} /></span>
+        <h1>BOB agent setup</h1>
+        <span className="chip">{site.data?.name ?? code}</span>
+        <span className={`badge badge--${step === 3 ? 'green' : 'blue'}`}>{step === 3 ? 'Ready to activate' : 'Setup in progress'}</span>
+        <Button kind="tertiary" size="sm" className="review-bar__end" onClick={() => navigate(`/sites/${code}/bob`)}>Save and exit</Button>
+      </div>
+      <div className="steps">
+        <ol>
+          {STEPS.map((label, i) => (
+            <li key={label} className={i < step ? 'steps__done' : i === step ? 'steps__now' : undefined}>
+              <span className="steps__num">{i < step ? <Checkmark size={12} /> : i + 1}</span>{label}
+            </li>
+          ))}
+        </ol>
+        <p className="cell-sub">
+          {chosen ? `${chosen.name}${kind ? ` · ${configKindLabel(kind)}` : ''}` : 'Choose what BOB may do'} · {configs.data.length} configured actions at this site
+        </p>
+      </div>
 
-      <div className="wizard">
-        <Tile className="wizard__chat">
-          <div className="card-title">Set it up with BOB</div>
-          <p className="stat-label">
-            Tell BOB what you want, for example “automatic up to 8 MW, keep 40 % in reserve”. It fills a draft and tests
-            it; you review and activate here.
-          </p>
-          <Chat />
-        </Tile>
-        <div>
-          {step === 0 && (
-            <Tile className="wizard__panel">
-              <Stack gap={6}>
-                <Select id="asset" labelText="Asset" value={asset} onChange={(e) => { setAsset(e.target.value); setKind(''); setValues(null) }}>
-                  <SelectItem value="" text="Choose an asset" />
-                  {options.data.assets.filter((a) => a.actions.length).map((a) => (
-                    <SelectItem key={a.code} value={a.code} text={`${a.name} (${a.capacity_mw} MW)`} />
-                  ))}
-                </Select>
-                {chosen && (
-                  <Select id="kind" labelText="What should BOB be able to do?" value={kind} onChange={(e) => { setKind(e.target.value); setValues(null) }}>
-                    <SelectItem value="" text="Choose an action" />
-                    {chosen.actions.map((k) => <SelectItem key={k} value={k} text={configKindLabel(k)} />)}
-                  </Select>
-                )}
-                <div><Button disabled={!asset || !kind} onClick={() => setStep(1)}>Configure</Button></div>
-              </Stack>
-            </Tile>
-          )}
+      <div className="setup">
+        <div className="setup__main">
+          {step === 0 && stepCard('Which asset should BOB act on, and what may it do?', (
+            <>
+              <div className="choice-grid">
+                {options.data.assets.filter((a) => a.actions.length).map((a) => (
+                  <button key={a.code} type="button" className="choice" aria-pressed={asset === a.code}
+                    onClick={() => { setAsset(a.code); setKind(''); setValues(null) }}>
+                    <strong>{a.name}</strong>
+                    <span className="cell-sub">{a.capacity_mw} MW · {a.actions.length} possible actions</span>
+                  </button>
+                ))}
+              </div>
+              {chosen && (
+                <div className="choice-grid">
+                  {chosen.actions.map((k) => {
+                    const done = configs.data.some((c) => c.asset === chosen.code && c.kind === k)
+                    return (
+                      <button key={k} type="button" className="choice" aria-pressed={kind === k} onClick={() => { setKind(k); setValues(null) }}>
+                        <span className="choice__title"><strong>{configKindLabel(k)}</strong>{done && <span className="badge badge--green">Configured</span>}</span>
+                        <span className="cell-sub">{chosen.name}</span>
+                      </button>
+                    )
+                  })}
+                </div>
+              )}
+              <div className="wizard__buttons">
+                <Button className="btn-tall" disabled={!asset || !kind} onClick={() => setStep(1)}>
+                  {kind ? `Configure ${configKindLabel(kind).toLowerCase()}` : 'Configure'}
+                </Button>
+              </div>
+            </>
+          ))}
 
-          {step === 1 && (
-            <Tile className="wizard__panel">
-              <Stack gap={6}>
-                <TextInput id="name" labelText="Name" value={form.name} onChange={(e) => edit({ name: e.target.value })} />
-                <RadioButtonGroup legendText="How should BOB carry out this action?" name="autonomy" orientation="vertical"
-                  valueSelected={form.autonomy} onChange={(v) => edit({ autonomy: v as ConfigValues['autonomy'] })}>
-                  {Object.entries(AUTONOMY).map(([key, a]) => (
-                    <RadioButton key={key} id={`autonomy-${key}`} value={key} labelText={`${a.label}: ${a.detail}`} />
-                  ))}
-                </RadioButtonGroup>
+          {step === 1 && stepCard(`Configure ${configKindLabel(kind).toLowerCase()} on ${chosen?.name ?? asset}`, (
+            <Stack gap={6}>
+              <TextInput id="name" labelText="Name" value={form.name} onChange={(e) => edit({ name: e.target.value })} />
+              <fieldset className="choice-list">
+                <legend>How should BOB carry out this action?</legend>
+                {Object.entries(AUTONOMY).map(([key, a]) => (
+                  <label key={key} className="choice-row">
+                    <input type="radio" name="autonomy" value={key} checked={form.autonomy === key}
+                      onChange={() => edit({ autonomy: key as ConfigValues['autonomy'] })} />
+                    <span><strong>{a.label}</strong><span className="cell-sub">{a.detail}</span></span>
+                  </label>
+                ))}
+              </fieldset>
+              <div className="form-grid">
                 {(LIMIT_FIELDS[kind] ?? []).map(([key, label]) => (
                   <NumberInput key={key} id={key} label={label} min={0} value={form.limits[key] ?? 0} hideSteppers
                     onChange={(_, { value }) => edit({ limits: { ...form.limits, [key]: Number(value) } })} />
@@ -152,99 +156,130 @@ export function SetupWizardPage() {
                 <NumberInput id="response" label="Approver must respond within (minutes)" min={1} max={60} hideSteppers
                   value={form.approval.response_min ?? 10}
                   onChange={(_, { value }) => edit({ approval: { ...form.approval, response_min: Number(value) } })} />
-                {chosen?.watch_metric && (
-                  <Stack gap={3}>
-                    <Checkbox id="watch" labelText={`Watch: re-plan and flag when ${chosen.watch_label?.toLowerCase()}`}
-                      checked={!!watched}
-                      onChange={(_, { checked }) => edit({ watch: checked ? [{ metric: chosen.watch_metric!, value: 0 }] : [] })} />
-                    {watched && (
-                      <NumberInput id="watch-value" label={chosen.watch_label ?? ''} hideSteppers value={watched.value}
-                        onChange={(_, { value }) => edit({ watch: [{ metric: watched.metric, value: Number(value) }] })} />
-                    )}
-                  </Stack>
-                )}
-                <p className="stat-label">
-                  What BOB prioritises comes from the portfolio mode: {modeLabel(mode)} ({run?.mode_by === 'bob'
-                    ? 'set by BOB for the situation' : run?.mode_by === 'rule' ? 'set by rule for the situation'
-                    : 'operator default'}). Change the default in Settings.
-                </p>
-                <Tile className="wizard__protected">
-                  <div className="card-title"><Locked /> Protected limits (organisation, cannot be changed here)</div>
-                  {protectedLimits.battery_soc_floor_pct !== undefined && (
-                    <p>Battery reserve never below {protectedLimits.battery_soc_floor_pct} %</p>
+              </div>
+              {chosen?.watch_metric && (
+                <Stack gap={3}>
+                  <Checkbox id="watch" labelText={`Watch: re-plan and flag when ${chosen.watch_label?.toLowerCase()}`}
+                    checked={!!watched}
+                    onChange={(_, { checked }) => edit({ watch: checked ? [{ metric: chosen.watch_metric!, value: 0 }] : [] })} />
+                  {watched && (
+                    <NumberInput id="watch-value" label={chosen.watch_label ?? ''} hideSteppers value={watched.value}
+                      onChange={(_, { value }) => edit({ watch: [{ metric: watched.metric, value: Number(value) }] })} />
                   )}
-                  {protectedLimits.approval_above_mw !== undefined && (
-                    <p>Any action above {protectedLimits.approval_above_mw} MW needs approval</p>
-                  )}
-                </Tile>
-                {save.error && (
-                  <InlineNotification kind="error" lowContrast hideCloseButton
-                    title={save.error.message.startsWith('Protected boundary') ? 'Safety rule blocked this setting' : 'Could not save'}
-                    subtitle={save.error.message} />
+                </Stack>
+              )}
+              <p className="cell-sub">
+                What BOB prioritises comes from the portfolio mode: {modeLabel(mode)} ({run?.mode_by === 'bob'
+                  ? 'set by BOB for the situation' : run?.mode_by === 'rule' ? 'set by rule for the situation'
+                  : 'operator default'}). Change the default in Settings.
+              </p>
+              <div className="policy-note">
+                <strong><Locked size={14} /> Protected limits (organisation, cannot be changed here)</strong>
+                {protectedLimits.battery_soc_floor_pct !== undefined && (
+                  <p>Battery reserve never below {protectedLimits.battery_soc_floor_pct} %</p>
                 )}
-                <div className="wizard__buttons">
-                  <Button kind="secondary" onClick={() => setStep(0)}>Back</Button>
-                  <Button onClick={() => save.mutate()}>Save draft and test</Button>
-                </div>
-              </Stack>
-            </Tile>
-          )}
+                {protectedLimits.approval_above_mw !== undefined && (
+                  <p>Any action above {protectedLimits.approval_above_mw} MW needs approval</p>
+                )}
+              </div>
+              {save.error && (
+                <InlineNotification kind="error" lowContrast hideCloseButton
+                  title={save.error.message.startsWith('Protected boundary') ? 'Safety rule blocked this setting' : 'Could not save'}
+                  subtitle={save.error.message} />
+              )}
+              <div className="wizard__buttons">
+                <Button kind="secondary" className="btn-tall" onClick={() => setStep(0)}>Back</Button>
+                <Button className="btn-tall" onClick={() => save.mutate()}>Save draft and test</Button>
+              </div>
+            </Stack>
+          ))}
 
-          {step === 2 && draft && (
-            <Tile className="wizard__panel">
-              <Stack gap={5}>
-                <p>Tests plan the current block with this draft in force, in the live simulation. Nothing is sent to any asset.</p>
+          {step === 2 && draft && stepCard('How will BOB respond? Tests against the live simulation', (
+            <>
+              <p className="cell-sub">Each test plans the current block with this draft in force. Nothing is sent to any asset.</p>
+              <div className="scenarios">
                 {Object.entries(draft.tests).map(([key, t]) => (
-                  <div key={key} className="action-card__head">
-                    <Tag type={t.passed ? 'green' : 'red'}>{t.passed ? 'Passed' : 'Failed'}</Tag>
-                    <strong>{t.label}</strong>
-                    <span className="stat-label">{t.detail}</span>
+                  <div key={key} className="scenario">
+                    <span className="scenario__title"><strong>{t.label}</strong>
+                      <span className={`badge badge--${t.passed ? 'green' : 'red'}`}>{t.passed ? 'Passed' : 'Failed'}</span>
+                    </span>
+                    <span className="cell-sub">{t.detail}</span>
                   </div>
                 ))}
-                {test.error && <InlineNotification kind="error" lowContrast hideCloseButton title="Could not test" subtitle={test.error.message} />}
-                <div className="wizard__buttons">
-                  <Button kind="secondary" onClick={() => setStep(1)}>Back</Button>
-                  <Button kind="tertiary" onClick={() => test.mutate()} disabled={test.isPending}>
-                    {test.isPending ? 'Testing…' : 'Run tests'}
-                  </Button>
-                  <Button disabled={!allPassed} onClick={() => setStep(3)}>Review changes</Button>
+              </div>
+              {allPassed && (
+                <div className="callout callout--success">
+                  <CheckmarkFilled size={20} />
+                  <div><strong>BOB can carry out this action within the configured limits</strong>
+                    <p>All {Object.keys(draft.tests).length} required scenarios passed. Review the changes, then activate.</p></div>
                 </div>
-              </Stack>
-            </Tile>
-          )}
+              )}
+              {test.error && <InlineNotification kind="error" lowContrast hideCloseButton title="Could not test" subtitle={test.error.message} />}
+              <div className="wizard__buttons">
+                <Button kind="secondary" className="btn-tall" onClick={() => setStep(1)}>Back</Button>
+                <Button kind="tertiary" className="btn-tall" onClick={() => test.mutate()} disabled={test.isPending}>
+                  {test.isPending ? 'Testing…' : 'Run tests'}
+                </Button>
+                <Button className="btn-tall" disabled={!allPassed} onClick={() => setStep(3)}>Review changes</Button>
+              </div>
+            </>
+          ))}
 
-          {step === 3 && draft && (
-            <Tile className="wizard__panel">
-              <Stack gap={5}>
-                <Table aria-label="Change review">
-                  <TableHead>
-                    <TableRow><TableHeader>Setting</TableHeader><TableHeader>In force now</TableHeader><TableHeader>After activation</TableHeader></TableRow>
-                  </TableHead>
-                  <TableBody>
-                    {[
-                      ['How BOB acts', draft.active ? AUTONOMY[draft.active.autonomy].label : '—', AUTONOMY[draft.autonomy].label],
-                      ['Limits', draft.active ? limitsSummary(draft.active.limits).join('; ') : '—', limitsSummary(draft.limits).join('; ')],
-                      ['Approver response', draft.active ? `${draft.active.approval.response_min ?? 10} min` : '—', `${draft.approval.response_min ?? 10} min`],
-                      ['Watch', draft.active?.watch.map((w) => `${w.metric.replace(/_/g, ' ')} ${w.value}`).join(', ') || '—',
-                        draft.watch.map((w) => `${w.metric.replace(/_/g, ' ')} ${w.value}`).join(', ') || '—'],
-                    ].map(([setting, before, after]) => (
-                      <TableRow key={setting}>
-                        <TableCell>{setting}</TableCell>
-                        <TableCell>{before}</TableCell>
-                        <TableCell>{before === after ? after : <strong>{after}</strong>}</TableCell>
-                      </TableRow>
-                    ))}
-                  </TableBody>
-                </Table>
-                {activate.error && <InlineNotification kind="error" lowContrast hideCloseButton title="Could not activate" subtitle={activate.error.message} />}
-                <div className="wizard__buttons">
-                  <Button kind="secondary" onClick={() => setStep(2)}>Back</Button>
-                  <Button onClick={() => activate.mutate()}>Activate version {draft.version}</Button>
+          {step === 3 && draft && stepCard(`Review and activate version ${draft.version}`, (
+            <>
+              {[
+                ['How BOB acts', draft.active ? AUTONOMY[draft.active.autonomy].label : '—', AUTONOMY[draft.autonomy].label],
+                ['Limits', draft.active ? limitsSummary(draft.active.limits).join('; ') : '—', limitsSummary(draft.limits).join('; ')],
+                ['Approver response', draft.active ? `${draft.active.approval.response_min ?? 10} min` : '—', `${draft.approval.response_min ?? 10} min`],
+                ['Watch', draft.active?.watch.map((w) => `${w.metric.replace(/_/g, ' ')} ${w.value}`).join(', ') || '—',
+                  draft.watch.map((w) => `${w.metric.replace(/_/g, ' ')} ${w.value}`).join(', ') || '—'],
+              ].map(([setting, before, after]) => (
+                <div key={setting} className="compare">
+                  <strong>{setting}</strong>
+                  <div className="compare__row"><span>In force now</span>{before}</div>
+                  <div className={`compare__row${before === after ? '' : ' compare__row--new'}`}><span>After activation</span>{after}</div>
                 </div>
-              </Stack>
-            </Tile>
-          )}
+              ))}
+              {activate.error && <InlineNotification kind="error" lowContrast hideCloseButton title="Could not activate" subtitle={activate.error.message} />}
+              <div className="wizard__buttons">
+                <Button kind="secondary" className="btn-tall" onClick={() => setStep(2)}>Back</Button>
+                <Button className="btn-tall" onClick={() => activate.mutate()}>Activate version {draft.version}</Button>
+              </div>
+            </>
+          ))}
+
+          <div className="setup__chat">
+            <p className="cell-sub">
+              Or tell BOB what you want, for example “automatic up to 8 MW, keep 40 % in reserve”. It fills a draft and tests it;
+              you review and activate here.
+            </p>
+            <Chat />
+          </div>
         </div>
+
+        <aside className="review__side">
+          <div className="review__side-title setup__side-title">
+            Configured actions
+            <Button kind="tertiary" size="sm" onClick={() => navigate(`/sites/${code}/bob/setup`)}>Add action</Button>
+          </div>
+          <div className="review__side-body">
+            {configs.data.length === 0 && <p className="cell-sub">Nothing configured yet.</p>}
+            {configs.data.map((c) => (
+              <div key={c.id} className={`panel side-config${c.asset === asset && c.kind === kind ? ' side-config--now' : ''}`}>
+                <div className="chat-card__head">
+                  <strong>{c.name}</strong>
+                  <span className={`badge badge--${!c.current ? 'gray' : c.status === 'active' ? 'green' : 'amber'}`}>
+                    {!c.current ? 'Draft' : c.status === 'active' ? 'Active' : 'Paused'}
+                  </span>
+                </div>
+                <p className="cell-sub">{AUTONOMY[c.autonomy].label} · version {c.version}</p>
+                <Link className="text-link" to={`/sites/${code}/bob/setup?asset=${c.asset}&kind=${c.kind}`}>
+                  {c.current ? 'Edit' : 'Continue setup'}
+                </Link>
+              </div>
+            ))}
+          </div>
+        </aside>
       </div>
     </>
   )
