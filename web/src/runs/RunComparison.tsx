@@ -5,8 +5,7 @@ import { Button, SkeletonText } from '@carbon/react'
 import { Activity, ArrowDownLeft, ArrowUpRight, BatteryCharging, Bot, Download, Industry, Search, Tools } from '@carbon/icons-react'
 import { runApi, type ActionOut, type RunState } from '../api/client'
 import { actionLabel, inr, mw, netCost, simTime, statusOf, WORK_ORDERS } from '../format'
-
-const BADGE: Record<string, string> = { green: 'green', blue: 'blue', red: 'red' }
+import { StatusBadge } from './StatusBadge'
 
 function TypeIcon({ kind }: { kind: string }) {
   if (kind.startsWith('bess')) return <BatteryCharging size={14} />
@@ -123,9 +122,7 @@ export function RunComparison({ run }: { run: RunState }) {
             <div className="cell-strong">{WORK_ORDERS.includes(a.kind) ? '—' : mw(Math.abs(a.mw))}</div>
             <div className="cell-strong">{a.delivered_mw === null ? '—' : mw(Math.abs(a.delivered_mw))}</div>
             <div>
-              <span className={`badge badge--caps badge--${BADGE[statusOf(a.status).tag] ?? 'gray'}`} title={a.reason ?? undefined}>
-                {statusOf(a.status).label}
-              </span>
+              <StatusBadge status={a.status} reason={a.reason} />
             </div>
             <div className="ledger__action">
               {a.cycle_id && <Link to={`/decisions/${a.cycle_id}`} className="button-outline">Details</Link>}

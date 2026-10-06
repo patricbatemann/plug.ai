@@ -1,8 +1,9 @@
 import { useQuery } from '@tanstack/react-query'
-import { SkeletonText, Table, TableBody, TableCell, TableHead, TableHeader, TableRow, Tag } from '@carbon/react'
+import { SkeletonText } from '@carbon/react'
 import { configApi, runApi, type RunState } from '../api/client'
 import { actionLabel, mw, simTime, statusOf } from '../format'
 import { ActionCard } from './ActionCard'
+import { StatusBadge } from './StatusBadge'
 import { useOpenActions } from './useActions'
 
 /** The site's AI Actions tab: what runs now, what waits for a person, and what ran recently. */
@@ -26,60 +27,76 @@ export function SiteActions({ run, site }: { run: RunState; site: string }) {
   const earlier = recent.data.filter((a) => a.block <= run.block)
 
   return (
-    <div className="live">
-      <h2 className="section-title">Currently executing ({now.length})</h2>
-      <ActionTable rows={now} empty="No setpoints for this site in the current block." />
-      <h2 className="section-title">Pending approval ({open.data.length})</h2>
-      {open.data.length === 0 && <p className="page-meta">Nothing waiting for this site.</p>}
-      {open.data.map((a) => (
-        <ActionCard key={a.id} action={a} run={run} />
-      ))}
-      <h2 className="section-title">Watch conditions ({watch.data?.length ?? 0})</h2>
-      {watch.data?.length === 0 && <p className="page-meta">No watch conditions. Add them in Configure BOB.</p>}
-      {watch.data?.map((w) => (
-        <div key={`${w.asset}-${w.label}`} className="action-card__head">
-          <Tag size="sm" type={w.met ? 'warm-gray' : 'gray'}>{w.met ? 'Crossed: BOB re-planned' : 'Watching'}</Tag>
-          <span>
-            {w.asset}: {w.label}
-          </span>
-          <span className="stat-label">now {w.value === null ? '—' : w.value.toFixed(1)}</span>
+    <div className="stack">
+      <p className="cell-sub">Simulated time {simTime(run.sim_time)} IST · commands go to the simulated plant adapters.</p>
+      <div className="rule-head">
+        <h2>Currently executing</h2>
+        <span className="chip">{now.length} {now.length === 1 ? 'setpoint' : 'setpoints'} this block</span>
+      </div>
+      {now.length === 0 && <div className="panel panel--padded">No setpoints for this site in the current block.</div>}
+      {now.map((a) => (
+        <div key={a.id} className="panel panel--padded exec">
+          <div className="panel__head">
+            <div>
+              <strong>{actionLabel(a.kind, a.mw)} {mw(Math.abs(a.mw))}</strong>
+              <div className="cell-sub">{a.site ?? 'Portfolio'}{a.asset && ` · ${a.asset}`}</div>
+            </div>
+            <span className="chip chip--round">{a.decided_by ? `Approved by ${a.decided_by}` : 'BOB, automatic'}</span>
+          </div>
+          <div className="stat-strip">
+            <div><span className="caps-label">Block</span><strong>{simTime(a.time)} IST</strong></div>
+            <div><span className="caps-label">Commanded</span><strong>{mw(Math.abs(a.mw))}</strong></div>
+            <div><span className="caps-label">Delivered</span><strong>{a.delivered_mw === null ? '—' : mw(Math.abs(a.delivered_mw))}</strong></div>
+            <div><span className="caps-label">Status</span><strong>{statusOf(a.status).label}</strong></div>
+          </div>
         </div>
       ))}
-      <h2 className="section-title">Recently verified</h2>
+
+      <div className="rule-head">
+        <h2>Pending approval</h2>
+        <span className="badge badge--amber">{open.data.length} required</span>
+      </div>
+      {open.data.length === 0 && <div className="panel panel--padded">Nothing waiting for this site.</div>}
+      {open.data.map((a) => <ActionCard key={a.id} action={a} run={run} />)}
+
+      <div className="rule-head">
+        <h2>Watch conditions</h2>
+        <span className="chip">{watch.data?.length ?? 0}</span>
+      </div>
+      <div className="panel panel--padded">
+        {watch.data?.length === 0 && 'No watch conditions. Add them in Configure BOB.'}
+        {watch.data?.map((w) => (
+          <div key={`${w.asset}-${w.label}`} className="kv-line">
+            <span>{w.asset}: {w.label} <span className="cell-sub">now {w.value === null ? '—' : w.value.toFixed(1)}</span></span>
+            <span className={`badge badge--${w.met ? 'amber' : 'gray'}`}>{w.met ? 'Crossed: BOB re-planned' : 'Watching'}</span>
+          </div>
+        ))}
+      </div>
+
+      <div className="rule-head"><h2>Recently verified</h2></div>
       <ActionTable rows={earlier} empty="No verified actions yet." />
     </div>
   )
 }
 
 function ActionTable({ rows, empty }: { rows: Awaited<ReturnType<typeof runApi.actions>>; empty: string }) {
-  if (rows.length === 0) return <p className="page-meta">{empty}</p>
+  if (rows.length === 0) return <div className="panel panel--padded">{empty}</div>
   return (
-    <Table aria-label="Site actions">
-      <TableHead>
-        <TableRow>
-          <TableHeader>Block</TableHeader>
-          <TableHeader>Action</TableHeader>
-          <TableHeader>Commanded</TableHeader>
-          <TableHeader>Measured</TableHeader>
-          <TableHeader>Status</TableHeader>
-        </TableRow>
-      </TableHead>
-      <TableBody>
-        {rows.map((a) => (
-          <TableRow key={a.id}>
-            <TableCell>{simTime(a.time)}</TableCell>
-            <TableCell>
-              {actionLabel(a.kind, a.mw)}
-              {a.asset && <div className="stat-label">{a.asset}</div>}
-            </TableCell>
-            <TableCell>{mw(Math.abs(a.mw))}</TableCell>
-            <TableCell>{a.actual_mw === null ? '—' : mw(a.actual_mw)}</TableCell>
-            <TableCell>
-              <Tag size="sm" type={statusOf(a.status).tag}>{statusOf(a.status).label}</Tag>
-            </TableCell>
-          </TableRow>
-        ))}
-      </TableBody>
-    </Table>
+    <div className="panel table-scroll">
+      <table className="ftable">
+        <thead><tr><th>Block</th><th>Action</th><th>Commanded</th><th>Measured</th><th>Status</th></tr></thead>
+        <tbody>
+          {rows.map((a) => (
+            <tr key={a.id}>
+              <td>{simTime(a.time)}</td>
+              <td>{actionLabel(a.kind, a.mw)}{a.asset && <div className="cell-sub">{a.asset}</div>}</td>
+              <td>{mw(Math.abs(a.mw))}</td>
+              <td>{a.actual_mw === null ? '—' : mw(a.actual_mw)}</td>
+              <td><StatusBadge status={a.status} /></td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
   )
 }

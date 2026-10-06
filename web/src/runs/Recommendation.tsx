@@ -7,6 +7,7 @@ import { modeLabel, sentence, simTime } from '../format'
 import { ActionCard } from './ActionCard'
 import { useAskBob } from './AskBob'
 import { useOpenActions } from './useActions'
+import { useSiteStatuses } from './useCurrentRun'
 
 /** BOB's latest decision, as on the Monitor Sites screen, with what it is doing now and a link to its evidence. */
 export function Recommendation({ run }: { run: RunState }) {
@@ -14,7 +15,7 @@ export function Recommendation({ run }: { run: RunState }) {
     queryKey: ['decision', run.id, run.block],
     queryFn: () => runApi.latestDecision(run.id),
   })
-  const sites = useQuery({ queryKey: ['sites-status', run.id, run.block], queryFn: () => runApi.sites(run.id) })
+  const sites = useSiteStatuses(run)
   const ask = useAskBob()
   const open = useOpenActions(run).data ?? []
   if (!data) return null

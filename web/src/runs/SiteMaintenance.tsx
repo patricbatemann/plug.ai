@@ -1,12 +1,11 @@
 import { useQuery } from '@tanstack/react-query'
-import {
-  SkeletonText, Table, TableBody, TableCell, TableHead, TableHeader, TableRow, Tag,
-} from '@carbon/react'
+import { SkeletonText } from '@carbon/react'
 import { documentApi, type RunState } from '../api/client'
-import { actionLabel, simTime, statusOf } from '../format'
+import { actionLabel, simTime } from '../format'
 import { ActionCard } from './ActionCard'
+import { StatusBadge } from './StatusBadge'
 
-const STATUS_TAG = { planned: 'gray', 'in progress': 'blue', done: 'green' } as const
+const STATUS_TONE = { planned: 'gray', 'in progress': 'blue', done: 'green' } as const
 
 /** Maintenance jobs at a site, with BOB's proposals to move them and to send inspections. */
 export function SiteMaintenance({ run, site }: { run: RunState; site: string }) {
@@ -19,50 +18,58 @@ export function SiteMaintenance({ run, site }: { run: RunState; site: string }) 
   const decided = data.proposals.filter((a) => a.status !== 'awaiting_approval')
 
   return (
-    <div className="live">
-      <h2 className="section-title">Jobs ({data.tasks.length})</h2>
+    <div className="stack">
+      <div className="rule-head">
+        <h2>Jobs</h2>
+        <span className="chip">{data.tasks.length}</span>
+      </div>
       {data.tasks.length === 0 ? (
-        <p className="page-meta">No maintenance planned at this site.</p>
+        <div className="panel panel--padded">No maintenance planned at this site.</div>
       ) : (
-        <Table aria-label="Maintenance jobs" size="md">
-          <TableHead>
-            <TableRow>
-              {['Asset', 'Job', 'Calendared', 'BOB schedules', 'Must fit', 'Status'].map((h) => (
-                <TableHeader key={h}>{h}</TableHeader>
+        <div className="panel table-scroll">
+          <table className="ftable">
+            <thead>
+              <tr>{['Asset', 'Job', 'Calendared', 'BOB schedules', 'Must fit', 'Status'].map((h) => <th key={h}>{h}</th>)}</tr>
+            </thead>
+            <tbody>
+              {data.tasks.map((t) => (
+                <tr key={t.id}>
+                  <td><strong>{t.asset}</strong></td>
+                  <td>
+                    {t.kind}, {t.hours} h {t.safety_critical && <span className="badge badge--red">Safety-critical</span>}
+                  </td>
+                  <td>{simTime(t.calendar_at)}</td>
+                  <td>{t.scheduled_at === t.calendar_at ? simTime(t.scheduled_at) : <strong>{simTime(t.scheduled_at)} (moved)</strong>}</td>
+                  <td>{simTime(t.earliest_at)}–{simTime(t.deadline_at)}</td>
+                  <td><span className={`badge badge--caps badge--${STATUS_TONE[t.status]}`}>{t.status}</span></td>
+                </tr>
               ))}
-            </TableRow>
-          </TableHead>
-          <TableBody>
-            {data.tasks.map((t) => (
-              <TableRow key={t.id}>
-                <TableCell>{t.asset}</TableCell>
-                <TableCell>
-                  {t.kind}, {t.hours} h{t.safety_critical && <Tag size="sm" type="red">Safety-critical</Tag>}
-                </TableCell>
-                <TableCell>{simTime(t.calendar_at)}</TableCell>
-                <TableCell>
-                  {t.scheduled_at === t.calendar_at ? simTime(t.scheduled_at) : <strong>{simTime(t.scheduled_at)} (moved)</strong>}
-                </TableCell>
-                <TableCell>{simTime(t.earliest_at)}–{simTime(t.deadline_at)}</TableCell>
-                <TableCell><Tag size="sm" type={STATUS_TAG[t.status]}>{t.status}</Tag></TableCell>
-              </TableRow>
-            ))}
-          </TableBody>
-        </Table>
+            </tbody>
+          </table>
+        </div>
       )}
-      <p className="stat-label">Today&apos;s practice keeps the calendared time; BOB&apos;s schedule changes only when you approve a move.</p>
-      <h2 className="section-title">BOB&apos;s proposals ({open.length})</h2>
-      {open.length === 0 && <p className="page-meta">No proposals waiting.</p>}
+      <p className="cell-sub">Today&apos;s practice keeps the calendared time; BOB&apos;s schedule changes only when you approve a move.</p>
+
+      <div className="rule-head">
+        <h2>BOB&apos;s proposals</h2>
+        <span className="badge badge--amber">{open.length} waiting</span>
+      </div>
+      {open.length === 0 && <div className="panel panel--padded">No proposals waiting.</div>}
       {open.map((a) => <ActionCard key={a.id} action={a} run={run} />)}
+
       {decided.length > 0 && (
         <>
-          <h2 className="section-title">Earlier proposals</h2>
-          {decided.map((a) => (
-            <div key={a.id} className="action-card__head">
-              <Tag size="sm" type={statusOf(a.status).tag}>{statusOf(a.status).label}</Tag>
-              <span>{simTime(a.time)} · {actionLabel(a.kind, 0)} · {a.asset}: {a.reason}</span>
-            </div>
-          ))}
+          <div className="rule-head"><h2>Earlier proposals</h2></div>
+          <div className="panel">
+            {decided.map((a) => (
+              <div key={a.id} className="entry">
+                <span className="cell-sub">{simTime(a.time)} IST</span>
+                <strong>{actionLabel(a.kind, 0)} · {a.asset}</strong>
+                <p>{a.reason}</p>
+                <StatusBadge status={a.status} />
+              </div>
+            ))}
+          </div>
         </>
       )}
     </div>

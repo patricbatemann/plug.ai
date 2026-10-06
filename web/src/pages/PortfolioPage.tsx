@@ -19,33 +19,20 @@ import {
   Sun,
   WindPower,
 } from '@carbon/icons-react'
-import { portfolioApi, runApi, type SiteStatus, type SiteSummary } from '../api/client'
-import { batteryState, kindLabel, mw, mwh, sentence, simDateTime } from '../format'
+import { portfolioApi, type SiteStatus, type SiteSummary } from '../api/client'
+import { batteryState, kindLabel, mw, mwh, sentence, simDateTime, siteBadge } from '../format'
 import { modeText } from '../runs/ModeTag'
 import { Recommendation } from '../runs/Recommendation'
 import { RunComparison } from '../runs/RunComparison'
-import { useCurrentRun } from '../runs/useCurrentRun'
+import { useCurrentRun, useSiteStatuses } from '../runs/useCurrentRun'
 
-type Tone = 'green' | 'amber' | 'red'
-const TONE_ORDER: Record<Tone, number> = { red: 0, amber: 1, green: 2 }
+const TONE_ORDER = { red: 0, amber: 1, green: 2 }
 const SITE_ICON: Record<string, typeof Sun> = { solar: SolarPanel, wind: WindPower, hybrid: Chip, industrial: Industry }
-
-/** A site's state in one badge: approvals first, then trouble, then normal. */
-function badge(s: SiteStatus): { label: string; tone: Tone; count?: number } {
-  if (s.pending) return { label: 'Pending approval', tone: 'amber', count: s.pending }
-  if (s.status === 'Battery unavailable') return { label: 'Battery unavailable', tone: 'red' }
-  if (s.status === 'Below forecast') return { label: 'Below forecast', tone: 'amber' }
-  return { label: 'Operating normally', tone: 'green' }
-}
 
 export function PortfolioPage() {
   const { data, error } = useQuery({ queryKey: ['portfolio'], queryFn: portfolioApi.get })
   const { data: run } = useCurrentRun()
-  const live = useQuery({
-    queryKey: ['sites-status', run?.id, run?.block],
-    queryFn: () => runApi.sites(run!.id),
-    enabled: !!run && run.block >= 0,
-  })
+  const live = useSiteStatuses(run)
   const now = Object.fromEntries((live.data ?? []).map((s) => [s.code, s]))
 
   if (error) return <InlineNotification kind="error" title="Could not load the portfolio" subtitle={error.message} hideCloseButton lowContrast />
@@ -54,7 +41,7 @@ export function PortfolioPage() {
   const card = (title: string, kind: string, label: string, value: string, Icon: typeof Sun) => {
     const sites = data.sites.filter((s) => s.asset_kinds.includes(kind))
     const known = sites.filter((s) => now[s.code])
-    const health = known.length ? Math.round((100 * known.filter((s) => badge(now[s.code]).tone === 'green').length) / known.length) : null
+    const health = known.length ? Math.round((100 * known.filter((s) => siteBadge(now[s.code]).tone === 'green').length) / known.length) : null
     return { title, sites: sites.length, label, value, Icon, health }
   }
   const cards = [
@@ -127,11 +114,11 @@ function SitesTable({ sites, now, live }: { sites: SiteSummary[]; now: Record<st
 
   const rows = sites
     .filter((s) => `${s.name} ${s.code} ${s.location} ${kindLabel(s.kind)}`.toLowerCase().includes(search.toLowerCase()))
-    .filter((s) => filter === 'all' || !now[s.code] || (badge(now[s.code]).tone === 'green') === (filter === 'normal'))
+    .filter((s) => filter === 'all' || !now[s.code] || (siteBadge(now[s.code]).tone === 'green') === (filter === 'normal'))
     .sort((a, b) => {
       if (sort === 'name') return a.name.localeCompare(b.name)
       if (sort === 'output') return (now[b.code]?.output_mw ?? 0) - (now[a.code]?.output_mw ?? 0)
-      const weight = (s: SiteSummary) => (now[s.code] ? TONE_ORDER[badge(now[s.code]).tone] : 3)
+      const weight = (s: SiteSummary) => (now[s.code] ? TONE_ORDER[siteBadge(now[s.code]).tone] : 3)
       return weight(a) - weight(b)
     })
 
@@ -181,7 +168,7 @@ function SitesTable({ sites, now, live }: { sites: SiteSummary[]; now: Record<st
 
 function SiteRow({ site, s, live }: { site: SiteSummary; s?: SiteStatus; live: boolean }) {
   const Icon = SITE_ICON[site.kind] ?? Chip
-  const b = s && badge(s)
+  const b = s && siteBadge(s)
   const diff = s?.output_mw != null && s.forecast_mw ? s.output_mw - s.forecast_mw : null
   const net = s?.net_mw ?? 0
   return (

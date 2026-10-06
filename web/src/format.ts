@@ -1,4 +1,4 @@
-import type { Asset } from './api/client'
+import type { Asset, SiteStatus } from './api/client'
 
 export const PRODUCT_NAME = 'PlugAI'
 
@@ -126,4 +126,12 @@ export function limitsSummary(limits: Record<string, number>): string[] {
   if (limits.reserve_pct !== undefined) out.push(`Keeps ${limits.reserve_pct} % charge in reserve`)
   if (limits.min_price_inr_mwh) out.push(`Sells only above ₹${limits.min_price_inr_mwh}/MWh`)
   return out
+}
+
+/** A site's state in one badge: approvals first, then trouble, then normal. */
+export function siteBadge(s: SiteStatus): { label: string; tone: 'green' | 'amber' | 'red'; count?: number } {
+  if (s.pending) return { label: 'Pending approval', tone: 'amber', count: s.pending }
+  if (s.status === 'Battery unavailable') return { label: 'Battery unavailable', tone: 'red' }
+  if (s.status === 'Below forecast') return { label: 'Below forecast', tone: 'amber' }
+  return { label: 'Operating normally', tone: 'green' }
 }

@@ -16,6 +16,15 @@ export function useCurrentRun() {
   })
 }
 
+/** Every site now, for the block in progress; nothing before the run's first block. */
+export function useSiteStatuses(run: RunState | null | undefined) {
+  return useQuery({
+    queryKey: ['sites-status', run?.id, run?.block],
+    queryFn: () => runApi.sites(run!.id),
+    enabled: !!run && run.block >= 0,
+  })
+}
+
 /** Run a control action and refresh everything that depends on the run's clock. */
 export function useRunAction() {
   const queryClient = useQueryClient()
