@@ -101,13 +101,6 @@ body {
   margin: $spacing-08 0 $spacing-05;
 }
 
-.decision__why,
-.decision__chart {
-  display: grid;
-  gap: $spacing-03;
-  margin-top: $spacing-05;
-}
-
 .toasts {
   position: fixed;
   top: calc(#{$nav-height} + #{$spacing-05});
@@ -1368,9 +1361,9 @@ body {
 
 .chip--purple {
   border-color: transparent;
-  background: theme.$highlight;
+  background: var(--cds-tag-background-purple);
   font-weight: 600;
-  color: theme.$link-primary;
+  color: var(--cds-tag-color-purple);
 }
 
 .chip--round {
@@ -1380,8 +1373,8 @@ body {
 }
 
 .badge--purple {
-  background: theme.$highlight;
-  color: theme.$link-primary;
+  background: var(--cds-tag-background-purple);
+  color: var(--cds-tag-color-purple);
 }
 
 .tabs {
@@ -1859,6 +1852,312 @@ body {
   }
 }
 
+.dot--purple {
+  background: var(--cds-tag-color-purple);
+}
+
+.rec-card {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: $spacing-05;
+  padding: $spacing-06 - $spacing-02;
+}
+
+.rec-card__head,
+.rec-card__foot {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: $spacing-04;
+}
+
+.rec-card__foot {
+  align-items: center;
+}
+
+.rec-card__site {
+  display: flex;
+  align-items: center;
+  gap: $spacing-03;
+  font-size: 0.875rem;
+  font-weight: 600;
+}
+
+.rec-card__title {
+  font-size: 1.125rem;
+  font-weight: 600;
+}
+
+.rec-card__why {
+  padding: $spacing-04 $spacing-05;
+  background: var(--cds-notification-background-info);
+  font-size: 0.8125rem;
+  color: theme.$text-secondary;
+
+  strong {
+    display: block;
+    margin-bottom: $spacing-02;
+    font-size: 0.75rem;
+    font-weight: 600;
+    color: theme.$link-primary;
+  }
+}
+
+.rec-card__links,
+.rec-card__buttons {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: $spacing-05;
+}
+
+.rec-card__buttons {
+  gap: $spacing-03;
+}
+
+.back-link {
+  margin-bottom: $spacing-05;
+}
+
+.page-title--bold {
+  font-weight: 700;
+}
+
+.page-intro {
+  max-width: 56rem;
+  margin-bottom: $spacing-07;
+  font-size: 0.875rem;
+  color: theme.$text-secondary;
+}
+
+.section-head--spaced {
+  margin: $spacing-04 0 0;
+}
+
+.section-head__big {
+  font-size: 1.25rem;
+  font-weight: 600;
+}
+
+.mini-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(18rem, 1fr));
+  gap: $spacing-05;
+}
+
+.mini-card {
+  display: grid;
+  align-content: start;
+  gap: $spacing-03;
+  padding: $spacing-05;
+
+  h3 {
+    font-size: 1rem;
+    font-weight: 600;
+  }
+}
+
+.mini-card__head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: $spacing-03;
+}
+
+.review-bar {
+  display: flex;
+  align-items: center;
+  gap: $spacing-04;
+  margin: (-$spacing-06) (-$spacing-07) 0;
+  padding: $spacing-03 $spacing-06;
+  background: theme.$layer-01;
+  border-bottom: 1px solid theme.$border-subtle-01;
+
+  h1 {
+    font-size: 1rem;
+    font-weight: 600;
+  }
+
+  .bob-mark svg {
+    fill: currentColor;
+  }
+}
+
+.review-bar__close {
+  display: grid;
+  place-items: center;
+  margin-left: auto;
+  padding: $spacing-02;
+  border: 1px solid theme.$border-subtle-01;
+  color: theme.$icon-primary;
+
+  svg {
+    fill: currentColor;
+  }
+}
+
+.review {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 18rem;
+  margin: 0 (-$spacing-07) (-$spacing-09) 0;
+}
+
+.review__main {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  align-content: start;
+  gap: $spacing-06;
+  padding: $spacing-07 $spacing-07 $spacing-09 0;
+}
+
+.review__card-head {
+  display: flex;
+  align-items: center;
+  gap: $spacing-04;
+  padding: $spacing-05 $spacing-06;
+  background: theme.$layer-02;
+  border-bottom: 1px solid theme.$border-subtle-01;
+  font-size: 0.9375rem;
+  font-weight: 600;
+}
+
+.icon-box--brand {
+  padding: $spacing-02;
+  background: theme.$background-brand;
+
+  svg {
+    fill: theme.$text-on-color;
+  }
+}
+
+.review__body {
+  display: grid;
+  gap: $spacing-05;
+  padding: $spacing-06;
+  font-size: 0.9375rem;
+  line-height: 1.6;
+}
+
+.boundary {
+  padding: $spacing-04 $spacing-05;
+  border-left: 3px solid theme.$support-caution-major;
+  background: var(--cds-notification-background-warning);
+  font-size: 0.8125rem;
+  color: theme.$text-secondary;
+}
+
+.balance {
+  padding: $spacing-05;
+  background: theme.$layer-02;
+}
+
+.outcome-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(14rem, 1fr));
+  gap: $spacing-04;
+}
+
+.outcome {
+  padding: $spacing-04;
+  font-size: 0.8125rem;
+  line-height: 1.5;
+  color: theme.$text-secondary;
+
+  strong {
+    display: block;
+    margin-bottom: $spacing-02;
+    color: theme.$text-primary;
+  }
+}
+
+.outcome--blue {
+  background: var(--cds-notification-background-info);
+
+  strong {
+    color: theme.$link-primary;
+  }
+}
+
+.outcome--amber {
+  background: var(--cds-notification-background-warning);
+}
+
+.outcome--red {
+  background: var(--cds-notification-background-error);
+
+  strong {
+    color: theme.$support-error;
+  }
+}
+
+.outcome--gray {
+  background: theme.$layer-02;
+}
+
+.review__side {
+  background: theme.$layer-01;
+  border-left: 1px solid theme.$border-subtle-01;
+}
+
+.review__side-title {
+  padding: $spacing-06 $spacing-05;
+  border-bottom: 1px solid theme.$border-subtle-01;
+  font-size: 0.9375rem;
+  font-weight: 600;
+}
+
+.review__side-body {
+  display: grid;
+  gap: $spacing-04;
+  padding: $spacing-06 $spacing-05;
+}
+
+.kv--small {
+  margin: 0;
+
+  > div {
+    font-size: 0.75rem;
+  }
+
+  dt {
+    font-weight: 400;
+    color: theme.$text-secondary;
+  }
+}
+
+.policy-note {
+  padding: $spacing-04;
+  border: 1px solid theme.$support-warning;
+  background: var(--cds-notification-background-warning);
+  font-size: 0.75rem;
+  line-height: 1.6;
+  color: theme.$text-secondary;
+
+  strong {
+    display: block;
+    margin-bottom: $spacing-02;
+    font-size: 0.8125rem;
+    color: theme.$text-primary;
+  }
+
+  p {
+    font-size: inherit;
+  }
+}
+
+.callout > .dot {
+  margin-top: 0.45rem;
+}
+
+.callout--warning > .dot {
+  background: theme.$support-caution-major;
+}
+
+.callout--info > .dot {
+  background: theme.$support-info;
+}
+
 @include breakpoint-down(md) {
   .page {
     padding-inline: $spacing-05;
@@ -1866,9 +2165,19 @@ body {
 
   .band,
   .site-head,
-  .weather {
+  .weather,
+  .review-bar {
     margin-inline: -$spacing-05;
     padding-inline: $spacing-05;
+  }
+
+  .review {
+    grid-template-columns: minmax(0, 1fr);
+    margin-right: -$spacing-05;
+  }
+
+  .review__main {
+    padding-right: $spacing-05;
   }
 
   .ledger,

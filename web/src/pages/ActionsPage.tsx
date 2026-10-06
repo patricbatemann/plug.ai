@@ -1,5 +1,7 @@
+import { Link } from 'react-router-dom'
 import { useQuery } from '@tanstack/react-query'
-import { SkeletonText, Table, TableBody, TableCell, TableHead, TableHeader, TableRow, Tag } from '@carbon/react'
+import { SkeletonText } from '@carbon/react'
+import { ArrowLeft } from '@carbon/icons-react'
 import { runApi } from '../api/client'
 import { actionLabel, mw, simTime } from '../format'
 import { ActionCard } from '../runs/ActionCard'
@@ -14,52 +16,53 @@ export function ActionsPage() {
     queryFn: () => runApi.actions(run!.id, { status: ['acked'], block: run!.block + 1, limit: 50 }),
     enabled: !!run,
   })
+  // Soonest deadline first; recommend-only actions, which have none, last.
+  const waiting = [...(open.data ?? [])].sort((a, b) => (a.deadline_at ?? '~').localeCompare(b.deadline_at ?? '~'))
 
   return (
     <>
-      <h1 className="page-title">All AI recommendations</h1>
-      <p className="page-meta">
+      <Link to="/portfolio" className="text-link text-link--icon back-link"><ArrowLeft size={16} />Back to portfolio</Link>
+      <h1 className="page-title page-title--bold">All AI recommendations</h1>
+      <p className="page-intro">
         Actions BOB wants to take but may not take alone: approve or decline before the window closes. Nothing
         gated runs until it is approved; BOB keeps a fallback plan running meanwhile.
       </p>
       {!run ? (
-        <p>Start a run from the header to see BOB's recommendations.</p>
+        <div className="panel panel--padded">Start a run from the header to see BOB's recommendations.</div>
       ) : !open.data ? (
         <SkeletonText paragraph lineCount={4} />
       ) : (
-        <>
-          <h2 className="section-title">Recommendations requiring attention ({open.data.length})</h2>
-          {open.data.length === 0 && <p className="page-meta">Nothing needs you right now.</p>}
-          <div className="action-list">
-            {open.data.map((a) => (
-              <ActionCard key={a.id} action={a} run={run} />
+        <div className="stack">
+          <div className="section-head section-head--spaced">
+            <div>
+              <h2 className="section-head__big">Recommendations requiring attention</h2>
+              <p className="cell-sub">{waiting.length} waiting, soonest deadline first</p>
+            </div>
+            <span className="status-chip">Sorted by deadline</span>
+          </div>
+          {waiting.length === 0 && <div className="panel panel--padded">Nothing needs you right now.</div>}
+          {waiting.map((a) => <ActionCard key={a.id} action={a} run={run} />)}
+
+          <div className="section-head section-head--spaced">
+            <h2 className="section-head__big">Executing this block</h2>
+            <span className="cell-sub">{executing.data?.length ?? 0} setpoints at {simTime(run.sim_time)} IST</span>
+          </div>
+          <div className="mini-grid">
+            {(executing.data ?? []).map((a) => (
+              <div key={a.id} className="panel mini-card">
+                <div className="mini-card__head">
+                  <strong>{a.site ?? 'Portfolio'}</strong>
+                  <span className="badge badge--blue">Executing</span>
+                </div>
+                <h3>{actionLabel(a.kind, a.mw)} · {mw(Math.abs(a.delivered_mw ?? a.mw))}</h3>
+                <p className="cell-sub">
+                  {a.asset ? `${a.asset} · ` : ''}{a.decided_by ? `approved by ${a.decided_by}` : 'automatic, within limits'}
+                </p>
+                {a.cycle_id && <Link className="text-link" to={`/decisions/${a.cycle_id}`}>View evidence</Link>}
+              </div>
             ))}
           </div>
-
-          <h2 className="section-title">Executing this block</h2>
-          <Table aria-label="Executing actions">
-            <TableHead>
-              <TableRow>
-                <TableHeader>Action</TableHeader>
-                <TableHeader>Site</TableHeader>
-                <TableHeader>Amount</TableHeader>
-                <TableHeader>Approved by</TableHeader>
-              </TableRow>
-            </TableHead>
-            <TableBody>
-              {(executing.data ?? []).map((a) => (
-                <TableRow key={a.id}>
-                  <TableCell>
-                    {actionLabel(a.kind, a.mw)} <span className="stat-label">· {simTime(a.time)}</span>
-                  </TableCell>
-                  <TableCell>{a.site ?? 'Portfolio'}</TableCell>
-                  <TableCell>{mw(Math.abs(a.delivered_mw ?? a.mw))}</TableCell>
-                  <TableCell>{a.decided_by ?? <Tag size="sm" type="purple">BOB, within limits</Tag>}</TableCell>
-                </TableRow>
-              ))}
-            </TableBody>
-          </Table>
-        </>
+        </div>
       )}
     </>
   )
