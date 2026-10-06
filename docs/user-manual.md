@@ -3,7 +3,7 @@
 PlugAI runs a simulated renewable energy portfolio in Andhra Pradesh (solar, wind, two batteries, an industrial cluster and a market connection) in 15-minute blocks. **BOB** is its AI operator. Every block it plans what each asset should do, acts within the limits you set, asks you when an action is above its authority, and explains every decision. Each run is also settled under **today's practice**: batteries on a fixed clock and a trading desk. That gives you a fair comparison on the same weather and prices.
 
 ```
-                         ┌──────────── header: run clock · Inject event · mode chip · Ask BOB · Settings
+                         ┌──────────── header: Portfolio · Actions · Simulation · Ask BOB · run clock · Inject event · New run · account menu (Settings, Sign out)
                          │
  Portfolio ──► Site ─────┼─ Site details ── Data sources ──► Connect data source
    │            │        ├─ Live overview  (weather, alerts, what BOB is doing, chart, energy flow)
@@ -13,7 +13,7 @@ PlugAI runs a simulated renewable energy portfolio in Andhra Pradesh (solar, win
    │            └─ Configure BOB ──► Setup wizard (with BOB's chat)
    ├─ Actions ──► View evidence ──► Decision page (options, stress tests, BOB's reason)
    ├─ Simulation (what-if · replays BOB vs today's practice)
-   └─ Assistant / Ask BOB drawer (questions · what-if · draft setups · 📎 documents)
+   └─ Ask BOB page and drawer (questions · what-if · draft setups · 📎 documents)
 ```
 
 Everything is simulated: weather, prices, plants, grid, market and maintenance systems. Nothing connects to a real asset.
@@ -61,7 +61,7 @@ A run fast-forwards to 10:45 and then runs live. The header controls:
 - **▶ / ❚❚** play and pause. **⏭** steps one block while paused.
 - **10× / 30× / 60×** sets the speed. At 30×, a 15-minute block takes 30 seconds.
 - **Inject event** adds an event now: cloud bank, wind ramp, storm, price spike, battery trip, line derate, demand surge, frequency dip, or forecast update. BOB re-plans the block straight away when it can see the event.
-- The **mode chip** shows the operating mode and who set it, for example "Grid support · BOB" or "Balanced · operator".
+- The **mode chip**, at the top of the Portfolio page and each site, shows the operating mode and who set it, for example "Grid support · BOB" or "Balanced · operator".
 - **BOB online / Rules only** shows whether the language model is available.
 
 If a yellow banner says **"The simulation clock is behind"**, no worker is running. Start `make worker`.
@@ -98,7 +98,7 @@ BOB acts alone only within each action's **automatic limit**. Anything larger, o
 
 ## 6. Ask BOB
 
-Open **Ask BOB** from the header (the chat icon) or use the **Assistant** page. Answers stream in as BOB writes them, and a status line shows what it is checking. Try these:
+Open the **Ask BOB** tab in the header, or use an **Ask BOB** button on a card to open it in a side drawer with the question ready. The quick-question chips send common questions. Answers stream in as BOB writes them, and a status line shows what it is checking. Try these:
 
 - "Why did you choose the plan for the latest block?"
 - "Explain action 123." The **Ask BOB** button on any action does this for you.
@@ -113,7 +113,7 @@ Open **Ask BOB** from the header (the chat icon) or use the **Assistant** page. 
 
 ## 7. Configure BOB
 
-**Configure BOB** on a site lists every action BOB may take there. Each card shows its autonomy, limits, watch conditions and today's activity, and you can pause one with its toggle. **Add action** or **Edit** opens the setup wizard. BOB's chat sits on the left, and the four steps on the right:
+**Configure BOB** on a site lists every action BOB may take there, filtered by All, Active, Paused or Drafts. Each card shows its status and today's activity, and you can pause one with its toggle; expand it to see its trigger conditions and execution rules. **Add new action** or **Edit action** opens the setup wizard: the four steps as cards from BOB, BOB's chat below them, and the site's configured actions on the right:
 
 1. **Select** the asset and the action.
 2. **Configure:**
@@ -126,7 +126,7 @@ Open **Ask BOB** from the header (the chat icon) or use the **Assistant** page. 
 
 **Protected limits** are organisation rules that no setting can loosen: battery reserve never below 30 %, and approval for any action above 100 MW. They are shown with a lock.
 
-**Settings** (the gear icon) sets the **default operating mode**: Balanced, Economic, Clean, Resilience or Grid support. BOB and the rules switch mode for a situation within guard floors, then return to this default.
+**Settings** (in the account menu, the initials at the top right) sets the **default operating mode**: Balanced, Economic, Clean, Resilience or Grid support. BOB and the rules switch mode for a situation within guard floors, then return to this default.
 
 ## 8. Simulation
 
