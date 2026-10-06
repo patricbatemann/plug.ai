@@ -94,7 +94,7 @@ export function Chat({ question }: { question?: string }) {
     list.current?.scrollTo({ top: list.current.scrollHeight, behavior: 'smooth' })
   }, [history.data, send.isPending, live, upload.isPending])
 
-  if (!run) return <p className="page-meta">Start a run to talk to BOB.</p>
+  if (!run) return <p className="cell-sub">Start a run to talk to BOB.</p>
   const submit = (message: string) => message.trim() && !send.isPending && send.mutate(message.trim())
   const items = history.data ?? []
 

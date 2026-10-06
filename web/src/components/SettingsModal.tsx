@@ -35,8 +35,8 @@ export function SettingsModal({ open, onClose }: { open: boolean; onClose: () =>
           onChange={(e) => setMode(e.target.value)}>
           {MODES.map((m) => <SelectItem key={m} value={m} text={modeLabel(m)} />)}
         </Select>
-        <div>
-          <div className="card-title"><Locked /> Protected limits (organisation)</div>
+        <div className="policy-note">
+          <strong><Locked size={14} /> Protected limits (organisation)</strong>
           {limits.battery_soc_floor_pct !== undefined && <p>Battery reserve never below {limits.battery_soc_floor_pct} %</p>}
           {limits.approval_above_mw !== undefined && <p>Any action above {limits.approval_above_mw} MW needs approval</p>}
         </div>

@@ -29,20 +29,6 @@ body {
   margin: 0 0 $spacing-04;
 }
 
-.page-meta {
-  @include type-style('body-compact-01');
-  color: theme.$text-secondary;
-  margin-bottom: $spacing-05;
-}
-
-.tag-row {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: $spacing-03;
-  margin-bottom: $spacing-06;
-}
-
 .card-grid {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(16rem, 1fr));
@@ -50,31 +36,8 @@ body {
   margin-bottom: $spacing-07;
 }
 
-.stat-label {
-  @include type-style('label-01');
-  color: theme.$text-secondary;
-}
-
-.card-title {
-  @include type-style('heading-compact-02');
-  margin-bottom: $spacing-05;
-}
-
 .page-state {
   padding: $spacing-07;
-}
-
-.auth-wrap {
-  display: grid;
-  place-items: center;
-  min-height: 100vh;
-  padding: $spacing-07;
-}
-
-.auth-card {
-  width: min(28rem, 100%);
-  display: grid;
-  gap: $spacing-06;
 }
 
 .run-control {
@@ -342,10 +305,6 @@ body {
 .page-banner {
   max-width: none;
   margin-bottom: $spacing-05;
-}
-
-.card-grid--two {
-  grid-template-columns: repeat(2, 1fr);
 }
 
 // Figma design language: flat white panels on the grey background, 2px corners, small caps labels.
@@ -2568,6 +2527,219 @@ body {
   border-color: theme.$border-interactive;
 }
 
+.auth {
+  display: grid;
+  grid-template-rows: auto 1fr auto;
+  min-height: 100vh;
+}
+
+.auth__bar,
+.auth__footer {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: $spacing-04;
+  padding: $spacing-05 $spacing-08;
+  background: theme.$layer-01;
+  font-size: 0.875rem;
+  color: theme.$text-secondary;
+}
+
+.auth__bar {
+  border-bottom: 1px solid theme.$border-subtle-01;
+}
+
+.auth__footer {
+  border-top: 1px solid theme.$border-subtle-01;
+  font-size: 0.75rem;
+}
+
+.auth__brand {
+  display: flex;
+  align-items: center;
+  gap: $spacing-04;
+
+  strong {
+    font-size: 1.25rem;
+    font-weight: 700;
+    color: theme.$text-primary;
+  }
+}
+
+.auth__secure {
+  display: flex;
+  align-items: center;
+  gap: $spacing-03;
+
+  svg {
+    fill: currentColor;
+  }
+}
+
+.auth__main {
+  display: grid;
+  place-items: center;
+  padding: $spacing-07 $spacing-05;
+}
+
+.auth__card {
+  display: grid;
+  gap: $spacing-04;
+  width: min(28.75rem, 100%);
+  padding: $spacing-07 $spacing-07 $spacing-06;
+
+  .cds--label {
+    font-size: 0.75rem;
+    font-weight: 600;
+    letter-spacing: 0.32px;
+    text-transform: uppercase;
+    color: theme.$text-primary;
+  }
+}
+
+.auth__badge {
+  justify-self: start;
+  border: 1px solid theme.$border-interactive;
+}
+
+.auth__title {
+  font-size: 1.75rem;
+  font-weight: 700;
+}
+
+.auth__submit.cds--btn {
+  width: 100%;
+  max-width: none;
+}
+
+.auth__foot {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  gap: $spacing-03;
+  margin-top: $spacing-03;
+  padding-top: $spacing-05;
+  border-top: 1px solid theme.$border-subtle-01;
+  font-size: 0.75rem;
+  color: theme.$text-secondary;
+
+  span {
+    display: inline-flex;
+    align-items: center;
+    gap: $spacing-02;
+  }
+
+  svg {
+    fill: currentColor;
+  }
+
+  .text-link {
+    font-size: inherit;
+    font-weight: 600;
+  }
+}
+
+.site-head__meta--last {
+  margin-bottom: $spacing-07;
+}
+
+.icon-box--info {
+  background: var(--cds-notification-background-info);
+
+  svg {
+    fill: theme.$link-primary;
+  }
+}
+
+.source {
+  display: grid;
+  align-content: start;
+  gap: $spacing-05;
+}
+
+.source__head {
+  display: flex;
+  align-items: center;
+  gap: $spacing-05;
+}
+
+.source__row {
+  display: flex;
+  align-items: flex-end;
+  gap: $spacing-04;
+
+  .cds--form-item {
+    flex: 1;
+  }
+}
+
+.dropzone {
+  display: grid;
+  justify-items: center;
+  gap: $spacing-03;
+  padding: $spacing-08 $spacing-05;
+  border: 2px dashed theme.$border-interactive;
+  font-size: 0.9375rem;
+  color: theme.$text-secondary;
+
+  svg {
+    fill: theme.$icon-secondary;
+  }
+
+  .text-link {
+    font-size: 0.9375rem;
+    text-decoration: underline;
+  }
+}
+
+.file-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: $spacing-04;
+  padding: $spacing-04 $spacing-05;
+  border: 1px solid theme.$border-subtle-01;
+
+  > div {
+    flex: 1;
+  }
+
+  > svg {
+    fill: theme.$link-primary;
+  }
+
+  .text-link {
+    color: theme.$support-error;
+  }
+}
+
+.source > .text-link {
+  justify-self: start;
+}
+
+.preview__head {
+  margin: 0;
+  border-bottom: 1px solid theme.$border-subtle-01;
+}
+
+.action-bar {
+  position: sticky;
+  bottom: 0;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: $spacing-05;
+  margin: $spacing-07 (-$spacing-07) (-$spacing-09);
+  padding: $spacing-05 $spacing-07;
+  background: theme.$layer-01;
+  border-top: 1px solid theme.$border-subtle-01;
+
+  .badge {
+    margin-left: auto;
+  }
+}
+
 @include breakpoint-down(md) {
   .page {
     padding-inline: $spacing-05;
@@ -2593,7 +2765,8 @@ body {
   }
 
   .steps,
-  .filter-tabs {
+  .filter-tabs,
+  .action-bar {
     margin-inline: -$spacing-05;
     padding-inline: $spacing-05;
   }
