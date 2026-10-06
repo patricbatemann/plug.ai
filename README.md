@@ -5,12 +5,12 @@ A demo of BOB, an AI agent that orchestrates a renewable energy portfolio (solar
 ## Requirements
 
 - Node.js 20.19+ or 22.12+ and npm
-- Python 3.11+
-- Docker (for PostgreSQL)
+- Python 3.12+
+- Docker, or a local PostgreSQL 16
 
 ## Run locally
 
-With GNU Make installed, from the repository root:
+On Windows without Make or Docker, see [Windows](#windows-without-make-or-docker). With GNU Make installed, from the repository root:
 
 ```sh
 make setup      # .env files from the examples, npm install, Python venv
@@ -30,6 +30,60 @@ make worker
 The API runs at `http://localhost:8000` (interactive docs at `/docs`); Vite serves the client at `http://localhost:5173`. Create an account on the sign-up page, then start a run from the header (**New run** → a preset). Runs fast-forward to 10:45, then advance one 15-minute block every 30 s at 30×. Every block, BOB reads the situation, picks an operating mode (balanced, economic, clean, resilience or grid support), builds up to five options with a mixed-integer optimiser (HiGHS), stress-tests their committed actions against scenarios such as renewables at P10 or the largest battery out, and chooses the least worst-case regret. It plans the next 24 hours and executes the first block's actions through mock adapters; the same day is also settled with today's rule-based practice, and the portfolio page compares the two. Each action is automatic, needs approval, or is only a recommendation, according to its asset's configured action and the organisation's protected limits; gated actions wait on the Actions page while a fallback plan runs. Events BOB can see (a battery trip, a derate, an announced price spike, new forecasts) re-plan the block in progress. Open a site to see its Live overview; pause, step, change speed or inject events from the header. The worker can run as several processes; each block is settled exactly once.
 
 Other targets: `make test` runs backend tests (needs `make db-up`) and the colour-token check; `make build` builds the client; `make db-down` stops PostgreSQL; `make clean` removes the web build.
+
+### Windows without Make or Docker
+
+```text
+winget ──> Python 3.12, Node LTS, PostgreSQL 16
+psql   ──> role bob + databases bob, bob_test
+server ──> .env, .venv, migrate, seed ──> API :8000 + worker
+web    ──> .env, npm install ──> Vite :5173
+```
+
+Use PowerShell from the repository root. Install the tools (the PostgreSQL installer asks for a password for the `postgres` superuser), then open a new terminal so they are on `PATH`:
+
+```powershell
+winget install Python.Python.3.12 OpenJS.NodeJS.LTS PostgreSQL.PostgreSQL.16
+```
+
+If PowerShell reports that running scripts is disabled when you call `npm`, allow local scripts once:
+
+```powershell
+Set-ExecutionPolicy -Scope CurrentUser RemoteSigned
+```
+
+Create the role and databases that Docker Compose would otherwise create:
+
+```powershell
+& "C:\Program Files\PostgreSQL\16\bin\psql.exe" -U postgres `
+  -c "CREATE ROLE bob LOGIN PASSWORD 'bob'" `
+  -c "CREATE DATABASE bob OWNER bob" `
+  -c "CREATE DATABASE bob_test OWNER bob"
+```
+
+Set up the API and the client:
+
+```powershell
+cd server
+Copy-Item .env.example .env
+py -3.12 -m venv .venv
+.venv\Scripts\python -m pip install -r requirements.txt
+.venv\Scripts\python -m alembic upgrade head
+.venv\Scripts\python -m app.seed
+cd ..\web
+Copy-Item .env.example .env
+npm install
+```
+
+Then run each of these in its own terminal from the repository root:
+
+```powershell
+cd server; .venv\Scripts\python -m uvicorn app.main:app --reload   # API
+cd server; .venv\Scripts\python -m app.worker                      # simulation clock
+cd web; npm run dev                                                # client
+```
+
+Tests: `cd server; .venv\Scripts\python -m pytest`, and `cd web; npm run check:colors`. Build: `cd web; npm run build`.
 
 ## Configuration
 

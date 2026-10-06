@@ -34,10 +34,13 @@ def solve_all(jobs: list[tuple[Inputs, HereAndNow | None, bool]]) -> list[Plan]:
     if settings.solver_processes <= 1 or len(jobs) == 1:
         return [_solve(job) for job in jobs]
     if _pool is None:
-        # Compute only: workers hold no state between jobs. Forkserver starts them from a clean
-        # process, so they inherit no threads or database connections from the API or worker.
-        context = multiprocessing.get_context("forkserver")
-        context.set_forkserver_preload(["app.optimize.dispatch"])
+        # Compute only: workers hold no state between jobs. Forkserver (spawn on Windows) starts them
+        # from a clean process, so they inherit no threads or database connections from the API or worker.
+        if "forkserver" in multiprocessing.get_all_start_methods():
+            context = multiprocessing.get_context("forkserver")
+            context.set_forkserver_preload(["app.optimize.dispatch"])
+        else:
+            context = multiprocessing.get_context("spawn")
         _pool = ProcessPoolExecutor(settings.solver_processes, mp_context=context)
     return list(_pool.map(_solve, jobs))
 
