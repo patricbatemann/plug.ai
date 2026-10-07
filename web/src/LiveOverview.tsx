@@ -19,7 +19,6 @@ const imgEllipse3 = `${assetPathPrefix}/d5731.svg`;
 const imgEllipse4 = `${assetPathPrefix}/db115.svg`;
 const imgFrame4 = `${assetPathPrefix}/eb1e9.svg`;
 const imgEllipse5 = `${assetPathPrefix}/71d6b.svg`;
-const imgIconBell = `${assetPathPrefix}/dd0db.svg`;
 const imgIconWrap = `${assetPathPrefix}/4fefd.svg`;
 const imgThermometer = `${assetPathPrefix}/d323a.svg`;
 const imgEllipse6 = `${assetPathPrefix}/49c35.svg`;
@@ -61,17 +60,6 @@ export default function LiveOverview({ onBack, onTabChange, onBob }: LiveOvervie
             <p onClick={onBob} className="font-['IBM Plex Sans:Medium'] font-medium text-[#525252] text-[13px] leading-normal whitespace-nowrap max-sm:whitespace-normal cursor-pointer hover:text-[#161616] transition-colors" style={{ fontVariationSettings: '"wdth" 100' }}>BOB</p>
             <p className="font-['IBM Plex Sans:Medium'] font-medium text-[#525252] text-[13px] leading-normal whitespace-nowrap max-sm:whitespace-normal cursor-pointer hover:text-[#161616] transition-colors" style={{ fontVariationSettings: '"wdth" 100' }}>Settings</p>
           </nav>
-        </div>
-        <div className="flex gap-4 items-center max-sm:flex-wrap">
-          <div className="size-5 relative shrink-0 cursor-pointer">
-            <img alt="" className="absolute inset-0 size-full" src={imgIconBell} />
-          </div>
-          <div className="flex gap-2 items-center max-sm:flex-wrap">
-            <div className="bg-[#0f62fe] flex items-center justify-center rounded-full size-7 shrink-0 max-sm:flex-wrap">
-              <p className="font-['IBM Plex Sans:SemiBold'] font-semibold text-white text-[11px] leading-normal" style={{ fontVariationSettings: '"wdth" 100' }}>RA</p>
-            </div>
-            <p className="font-['IBM Plex Sans:Medium'] font-medium text-[#161616] text-[13px] leading-normal whitespace-nowrap max-sm:whitespace-normal" style={{ fontVariationSettings: '"wdth" 100' }}>Raj Anand</p>
-          </div>
         </div>
       </header>
 

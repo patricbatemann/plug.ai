@@ -32,7 +32,7 @@ export default function ConnectData({ onBack }: ConnectDataProps) {
     kind: "CSV",
     historical: true,
   })
-  const [phase, setPhase] = useState<"source" | "mapping" | "success">("source")
+  const [phase, setPhase] = useState<"source" | "success">("source")
   const [error, setError] = useState("")
   const [busy, setBusy] = useState(false)
   const [endpoint, setEndpoint] = useState("")
@@ -41,8 +41,7 @@ export default function ConnectData({ onBack }: ConnectDataProps) {
   const [interval, setInterval] = useState("5")
   const [detected, setDetected] = useState(true)
   const [page, setPage] = useState(1)
-  const [mapping, setMapping] = useState<Record<string, string>>({})
-  const [timezone, setTimezone] = useState("Asia/Kolkata")
+  const [timezone] = useState("Asia/Kolkata")
   const fileInput = useRef<HTMLInputElement>(null)
   const apiRequest = useRef<AbortController | null>(null)
   useEffect(() => () => apiRequest.current?.abort(), [])
@@ -148,7 +147,7 @@ export default function ConnectData({ onBack }: ConnectDataProps) {
       setBusy(false)
     }
   }
-  const validate = () => {
+  const handleImport = () => {
     if (!dataset) return
     setError("")
     const matched: Record<string, string> = {}
@@ -163,13 +162,9 @@ export default function ConnectData({ onBack }: ConnectDataProps) {
         dataset.headers.find((header) =>
           aliases[field].includes(header.toLowerCase().replace(/[^a-z]/g, "")),
         ) ?? ""
-    setMapping(matched)
-    setPhase("mapping")
-  }
-  const finish = () => {
-    if (!dataset) return
+
     try {
-      validateMapping(dataset.headers, dataset.rows, mapping)
+      validateMapping(dataset.headers, dataset.rows, matched)
       setState((current) => ({
         ...current,
         connections: [
@@ -178,7 +173,7 @@ export default function ConnectData({ onBack }: ConnectDataProps) {
           ),
           {
             name: dataset.name,
-            fields: { ...mapping, timezone },
+            fields: { ...matched, timezone },
             kind: dataset.kind,
           },
         ],
@@ -191,7 +186,7 @@ export default function ConnectData({ onBack }: ConnectDataProps) {
       setPhase("success")
     } catch (reason) {
       setError(
-        reason instanceof Error ? reason.message : "Field mapping failed.",
+        reason instanceof Error ? reason.message : "Data import validation failed.",
       )
     }
   }
@@ -398,7 +393,7 @@ export default function ConnectData({ onBack }: ConnectDataProps) {
                 </div>
                 {dataset?.kind === "API" && (
                   <p role="status" className="text-xs text-[#198038]">
-                    Connection response validated — continue to field mapping.
+                    Connection response validated — ready to import.
                   </p>
                 )}
                 <p className="text-xs">
@@ -514,69 +509,23 @@ export default function ConnectData({ onBack }: ConnectDataProps) {
                 </div>
               </section>
             )}
-            {phase === "mapping" && dataset && (
-              <section className="space-y-4 border border-[#e0e0e0] bg-white p-6">
-                <h2 className="font-semibold text-[#161616]">
-                  Validation complete · Map required fields
-                </h2>
-                <p className="text-xs">
-                  Source structure is valid. Verify units and timestamp timezone
-                  before importing. Negative battery power means charging;
-                  positive means discharging.
-                </p>
-                <div className="grid gap-4 sm:grid-cols-2">
-                  {fields.map(([field, label]) => (
-                    <label key={field} className="space-y-2 text-sm">
-                      {label}
-                      <select
-                        aria-label={`Map ${label}`}
-                        value={mapping[field] ?? ""}
-                        onChange={(event) =>
-                          setMapping((current) => ({
-                            ...current,
-                            [field]: event.target.value,
-                          }))
-                        }
-                        className={input}
-                      >
-                        <option value="">Select source column</option>
-                        {dataset.headers.map((header) => (
-                          <option key={header}>{header}</option>
-                        ))}
-                      </select>
-                    </label>
-                  ))}
-                </div>
-                <label className="block space-y-2 text-sm">
-                  Timestamp timezone
-                  <select
-                    className={input}
-                    value={timezone}
-                    onChange={(event) => setTimezone(event.target.value)}
-                  >
-                    <option value="Asia/Kolkata">Asia/Kolkata (IST)</option>
-                    <option value="UTC">UTC</option>
-                  </select>
-                </label>
-              </section>
-            )}
           </>
         )}
       </main>
       {phase !== "success" && (
         <footer className="sticky bottom-0 mt-auto flex flex-wrap justify-between gap-3 border-t border-[#e0e0e0] bg-white px-4 py-4 md:px-8 xl:px-12">
           <button
-            onClick={phase === "mapping" ? () => setPhase("source") : onBack}
+            onClick={onBack}
             className={button}
           >
-            {phase === "mapping" ? "Back to source" : "Cancel"}
+            Cancel
           </button>
           <button
             disabled={!dataset || busy}
-            onClick={phase === "mapping" ? finish : validate}
+            onClick={handleImport}
             className={`${button} border-[#0f62fe] bg-[#0f62fe] text-white hover:bg-[#0043ce]`}
           >
-            {phase === "mapping" ? "Confirm mapping & import" : "Import Data"}
+            Import Data
           </button>
         </footer>
       )}

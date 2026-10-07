@@ -11,7 +11,6 @@ const imgIconSun = `${assetPathPrefix}/31b52.svg`;
 const imgIconBot = `${assetPathPrefix}/8be4b.svg`;
 const imgMoreHorizontal = `${assetPathPrefix}/05748.svg`;
 const imgEllipse = `${assetPathPrefix}/71d6b.svg`;
-const imgIconBell = `${assetPathPrefix}/dd0db.svg`;
 const imgMapPin = `${assetPathPrefix}/73303.svg`;
 const imgPlus = `${assetPathPrefix}/2475a.svg`;
 const imgInfo = `${assetPathPrefix}/5aea5.svg`;
@@ -137,17 +136,6 @@ export default function SiteDetail({ onBack, onLiveOverview, onBob, onConnectDat
             </button>
             <p {...ibm('Medium', 'text-[#525252] text-[13px]')}>Settings</p>
           </nav>
-        </div>
-        <div className="flex gap-4 items-center max-sm:flex-wrap">
-          <div className="relative size-5 shrink-0">
-            <img alt="" className="absolute inset-0 size-full" src={imgIconBell} />
-          </div>
-          <div className="flex gap-2 items-center max-sm:flex-wrap">
-            <div className="bg-[#0f62fe] flex items-center justify-center rounded-full size-7 max-sm:flex-wrap">
-              <p {...ibm('SemiBold', 'text-white text-[11px]')}>RA</p>
-            </div>
-            <p {...ibm('Medium', 'text-[#161616] text-[13px]')}>Raj Anand</p>
-          </div>
         </div>
       </div>
 
