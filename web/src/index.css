@@ -1,0 +1,129 @@
+@import url('https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:ital,wght@0,400;0,500;0,600;0,700;1,400;1,600&family=IBM+Plex+Sans:ital,wght@0,300;0,400;0,500;0,600;0,700;1,300;1,400;1,600&display=swap');
+@import 'tailwindcss';
+
+@theme {
+  --font-sans: 'IBM Plex Sans', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  --font-mono: 'IBM Plex Mono', 'SFMono-Regular', Menlo, Monaco, Consolas, monospace;
+
+  /* IBM Carbon Palette tokens */
+  --color-carbon-gray-10: #f4f4f4;
+  --color-carbon-gray-20: #e0e0e0;
+  --color-carbon-gray-30: #c6c6c6;
+  --color-carbon-gray-50: #8d8d8d;
+  --color-carbon-gray-70: #525252;
+  --color-carbon-gray-100: #161616;
+
+  --color-carbon-blue-10: #edf5ff;
+  --color-carbon-blue-30: #a6c8ff;
+  --color-carbon-blue-60: #0f62fe;
+  --color-carbon-blue-70: #0043ce;
+
+  --color-carbon-green-10: #defbe6;
+  --color-carbon-green-60: #198038;
+  --color-carbon-amber-10: #fef3c7;
+  --color-carbon-amber-60: #b26207;
+  --color-carbon-red-10: #fff1f1;
+  --color-carbon-red-60: #da1e28;
+}
+
+:root {
+  font-family: 'IBM Plex Sans', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  color: #161616;
+  background-color: #f4f4f4;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+body {
+  font-family: 'IBM Plex Sans', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  background-color: #f4f4f4;
+  color: #161616;
+}
+
+/* IBM Carbon Monospace & Telemetry Classes */
+.font-mono,
+.carbon-mono,
+.cds-mono,
+code,
+kbd,
+samp,
+pre {
+  font-family: 'IBM Plex Mono', monospace !important;
+  font-feature-settings: 'tnum' 1;
+}
+
+.font-sans,
+.carbon-sans,
+.cds-sans {
+  font-family: 'IBM Plex Sans', sans-serif !important;
+}
+
+.carbon-telemetry {
+  font-family: 'IBM Plex Mono', monospace !important;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: -0.01em;
+}
+
+.ask-bob { font-family: 'IBM Plex Sans', sans-serif; font-weight: 400; }
+.ask-bob .ask-medium { font-family: 'IBM Plex Sans', sans-serif; font-weight: 500; }
+.ask-bob .ask-semibold { font-family: 'IBM Plex Sans', sans-serif; font-weight: 600; }
+.ask-bob :is(button, a):focus-visible { outline: 2px solid #0f62fe; outline-offset: 2px; }
+.ask-bob form:focus-within { outline: 2px solid #0f62fe; outline-offset: 2px; }
+
+/* Font face mappings to ensure design tokens map cleanly to local/Google fonts */
+@font-face {
+  font-family: 'IBM Plex Sans:Bold';
+  src: local('IBM Plex Sans Bold'), local('IBM Plex Sans');
+  font-style: normal;
+  font-weight: 700;
+}
+@font-face {
+  font-family: 'IBM Plex Sans:SemiBold';
+  src: local('IBM Plex Sans SemiBold'), local('IBM Plex Sans');
+  font-style: normal;
+  font-weight: 600;
+}
+@font-face {
+  font-family: 'IBM Plex Sans:Medium';
+  src: local('IBM Plex Sans Medium'), local('IBM Plex Sans');
+  font-style: normal;
+  font-weight: 500;
+}
+@font-face {
+  font-family: 'IBM Plex Sans:Regular';
+  src: local('IBM Plex Sans Regular'), local('IBM Plex Sans');
+  font-style: normal;
+  font-weight: 400;
+}
+@font-face {
+  font-family: 'IBM Plex Sans:Light';
+  src: local('IBM Plex Sans Light'), local('IBM Plex Sans');
+  font-style: normal;
+  font-weight: 300;
+}
+
+@font-face {
+  font-family: 'IBM Plex Mono:Bold';
+  src: local('IBM Plex Mono Bold'), local('IBM Plex Mono');
+  font-style: normal;
+  font-weight: 700;
+}
+@font-face {
+  font-family: 'IBM Plex Mono:SemiBold';
+  src: local('IBM Plex Mono SemiBold'), local('IBM Plex Mono');
+  font-style: normal;
+  font-weight: 600;
+}
+@font-face {
+  font-family: 'IBM Plex Mono:Medium';
+  src: local('IBM Plex Mono Medium'), local('IBM Plex Mono');
+  font-style: normal;
+  font-weight: 500;
+}
+@font-face {
+  font-family: 'IBM Plex Mono:Regular';
+  src: local('IBM Plex Mono Regular'), local('IBM Plex Mono');
+  font-style: normal;
+  font-weight: 400;
+}
+

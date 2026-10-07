@@ -7,12 +7,9 @@ import { portfolioApi, siteApi, type SiteDetail } from '../api/client'
 import { assetSummary, kindLabel, mw, simDateTime, siteBadge } from '../format'
 import { LiveOverview } from '../runs/LiveOverview'
 import { modeText } from '../runs/ModeTag'
-import { SiteActions } from '../runs/SiteActions'
-import { SiteActivity } from '../runs/SiteActivity'
-import { SiteMaintenance } from '../runs/SiteMaintenance'
 import { useCurrentRun, useSiteStatuses } from '../runs/useCurrentRun'
 
-const TABS = ['Site details', 'Live overview', 'AI Actions', 'Maintenance', 'Activity log']
+const TABS = ['Site details', 'Live overview']
 
 export function SitePage() {
   const { code = '' } = useParams()
@@ -81,9 +78,6 @@ export function SitePage() {
           <LiveOverview run={run} siteCode={data.code}
             generationSeries={data.assets.some((a) => a.kind === 'solar') ? 'solar' : 'wind'} />
         )}
-        {run && tab === 2 && <SiteActions run={run} site={data.code} />}
-        {run && tab === 3 && <SiteMaintenance run={run} site={data.code} />}
-        {run && tab === 4 && <SiteActivity run={run} site={data.code} />}
       </div>
     </>
   )

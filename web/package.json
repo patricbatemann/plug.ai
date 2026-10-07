@@ -14,10 +14,13 @@
     "@carbon/colors": "11.59.0",
     "@carbon/icons-react": "11.89.0",
     "@carbon/react": "1.117.0",
+    "@tailwindcss/vite": "^4.3.3",
     "@tanstack/react-query": "5.104.1",
     "react": "19.1.0",
     "react-dom": "19.1.0",
-    "react-router-dom": "7.18.4"
+    "react-router": "^7.18.4",
+    "react-router-dom": "7.18.4",
+    "tailwindcss": "^4.3.3"
   },
   "devDependencies": {
     "@types/react": "19.1.6",

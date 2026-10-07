@@ -1,0 +1,60 @@
+{
+  "weather": {
+    "condition": "☀️ Partly Cloudy",
+    "ambientTemp": "34.2°C",
+    "moduleTemp": "48.1°C",
+    "solarIrradiance": "847 W/m²",
+    "windSpeed": "12.4 km/h NNW",
+    "humidity": "45%",
+    "cloudCover": "15% — Clear",
+    "uvIndex": "8.2",
+    "uvLevel": "High",
+    "forecastTrend": "↗ Clearing",
+    "lastUpdated": "30s ago"
+  },
+  "generationConditions": [
+    {
+      "label": "Cloud cover",
+      "value": "42% (from 18%)",
+      "valueClass": "text-[#b26207]"
+    },
+    {
+      "label": "Irradiance",
+      "value": "847 W/m²",
+      "valueClass": "text-[#161616]"
+    },
+    {
+      "label": "Temperature",
+      "value": "34.2°C / 48.1°C",
+      "valueClass": "text-[#161616]"
+    },
+    {
+      "label": "Wind",
+      "value": "12.4 km/h NNW",
+      "valueClass": "text-[#161616]"
+    }
+  ],
+  "activeAlerts": [
+    "Solar output 7 MW below forecast",
+    "Cloud cover advisory until 3:00 PM"
+  ],
+  "snapshots": {
+    "14_32": {
+      "timestamp": "01 Oct 2026, 14:32 IST",
+      "solarMW": 38,
+      "demandMW": 44,
+      "batteryDischargeMW": 6,
+      "gridImportMW": 0,
+      "batterySOC": 72,
+      "deficitMW": 0
+    },
+    "14_50": {
+      "timestamp": "01 Oct 2026, 14:50 IST",
+      "solarMW": 38,
+      "demandMW": 52,
+      "batteryDischargeMW": 6,
+      "gridImportProposedMW": 8,
+      "deficitMW": 8
+    }
+  }
+}

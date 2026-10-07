@@ -1,0 +1,95 @@
+{
+  "site": {
+    "id": "KUP-SOLAR-001",
+    "name": "Kuppam Solar Site",
+    "shortName": "Kuppam Solar",
+    "location": "Andhra Pradesh · Solar",
+    "region": "Andhra Pradesh, India",
+    "commissioned": "2021",
+    "capacityMW": 45,
+    "batteryCapacityMWh": 20,
+    "batteryMaxOutputMW": 8,
+    "status": "Operational",
+    "technology": "Solar PV + BESS",
+    "mode": "Balanced",
+    "dataMode": "Preview"
+  },
+  "assets": [
+    {
+      "id": "solar-array",
+      "name": "Solar Array A1-A12",
+      "type": "Solar generation",
+      "capacity": "45 MW",
+      "status": "Operational",
+      "statusTone": "green",
+      "monitoring": "Available ✓",
+      "remote": "Not available —",
+      "bobPermission": null,
+      "bobActionLink": null
+    },
+    {
+      "id": "battery-1",
+      "name": "Battery 1",
+      "type": "Battery storage",
+      "capacity": "20 MWh / 8 MW",
+      "status": "Available",
+      "statusTone": "green",
+      "monitoring": "Available ✓",
+      "remote": "Available ✓",
+      "bobPermission": "Granted & verified",
+      "bobActionLink": "Review setup"
+    },
+    {
+      "id": "grid-interconnect",
+      "name": "Grid Connection",
+      "type": "Grid interconnection",
+      "capacity": "50 MW",
+      "status": "Connected",
+      "statusTone": "green",
+      "monitoring": "Available ✓",
+      "remote": "Not available —",
+      "bobPermission": null,
+      "bobActionLink": null
+    },
+    {
+      "id": "weather-station",
+      "name": "Weather Station",
+      "type": "Site weather",
+      "capacity": "—",
+      "status": "Online",
+      "statusTone": "green",
+      "monitoring": "Available ✓",
+      "remote": "Not available —",
+      "bobPermission": null,
+      "bobActionLink": null
+    },
+    {
+      "id": "demand-meter",
+      "name": "Demand Meter",
+      "type": "Site demand",
+      "capacity": "—",
+      "status": "Online",
+      "statusTone": "green",
+      "monitoring": "Available ✓",
+      "remote": "Not available —",
+      "bobPermission": null,
+      "bobActionLink": null
+    }
+  ],
+  "monitoringFeeds": [
+    { "name": "Solar generation", "source": "Site sensors", "ageSeconds": 12 },
+    { "name": "Site demand", "source": "Demand meter", "ageSeconds": 12 },
+    { "name": "Battery charge and power", "source": "BMS controller", "ageSeconds": 8 },
+    { "name": "Grid import and export", "source": "Interconnect relay", "ageSeconds": 15 },
+    { "name": "Weather conditions", "source": "Station sensors", "ageSeconds": 24 },
+    { "name": "Inverter performance", "source": "SCADA gateway", "ageSeconds": 12 }
+  ],
+  "technicalSpecs": {
+    "interconnectionVoltage": "132 kV",
+    "substation": "Kuppam East Substation",
+    "landAreaAcres": 185,
+    "moduleType": "Monocrystalline PERC (540W)",
+    "inverterCount": 12,
+    "batteryType": "Lithium Iron Phosphate (LFP)"
+  }
+}

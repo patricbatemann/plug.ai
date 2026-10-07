@@ -1,0 +1,19 @@
+{
+  "name": "Battery 1",
+  "startThresholdMW": 3,
+  "startDelayMinutes": 5,
+  "startSOC": 60,
+  "reserveSOC": 55,
+  "emergencyFloorSOC": 30,
+  "autoMaxMW": 6,
+  "equipmentMaxMW": 8,
+  "approvalAboveMW": 6,
+  "maxDurationMinutes": 30,
+  "maxEnergyMWh": 3,
+  "approvalExpiryMinutes": 10,
+  "currentSOC": 72,
+  "totalCapacityMWh": 20,
+  "usableMWh": 3.4,
+  "runtimeMin": 34,
+  "health": "Normal"
+}
