@@ -30,7 +30,7 @@ def test_register_login_and_current_user(client: TestClient) -> None:
     # The same session as an HttpOnly cookie, for the client's same-origin chat and data calls.
     assert "httponly" in login.headers["set-cookie"].lower()
     assert client.get("/api/auth/me").json()["email"] == "starter@example.com"
-    client.cookies.clear()
+    assert client.post("/api/auth/logout").status_code == 204
     assert client.get("/api/auth/me").status_code == 401
 
 

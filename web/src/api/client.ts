@@ -209,6 +209,18 @@ export const tokenStore = {
 
 const apiUrl = (import.meta.env.VITE_API_URL || 'http://localhost:8000').replace(/\/$/, '')
 
+/** Forget the session (token, sign-in flag and server cookie) and return to sign-in. */
+export function signOut() {
+  tokenStore.clear()
+  try {
+    sessionStorage.removeItem('plug_auth')
+  } catch {
+    // Storage can be unavailable; the token is already gone.
+  }
+  void fetch(`${apiUrl}/api/auth/logout`, { method: 'POST', keepalive: true }).catch(() => undefined)
+  window.location.assign('/login')
+}
+
 async function send(path: string, init: RequestInit = {}): Promise<Response> {
   const token = tokenStore.get()
   const response = await fetch(`${apiUrl}${path}`, {
@@ -221,6 +233,8 @@ async function send(path: string, init: RequestInit = {}): Promise<Response> {
   })
 
   if (!response.ok) {
+    // An expired or unknown session; a failed sign-in is the login form's to report.
+    if (response.status === 401 && path !== '/api/auth/login' && path !== '/api/auth/register') signOut()
     let message = `Request failed (${response.status})`
     try {
       const body: { detail?: string | Array<{ msg?: string }> } = await response.json()

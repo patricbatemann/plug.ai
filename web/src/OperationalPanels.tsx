@@ -2,6 +2,7 @@ import { Link, useLocation, useSearchParams } from "react-router"
 import { BOB_ACTION_TEMPLATES } from "./BobActions"
 import { transactions } from "./Transactions"
 import { useOperations } from "./Operations"
+import { useProfile } from "./auth/user"
 import { CONFIG_STEPS } from "./data"
 
 export function JourneyNavigation() {
@@ -39,6 +40,7 @@ export function JourneyNavigation() {
 
 export default function OperationalPanels({ page }: { page: string }) {
   const { state, flow, edit, addAudit, setState } = useOperations()
+  const profile = useProfile()
   const [params] = useSearchParams()
   const template = BOB_ACTION_TEMPLATES.find(
     (action) => action.id === params.get("template"),
@@ -215,7 +217,7 @@ export default function OperationalPanels({ page }: { page: string }) {
               <button
                 type="button"
                 onClick={() => {
-                  addAudit("Action details saved", "Battery 1 configuration details saved by Raj Anand.");
+                  addAudit("Action details saved", `Battery 1 configuration details saved by ${profile?.name ?? "the operator"}.`);
                   alert("Action details saved successfully.");
                 }}
                 className="flex min-h-11 items-center gap-2 rounded-[2px] bg-[#0f62fe] px-4 text-xs font-semibold text-white hover:bg-[#0043ce] transition-colors cursor-pointer shadow-xs"

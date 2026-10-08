@@ -46,6 +46,12 @@ def login(payload: UserLogin, response: Response, db: Session = Depends(get_db))
     return _issue(response, user)
 
 
+@router.post("/logout", status_code=status.HTTP_204_NO_CONTENT)
+def logout(response: Response) -> None:
+    """Ends the cookie session. The bearer token is the client's to forget."""
+    response.delete_cookie(SESSION_COOKIE, httponly=True, samesite="lax", secure=settings.env != "local")
+
+
 @router.get("/me", response_model=UserResponse)
 def current_user(user: User = Depends(get_current_user)) -> User:
     return user

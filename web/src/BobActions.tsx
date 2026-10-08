@@ -1,6 +1,7 @@
 import { useState } from "react"
 import { useNavigate } from "react-router"
 import { useOperations } from "./Operations"
+import { useProfile } from "./auth/user"
 import { STATE_COLOR, type ActionState } from "./data"
 import { DEFAULT_CONFIG } from './ActionConfig'
 
@@ -43,6 +44,7 @@ export default function BobActions({
   const editAction = (id: string) => { if (id === 'battery') { operations.edit(0); onAddAction(); } else navigate('/actionTemplate?template=' + id); }
   const addAction = () => { if (state.activated && ['Active','Executing','Completed'].includes(state.stage)) operations.setState(current => ({ ...current, config: structuredClone(DEFAULT_CONFIG), stage: 'Draft', started: false, confirmed: [], step: 0, tests: {}, testKey: '' })); onAddAction(); }
 
+  const profile = useProfile()
   const [expanded, setExpanded] = useState(new Set(["sell", "battery"]))
   const [filter, setFilter] = useState("all")
   const [search, setSearch] = useState("")
@@ -52,7 +54,7 @@ export default function BobActions({
 
   const handleSaveDetails = (actionId?: string, actionTitle?: string) => {
     const title = actionTitle ?? 'Action configuration'
-    operations.addAudit('Action details saved', `${title} saved to site profile by Raj Anand.`)
+    operations.addAudit('Action details saved', `${title} saved to site profile by ${profile?.name ?? 'the operator'}.`)
     setSaveStatus(`${title} saved successfully.`)
     setTimeout(() => {
       setSaveStatus(null)
@@ -104,9 +106,9 @@ export default function BobActions({
         </nav>
         <div className="flex items-center gap-2 text-xs">
           <span className="flex size-8 items-center justify-center rounded-full bg-[#0f62fe] text-white">
-            RA
+            {profile?.initials}
           </span>
-          Raj Anand
+          {profile?.name}
         </div>
       </header>
       <div className="space-y-5 border-b border-[#e0e0e0] bg-white px-4 py-6 md:px-8 xl:px-12">

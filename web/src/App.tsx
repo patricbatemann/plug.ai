@@ -13,7 +13,8 @@ import ApprovalReview from './ApprovalReview';
 import AskBob from './AskBob';
 import LoginScreen from './LoginScreen';
 import type { ActionConfig } from './AgentChat';
-import { tokenStore } from './api/client';
+import { signOut, tokenStore } from './api/client';
+import { useProfile } from './auth/user';
 import { createBrowserRouter, RouterProvider, useLocation, useNavigate } from 'react-router';
 import { OperationsProvider, useOperations } from './Operations';
 import OperationalPanels, { JourneyNavigation } from './OperationalPanels';
@@ -163,15 +164,6 @@ function OperationalRoute() {
     }
   };
 
-  const handleLogout = () => {
-    tokenStore.clear();
-    try {
-      sessionStorage.removeItem('plug_auth');
-    } catch { }
-    setIsAuthenticated(false);
-    navigate('/login');
-  };
-
   if (!isAuthenticated || location.pathname === '/login') {
     return (
       <div className="h-dvh min-w-0 overflow-y-auto">
@@ -184,7 +176,7 @@ function OperationalRoute() {
     <div className="flex h-dvh min-w-0 flex-col">
       <JourneyNavigation />
       <div className="min-h-0 min-w-0 flex-1 overflow-y-auto">
-        <Screens onLogout={handleLogout} />
+        <Screens onLogout={signOut} />
       </div>
     </div>
   );
@@ -198,6 +190,7 @@ function Screens({ onLogout }: { onLogout?: () => void }) {
   const view = useLocation().pathname.slice(1) || 'dashboard';
   const setView = (next: string) => navigate(next === 'dashboard' ? '/' : `/${next}`);
   const operations = useOperations();
+  const profile = useProfile();
   const { state } = operations;
   const [transactionSearch, setTransactionSearch] = useState('');
   const [siteSearch, setSiteSearch] = useState('');
@@ -320,9 +313,9 @@ function Screens({ onLogout }: { onLogout?: () => void }) {
             <div
               className="bg-[#fdecef] border border-[#e82127] flex items-center justify-center rounded-full size-10 shrink-0 max-sm:flex-wrap cursor-pointer hover:opacity-90 transition-opacity"
               onClick={onLogout ? onLogout : () => setView('login')}
-              title="Admin Account (Click to Sign Out)"
+              title={profile ? `Signed in as ${profile.email} (click to sign out)` : 'Click to sign out'}
             >
-              <p className="font-['IBM Plex Sans:Bold'] font-bold text-[#e82127] text-[14px] leading-normal" style={{ fontVariationSettings: '"wdth" 100' }}>MV</p>
+              <p className="font-['IBM Plex Sans:Bold'] font-bold text-[#e82127] text-[14px] leading-normal" style={{ fontVariationSettings: '"wdth" 100' }}>{profile?.initials}</p>
             </div>
           </div>
         </div>
