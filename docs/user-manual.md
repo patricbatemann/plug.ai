@@ -138,9 +138,9 @@ Open the **Ask BOB** tab in the header, or use an **Ask BOB** button on a card t
 1. **New run → Demo story**, then play at 30×. The portfolio fills in, and the net saving against today's practice is visible from the morning.
 2. **11:07 cloud bank.** A toast appears. Open Kuppam Solar Site → Live overview to see the below-forecast alert, what BOB is doing, and the revised forecast.
 3. **11:10 price spike.** The mode chip changes. Open the latest decision with **View evidence**.
-4. **11:12 Battery 2 trips.** Approve the action waiting on the portfolio card or the Actions page. Chittoor Hybrid Site → Maintenance shows an inspection proposal.
+4. **11:12 Battery 2 trips.** Approve the action waiting on the portfolio card or the Actions page. Chittoor Hybrid → Maintenance shows an inspection proposal.
 5. **11:14 north corridor derate.** Anantapur Wind Site → Activity log shows the derate and BOB's re-plan.
-6. **11:20 storm bulletin.** Open Ask BOB → 📎 → *Storm bulletin*. The storm is applied with its quote, the mode becomes Resilience, and Tirupati Wind Site → Maintenance proposes moving the 14:00 job out of the storm.
+6. **11:20 storm bulletin.** Open Ask BOB → 📎 → *Storm bulletin*. The storm is applied with its quote, the mode becomes Resilience, and Tirupati Wind → Maintenance proposes moving the 14:00 job out of the storm.
 7. **Configure BOB** on Kuppam → edit Battery 1 discharge with BOB's chat → test → activate.
 8. **Simulation:** run a what-if, then replay Demo story over 5 seeds.
 

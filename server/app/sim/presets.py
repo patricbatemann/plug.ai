@@ -12,7 +12,7 @@ BASE: dict[str, Any] = {
     "weather": {"cloud_mean": 0.15, "wind_mean_ms": 8.5},
     # [base, growth per sqrt(hour)] of forecast error, as a fraction of capacity or value.
     "noise": {"re_avail": [0.03, 0.03], "load": [0.02, 0.01], "price": [0.05, 0.04]},
-    "initial_soc_pct": {"BESS-01": 45, "BESS-02": 60},
+    "initial_soc_pct": {"BESS-01": 72, "BESS-02": 60},
     # Events reach forecasts only when revealed: `"reveal": True` on the event, or a later
     # forecast_update (which reveals fired events, plus those within its `lookahead_h`).
     "events": [],

@@ -13,6 +13,8 @@ from app.sim.market import DEFAULT_MARKET
 
 # Organisation limits that no configured action can loosen.
 PROTECTED = {"battery_soc_floor_pct": 30, "approval_above_mw": 100}
+# Configured battery reserve, above the protected emergency floor.
+BATTERY_RESERVE_PCT = 55
 
 NODES = {"NORTH": "North wind corridor", "SOUTH": "South solar corridor", "HUB": "Sri City load hub"}
 LINES = [("L-NORTH-HUB", "NORTH", "HUB", 120), ("L-SOUTH-HUB", "SOUTH", "HUB", 260)]
@@ -44,32 +46,32 @@ def consumer(segment: str, critical: float, dr: float = 0, notice: int = 0, dr_m
 
 # (code, name, kind, location, commissioned, node, [(code, name, kind, capacity_mw, params)])
 SITES = [
-    ("KUP-SOLAR-001", "Kuppam Solar Site", "hybrid", "Chittoor, Andhra Pradesh", date(2021, 3, 15), "SOUTH", [
+    ("KUP-SOLAR-001", "Kuppam Solar Site", "solar", "Chittoor, Andhra Pradesh", date(2021, 3, 15), "SOUTH", [
         ("SOL-KUP", "Kuppam solar array", "solar", 45, solar()),
-        ("BESS-01", "Battery 1", "bess", 15, bess(60, 15)),
+        ("BESS-01", "Battery 1", "bess", 8, bess(20, 8)),
     ]),
-    ("NEL-SOLAR-002", "Nellore Solar Site", "solar", "Nellore, Andhra Pradesh", date(2020, 11, 2), "SOUTH", [
+    ("NEL-SOLAR-002", "Nellore Solar", "solar", "Nellore, Andhra Pradesh", date(2020, 11, 2), "SOUTH", [
         ("SOL-NEL", "Nellore solar array", "solar", 55, solar()),
     ]),
-    ("TIR-WIND-003", "Tirupati Wind Site", "wind", "Tirupati, Andhra Pradesh", date(2019, 6, 20), "NORTH", [
+    ("TIR-WIND-003", "Tirupati Wind", "wind", "Tirupati, Andhra Pradesh", date(2019, 6, 20), "NORTH", [
         ("WND-TIR", "Tirupati wind farm", "wind", 65, wind(comp=3200)),
     ]),
-    ("CHT-HYBRID-004", "Chittoor Hybrid Site", "hybrid", "Chittoor, Andhra Pradesh", date(2022, 1, 10), "SOUTH", [
-        ("SOL-CHT", "Chittoor solar array", "solar", 70, solar()),
-        ("BESS-02", "Battery 2", "bess", 10, bess(40, 10)),
+    ("CHI-HYBRID-004", "Chittoor Hybrid", "hybrid", "Chittoor, Andhra Pradesh", date(2022, 1, 10), "SOUTH", [
+        ("SOL-CHI", "Chittoor solar array", "solar", 70, solar()),
+        ("BESS-02", "Battery 2", "bess", 17, bess(80, 17)),
     ]),
-    ("KDR-SOLAR-005", "Kadiri Solar Site", "solar", "Sri Sathya Sai, Andhra Pradesh", date(2018, 8, 5), "SOUTH", [
+    ("MAD-HYBRID-005", "Madanapalle Hybrid", "hybrid", "Annamayya, Andhra Pradesh", date(2023, 2, 28), "SOUTH", [
+        ("SOL-MAD", "Madanapalle solar array", "solar", 45, solar()),
+    ]),
+    ("KDR-SOLAR-006", "Kadiri Solar", "solar", "Sri Sathya Sai, Andhra Pradesh", date(2018, 8, 5), "SOUTH", [
         ("SOL-KDR", "Kadiri solar park", "solar", 105, solar(comp=2600)),
     ]),
-    ("MDP-SOLAR-006", "Madanapalle Solar Site", "solar", "Annamayya, Andhra Pradesh", date(2023, 2, 28), "SOUTH", [
-        ("SOL-MDP", "Madanapalle solar array", "solar", 45, solar()),
-    ]),
-    ("ATP-WIND-007", "Anantapur Wind Site", "wind", "Anantapur, Andhra Pradesh", date(2017, 9, 12), "NORTH", [
+    ("ATP-WIND-007", "Anantapur Wind", "wind", "Anantapur, Andhra Pradesh", date(2017, 9, 12), "NORTH", [
         ("WND-ATP", "Anantapur wind farm", "wind", 60, wind()),
         ("IC-NORTH", "North grid interconnection", "interconnection", 40,
          {"import_max_mw": 20, "export_max_mw": 40}),
     ]),
-    ("GTY-WIND-008", "Gooty Wind Site", "wind", "Anantapur, Andhra Pradesh", date(2020, 4, 18), "NORTH", [
+    ("GTY-WIND-008", "Gooty Wind", "wind", "Anantapur, Andhra Pradesh", date(2020, 4, 18), "NORTH", [
         ("WND-GTY", "Gooty wind farm", "wind", 55, wind()),
     ]),
     ("SRC-IND-009", "Sri City Industrial Cluster", "industrial", "Tirupati, Andhra Pradesh", date(2016, 1, 1), "HUB", [
@@ -128,8 +130,8 @@ def default_configs(assets: list[Asset]) -> list[ActionConfig]:
             out.append(config(a, "battery_charge", f"Charge {a.name} from surplus", max_mw=a.capacity_mw,
                               auto_max_mw=a.capacity_mw))
             discharge = config(a, "battery_discharge", f"Discharge {a.name} to support demand", max_mw=a.capacity_mw,
-                               auto_max_mw=round(a.capacity_mw * 0.6), reserve_pct=PROTECTED["battery_soc_floor_pct"])
-            discharge.watch = [{"metric": "soc_below_pct", "value": 35}]  # nearing the protected reserve
+                               auto_max_mw=round(a.capacity_mw * 0.75), reserve_pct=BATTERY_RESERVE_PCT)
+            discharge.watch = [{"metric": "soc_below_pct", "value": 60}]  # the start threshold, above the reserve
             out.append(discharge)
         elif a.kind in ("solar", "wind"):
             out.append(config(a, "curtail", f"Limit {a.name} output", auto_max_mw=50))

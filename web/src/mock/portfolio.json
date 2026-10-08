@@ -2,7 +2,7 @@
   "categories": [
     {
       "id": "solar",
-      "icon": "/assets/7c8f1.svg",
+      "icon": "sun",
       "title": "Solar Portfolio",
       "sites": "5 Sites",
       "sitesCount": 5,
@@ -12,7 +12,7 @@
     },
     {
       "id": "wind",
-      "icon": "/assets/8311b.svg",
+      "icon": "wind",
       "title": "Wind Portfolio",
       "sites": "3 Sites",
       "sitesCount": 3,
@@ -22,7 +22,7 @@
     },
     {
       "id": "battery",
-      "icon": "/assets/559eb.svg",
+      "icon": "battery",
       "title": "Battery Portfolio",
       "sites": "2 Sites",
       "sitesCount": 2,
@@ -150,8 +150,8 @@
         "deviationText": "1 MW above expected"
       },
       "storage": {
-        "soc": 81,
-        "statusText": "Charging at 10 MW"
+        "soc": null,
+        "statusText": "No battery"
       },
       "grid": {
         "status": "Balanced",
@@ -162,8 +162,8 @@
         "tone": "green"
       },
       "aiActivity": {
-        "text": "Charging battery",
-        "isPulsing": true
+        "text": "AI monitoring",
+        "isPulsing": false
       },
       "isPrimaryFocus": false
     },

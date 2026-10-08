@@ -15,7 +15,7 @@ from app.optimize.situation import Signal, apply_floors
 
 IST = ZoneInfo("Asia/Kolkata")
 BLOCK = timedelta(minutes=15)
-TOLERANCE = 1.10  # BOB may choose any option within 10 % of the least worst-case regret
+TOLERANCE = 0.10  # BOB may choose any option within 10 % of the least worst-case regret
 
 
 @dataclass
@@ -83,7 +83,8 @@ class Deliberation:
         return choose_option(self.robust, {n: p.kpis["cost_inr"] for n, p in self.options.items()})
 
     def allowed_regret(self) -> float:
-        return min(self.worst(n) for n in self.options) * TOLERANCE
+        best = min(self.worst(n) for n in self.options)
+        return best + abs(best) * TOLERANCE  # the solver's gap can leave regret slightly negative
 
     def select(self, name: str, by: str, rationale: str) -> None:
         if name not in self.options:

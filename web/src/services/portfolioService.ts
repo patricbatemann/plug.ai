@@ -94,40 +94,19 @@ export async function refreshPortfolioFromBackend(): Promise<void> {
         };
       });
 
-      if (portfolio.totals) {
-        cachedCategories = [
-          {
-            id: 'solar',
-            icon: 'sun',
-            title: 'Solar Generation',
-            sites: `${portfolio.sites.filter((s) => s.kind === 'solar' || s.kind === 'hybrid').length} Sites active`,
-            sitesCount: portfolio.sites.filter((s) => s.kind === 'solar' || s.kind === 'hybrid').length,
-            capacity: `${portfolio.totals.solar_mw} MW`,
-            health: '98.2% operating',
-            fill: '#0f62fe',
-          },
-          {
-            id: 'wind',
-            icon: 'wind',
-            title: 'Wind Generation',
-            sites: `${portfolio.sites.filter((s) => s.kind === 'wind').length} Sites active`,
-            sitesCount: portfolio.sites.filter((s) => s.kind === 'wind').length,
-            capacity: `${portfolio.totals.wind_mw} MW`,
-            health: '95.8% operating',
-            fill: '#0043ce',
-          },
-          {
-            id: 'battery',
-            icon: 'battery',
-            title: 'Battery Storage',
-            sites: `${portfolio.sites.filter((s) => s.battery_mwh > 0).length} BESS units`,
-            sitesCount: portfolio.sites.filter((s) => s.battery_mwh > 0).length,
-            capacity: `${portfolio.totals.battery_mw} MW / ${portfolio.totals.battery_mwh} MWh`,
-            health: 'SOC 74% avg',
-            fill: '#198038',
-          },
-        ];
-      }
+      // Counts and capacities come from the backend; labels, icons and bar fills stay as designed.
+      const { sites, totals } = portfolio;
+      const live: Record<string, { count: number; capacity: string }> = {
+        solar: { count: sites.filter((s) => s.kind === 'solar' || s.kind === 'hybrid').length, capacity: `${totals.solar_mw} MW` },
+        wind: { count: sites.filter((s) => s.kind === 'wind').length, capacity: `${totals.wind_mw} MW` },
+        battery: { count: sites.filter((s) => s.battery_mwh > 0).length, capacity: `${totals.battery_mwh} MWh` },
+      };
+      cachedCategories = cachedCategories.map((category) => {
+        const found = live[category.id];
+        return found
+          ? { ...category, sites: `${found.count} Sites`, sitesCount: found.count, capacity: found.capacity }
+          : category;
+      });
       subscribers.forEach((cb) => cb());
     }
   } catch {
