@@ -18,7 +18,7 @@ class Settings(BaseSettings):
     microsoft_azure_openai_deployment_name: str | None = None
     bob_enabled: bool = True
     bob_timeout_s: float = Field(default=20.0, gt=0)  # a cycle turn
-    bob_chat_timeout_s: float = Field(default=60.0, gt=0)
+    bob_chat_timeout_s: float = Field(default=25.0, gt=0)  # the client gives up after 30 s
     bob_max_tool_calls: int = Field(default=8, gt=0)
 
     model_config = SettingsConfigDict(

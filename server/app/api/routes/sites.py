@@ -10,13 +10,13 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.api.dependencies import get_current_user
-from app.api.routes.portfolio import current_site
+from app.api.routes.portfolio import current_portfolio, current_site
 from app.core.database import get_db
-from app.models.portfolio import Asset, DataSource, Site
+from app.models.portfolio import Asset, DataSource, Portfolio, Site
 from app.models.run import Run
 from app.models.user import User
 from app.schemas.runs import (
-    ActivityOut, ApiSource, CsvCheck, CsvUpload, DataSourceOut, MaintenanceOut, TaskOut,
+    ActivityOut, ApiSource, CsvCheck, CsvUpload, DataConnect, DataSourceOut, MaintenanceOut, TaskOut,
 )
 from app.services import activity, datasources, maintenance, runs
 from app.services.policy import WORK_ORDERS
@@ -89,6 +89,16 @@ def import_csv(upload: CsvUpload, site: Site = Depends(current_site), db: Sessio
     source = datasources.save(db, site, "csv", upload.filename, user.email, found, content)
     db.commit()
     return source
+
+
+@router.post("/data-sources/connect")
+def connect_api(payload: DataConnect, db: Session = Depends(get_db),
+                portfolio: Portfolio = Depends(current_portfolio)) -> dict:
+    """The client's API connection test: recent battery telemetry, answered by the simulator."""
+    try:
+        return datasources.battery_feed(db, current_site(payload.site_id, portfolio), payload.endpoint)
+    except ValueError as error:
+        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=str(error)) from None
 
 
 @router.post("/sites/{code}/data-sources/api/test", response_model=CsvCheck)

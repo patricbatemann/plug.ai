@@ -5,12 +5,13 @@ simulator: no external system is ever called. BOB keeps planning on simulated te
 import csv
 import io
 import re
+from collections.abc import Iterator
 from datetime import datetime
 
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from app.models.portfolio import DataSource, Site
+from app.models.portfolio import Asset, DataSource, Site
 from app.models.run import AssetBlock, Run
 from app.services import runs
 
@@ -18,6 +19,7 @@ REQUIRED = ("timestamp", "asset", "power_mw")
 KNOWN = (*REQUIRED, "available_mw", "soc_pct", "voltage_v", "cell_temp_c", "status", "frequency_hz")
 MAX_BYTES = 5_000_000
 PREVIEW_ROWS = 10
+FEED_ROWS = 12  # three hours of one battery
 
 
 def _type(values: list[str]) -> str:
@@ -66,32 +68,50 @@ def read_csv(site: Site, content: bytes) -> dict:
     return {"rows": len(rows), "columns": columns, "preview": rows[:PREVIEW_ROWS], "problems": problems}
 
 
+def _telemetry(db: Session, run: Run, site: Site) -> Iterator[tuple[datetime, Asset, AssetBlock]]:
+    assets = {a.id: a for a in site.assets}
+    for row in db.scalars(select(AssetBlock).where(AssetBlock.run_id == run.id, AssetBlock.policy == "bob",
+                                                   AssetBlock.asset_id.in_(assets)).order_by(AssetBlock.block)):
+        yield (run.sim_start_at + row.block * runs.BLOCK).astimezone(runs.IST), assets[row.asset_id], row
+
+
 def telemetry_csv(db: Session, run: Run, site: Site) -> str:
     """The run's settled telemetry for the site, in the fixed columns: a sample to import."""
     out = io.StringIO()
     writer = csv.writer(out)
     writer.writerow(["timestamp", "asset", "power_mw", "available_mw", "soc_pct"])
-    assets = {a.id: a for a in site.assets}
-    for row in db.scalars(select(AssetBlock).where(AssetBlock.run_id == run.id, AssetBlock.policy == "bob",
-                                                   AssetBlock.asset_id.in_(assets)).order_by(AssetBlock.block)):
-        a = assets[row.asset_id]
+    for at, a, row in _telemetry(db, run, site):
         soc = round(row.soc_mwh / a.params["energy_mwh"] * 100, 1) if row.soc_mwh is not None else ""
-        at = (run.sim_start_at + row.block * runs.BLOCK).astimezone(runs.IST)
         writer.writerow([f"{at:%Y-%m-%d %H:%M}", a.code, round(row.actual_mw, 2), round(row.available_mw, 2), soc])
     return out.getvalue()
 
 
-def test_api(db: Session, site: Site, endpoint: str) -> dict:
-    """What a connected system would send now, answered by the simulator from the live run."""
+def _simulator(db: Session, endpoint: str) -> Run:
+    """The live run answers for the connected system; the endpoint is only checked."""
     if not re.fullmatch(r"https?://[^\s/]+(/\S*)?", endpoint):
         raise ValueError("Enter an http or https endpoint URL")
     run = runs.latest_live(db)
     if run is None or run.current_block < 0:
         raise ValueError("Start a run: the simulator answers for the connected system")
-    text = telemetry_csv(db, run, site)
+    return run
+
+
+def test_api(db: Session, site: Site, endpoint: str) -> dict:
+    """What a connected system would send now, answered by the simulator from the live run."""
+    text = telemetry_csv(db, _simulator(db, endpoint), site)
     lines = text.strip().splitlines()
     latest = [lines[0], *lines[-len(site.assets):]]  # the last settled block, one row per asset
     return read_csv(site, "\n".join(latest).encode())
+
+
+def battery_feed(db: Session, site: Site, endpoint: str) -> dict:
+    """A battery management API, answered by the simulator: recent blocks in the columns the client maps."""
+    rows = [[at.isoformat(), a.code, str(round(row.soc_mwh / a.params["energy_mwh"] * 100, 1)),
+             str(round(row.actual_mw, 2))]
+            for at, a, row in _telemetry(db, _simulator(db, endpoint), site) if a.kind == "bess"]
+    if not rows:
+        raise ValueError(f"{site.name} has no battery telemetry yet")
+    return {"headers": ["timestamp", "device_id", "soc_percent", "battery_power_mw"], "rows": rows[-FEED_ROWS:]}
 
 
 def save(db: Session, site: Site, kind: str, name: str, user: str, found: dict | None = None,

@@ -75,6 +75,35 @@ class ChatAsk(BaseModel):
     context: str | None = Field(default=None, max_length=300)  # what the operator is looking at
 
 
+class ClientMessage(BaseModel):
+    role: Literal["user", "assistant"]
+    content: str = Field(min_length=1, max_length=2000)
+
+
+class ClientChat(BaseModel):
+    """The client's chat request. It sends its whole thread; the server keeps its own and reads the last line."""
+    scope: str = Field(max_length=40)
+    site_id: str = Field(alias="siteId", max_length=40)
+    messages: list[ClientMessage] = Field(min_length=1)
+
+    @model_validator(mode="after")
+    def ends_with_question(self) -> "ClientChat":
+        if self.messages[-1].role != "user":
+            raise ValueError("The last message must be the operator's question")
+        return self
+
+
+class ClientReply(BaseModel):
+    reply: str
+    conversation_id: str = Field(serialization_alias="conversationId")
+
+
+class DataConnect(BaseModel):
+    """The client's API data-source form. The key is neither stored nor used: the simulator answers."""
+    site_id: str = Field(alias="siteId", max_length=40)
+    endpoint: str = Field(max_length=300)
+
+
 class ChatItem(BaseModel):
     id: int
     role: Literal["user", "assistant"]

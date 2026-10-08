@@ -15,8 +15,8 @@ from app.models.portfolio import Portfolio
 from app.models.run import Action, Cycle, Run, WorldEvent
 from app.models.user import User
 from app.schemas.runs import (
-    ActionOut, ChatAsk, ChatItem, DecisionDetail, DecisionSummary, EventOut, InjectEvent, PresetInfo, RunCreate,
-    RunState, RunSummary, SiteLive, SiteStatus, SpeedUpdate,
+    ActionOut, ChatAsk, ChatItem, ClientChat, ClientReply, DecisionDetail, DecisionSummary, EventOut, InjectEvent,
+    PresetInfo, RunCreate, RunState, RunSummary, SiteLive, SiteStatus, SpeedUpdate,
 )
 from app.services import runs
 from app.services import decisions, policy
@@ -68,6 +68,20 @@ def current_run(db: Session = Depends(get_db)) -> RunState:
     if run is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="No run yet")
     return _state(run)
+
+
+@router.post("/current/chat", response_model=ClientReply, response_model_by_alias=True)
+def ask_bob_once(payload: ClientChat, db: Session = Depends(get_db),
+                 user: User = Depends(get_current_user)) -> ClientReply:
+    """Ask BOB about the live run and wait for the whole answer."""
+    run = runs.latest_live(db)
+    if run is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="No run yet")
+    *_, (_, items) = chat.ask(db, run, user.id, payload.messages[-1].content,
+                              f"{payload.site_id}, {payload.scope} screen")
+    last = items[-1]
+    reply = last["text"] if last["role"] == "assistant" and last["text"] else "I have no answer to that yet."
+    return ClientReply(reply=reply, conversation_id=f"run-{run.id}")
 
 
 @router.post("", response_model=RunState, status_code=status.HTTP_201_CREATED)

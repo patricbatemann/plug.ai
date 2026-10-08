@@ -323,6 +323,20 @@ def test_storm_bulletin_moves_maintenance_and_brings_an_inspection(
     assert client.post("/api/sites/TIR-WIND-003/data-sources/api/test", json={"endpoint": "ftp://x", "refresh_min": 5},
                        headers=auth_headers).status_code == 422
 
+    connect = lambda site: client.post("/api/data-sources/connect", headers=auth_headers, json={  # noqa: E731
+        "siteId": site, "endpoint": "https://bms.example.invalid/v1", "apiKey": "unused", "refreshIntervalMin": 5})
+    feed = connect("KUP-SOLAR-001").json()
+    assert feed["headers"] == ["timestamp", "device_id", "soc_percent", "battery_power_mw"]
+    assert feed["rows"] and {r[1] for r in feed["rows"]} == {"BESS-01"} and all(map(all, feed["rows"]))
+    assert connect("TIR-WIND-003").status_code == 422  # no battery
+
+    ask = {"scope": "monitoring", "siteId": "KUP-SOLAR-001", "context": {"solarMW": 38},
+           "messages": [{"role": "user", "content": "Status?"}]}
+    answer = client.post("/api/runs/current/chat", json=ask, headers=auth_headers).json()
+    assert answer["reply"].startswith("I can't answer right now") and answer["conversationId"] == f"run-{run['id']}"
+    ask["messages"].append({"role": "assistant", "content": "Hello"})
+    assert client.post("/api/runs/current/chat", json=ask, headers=auth_headers).status_code == 422
+
 
 def test_what_if_and_replay_study_leave_the_live_run_alone(
     client: TestClient, db: Session, auth_headers: dict[str, str]

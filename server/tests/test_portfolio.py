@@ -25,7 +25,7 @@ def test_portfolio_overview_matches_seeded_capacities(
     assert sum("bess" in s["asset_kinds"] for s in body["sites"]) == 2
 
     site = client.get("/api/sites/KUP-SOLAR-001", headers=auth_headers).json()
-    assert [a["code"] for a in site["assets"]] == ["BESS-01", "SOL-KUP"]
+    assert [a["code"] for a in site["assets"]] == ["BESS-01", "IC-KUP", "SOL-KUP"]
     assert site["assets"][0]["params"]["energy_mwh"] == 20
 
 

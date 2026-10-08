@@ -1,6 +1,6 @@
-"""Seed the demo portfolio: `python -m app.seed`. Does nothing if a portfolio exists."""
+"""Seed the demo portfolio and start its story run: `python -m app.seed`. Safe to repeat."""
 
-from datetime import date
+from datetime import date, datetime, timezone
 from typing import Any
 
 from sqlalchemy import select
@@ -9,6 +9,8 @@ from sqlalchemy.orm import Session
 from app.core.database import SessionLocal
 from app.models.portfolio import ActionConfig, Asset, Line, Node, Portfolio, Site
 from app.schemas.portfolio import validate_params
+from app.services import runs
+from app.services.portfolio import get_portfolio
 from app.sim.market import DEFAULT_MARKET
 
 # Organisation limits that no configured action can loosen.
@@ -49,6 +51,8 @@ SITES = [
     ("KUP-SOLAR-001", "Kuppam Solar Site", "solar", "Chittoor, Andhra Pradesh", date(2021, 3, 15), "SOUTH", [
         ("SOL-KUP", "Kuppam solar array", "solar", 45, solar()),
         ("BESS-01", "Battery 1", "bess", 8, bess(20, 8)),
+        # Import only: exporting first would sell south solar before it reaches the hub's load.
+        ("IC-KUP", "Kuppam grid connection", "interconnection", 50, {"import_max_mw": 50, "export_max_mw": 0}),
     ]),
     ("NEL-SOLAR-002", "Nellore Solar", "solar", "Nellore, Andhra Pradesh", date(2020, 11, 2), "SOUTH", [
         ("SOL-NEL", "Nellore solar array", "solar", 55, solar()),
@@ -150,3 +154,8 @@ def default_configs(assets: list[Asset]) -> list[ActionConfig]:
 if __name__ == "__main__":
     with SessionLocal() as session:
         print("Seeded demo portfolio." if seed(session) else "Portfolio already exists; nothing to do.")
+        # The client has no run controls, so the demo starts with its story running.
+        if runs.latest_live(session) is None:
+            runs.create_run(session, get_portfolio(session), "demo_story", datetime.now(timezone.utc))
+            session.commit()
+            print("Started the demo story run.")

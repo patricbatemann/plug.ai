@@ -16,7 +16,7 @@ On Windows without Make or Docker, see [Windows](#windows-without-make-or-docker
 make setup      # .env files from the examples, npm install, Python venv
 make db-up      # PostgreSQL 16 in Docker (databases bob and bob_test)
 make migrate    # apply database migrations
-make seed       # demo portfolio: 9 sites, 18 assets in Andhra Pradesh
+make seed       # demo portfolio (9 sites, 19 assets in Andhra Pradesh) and its running story
 ```
 
 Then start the client, the API and the simulation worker in separate terminals:
@@ -90,7 +90,7 @@ Tests: `cd server; .venv\Scripts\python -m pytest`, and `cd web; npm run check:c
 - `server/.env.example` documents API settings. With `ENV=local` and no `SECRET_KEY`, the API generates a signing key per process, so tokens stop working after a restart. Any other `ENV` requires a stable `SECRET_KEY` of at least 32 characters.
 - `DATABASE_URL` is a SQLAlchemy URL for PostgreSQL (`postgresql+psycopg://…`). Tests use `TEST_DATABASE_URL`, defaulting to the `bob_test` database.
 - `CORS_ORIGINS` is a comma-separated list of browser origins, defaulting to `http://localhost:5173`.
-- `web/.env.example` sets `VITE_API_URL`.
+- `web/.env.example` points the client at `/api` on its own origin, which Vite proxies to `http://localhost:8000`, plus the chat (`VITE_BOB_CHAT_ENDPOINT`) and data-source (`VITE_DATA_CONNECT_ENDPOINT`) endpoints. Those two calls carry no bearer token: they authenticate with the HttpOnly `bob_session` cookie that login sets.
 
 ## API
 

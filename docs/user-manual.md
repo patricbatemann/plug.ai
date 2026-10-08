@@ -26,7 +26,7 @@ You need Docker, Node.js and Python 3.12. From the repository root:
 make setup        # once: .env files, web and Python dependencies
 make db-up        # PostgreSQL in Docker
 make migrate      # database schema
-make seed         # the demo portfolio (safe to repeat)
+make seed         # the demo portfolio and its running story (safe to repeat)
 make server-dev   # API on http://localhost:8000
 make worker       # the simulation clock, in a second terminal
 make web-dev      # the app on http://localhost:5173, in a third terminal
