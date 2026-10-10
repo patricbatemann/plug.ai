@@ -1,5 +1,4 @@
 import { useRef, useState } from 'react';
-import { Link } from 'react-router';
 import { BobChatScrollArea, BobMessages, BobNewChat, useBobChat } from './BobChat';
 import { usePortfolio } from './portfolio';
 
@@ -30,7 +29,6 @@ export default function AskBob() {
       <footer className="shrink-0 bg-[#f4f4f4] px-4 pb-4 pt-2 md:px-6 md:pb-6">
         <form onSubmit={event => { event.preventDefault(); if (draft.trim() && !chat.pending && !chat.error) ask(draft); }} className="flex min-h-14 items-center gap-2 rounded-[2px] border border-[#e0e0e0] bg-white px-3">
           <textarea ref={input} aria-label="Message BOB" rows={1} value={draft} onChange={event => setDraft(event.target.value)} onKeyDown={event => { if (event.key === 'Enter' && !event.shiftKey && !event.nativeEvent.isComposing) { event.preventDefault(); event.currentTarget.form?.requestSubmit(); } }} placeholder="Ask about generation, storage, approvals, or follow-up actions..." className="min-h-11 min-w-0 flex-1 resize-none bg-transparent py-3 text-[14px] placeholder:text-[#8d8d8d] text-[#161616] focus:outline-none" />
-          <Link aria-label="Connect data" title="Connect data" to="/connectData" className="flex size-11 shrink-0 items-center justify-center"><img alt="" src={`${assets}/f0842.svg`} /></Link>
           <button type="submit" aria-label="Send message" disabled={!draft.trim() || chat.pending || Boolean(chat.error)} className="flex size-11 shrink-0 items-center justify-center rounded-[2px] bg-[#0f62fe] hover:bg-[#0043ce] transition-colors disabled:opacity-50 cursor-pointer"><img alt="" src={`${assets}/536bf.svg`} /></button>
         </form>
         <p className="mt-2 text-[11px] text-[#525252]">BOB can draft and test actions; a person activates them. Shift + Enter for a new line.</p>

@@ -50,7 +50,6 @@ const imgCpu1 = `${assetPathPrefix}/3ef2e.svg`;
 const imgLiveDot1 = `${assetPathPrefix}/a96dd.svg`;
 const imgXCircle = `${assetPathPrefix}/cf7f9.svg`;
 const imgDot2 = `${assetPathPrefix}/0812b.svg`;
-const imgDownload = `${assetPathPrefix}/ddd14.svg`;
 const imgActivity = `${assetPathPrefix}/dd98c.svg`;
 const imgCpu2 = `${assetPathPrefix}/cc869.svg`;
 const imgUser = `${assetPathPrefix}/2eae2.svg`;
@@ -605,10 +604,6 @@ function Screens({ onLogout }: { onLogout?: () => void }) {
               </div>
               <p className="font-['IBM Plex Sans:Regular'] font-normal text-[#525252] text-[14px] leading-normal" style={{ fontVariationSettings: '"wdth" 100' }}>Monitor and manage system-automated agent and user-initiated energy exchanges</p>
             </div>
-            <button className="bg-[#0f62fe] border border-[#0f62fe] flex gap-2 items-center px-4 py-2.5 cursor-pointer hover:bg-[#0043ce] transition-colors shrink-0 max-sm:flex-wrap">
-              <div className="size-4 relative shrink-0"><img alt="" className="absolute inset-0 size-full" src={imgDownload} /></div>
-              <p className="font-['IBM Plex Sans:SemiBold'] font-semibold text-white text-[14px] leading-normal whitespace-nowrap max-sm:whitespace-normal" style={{ fontVariationSettings: '"wdth" 100' }}>Export CSV</p>
-            </button>
           </div>
 
           {/* Stats Grid */}

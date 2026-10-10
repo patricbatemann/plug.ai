@@ -113,7 +113,7 @@ VISIBLE = {
     "frequency_dip": lambda p: f"Frequency at {p['hz']} Hz",
 }
 # Events BOB cannot act on by itself: a person has to bring them in.
-NOTICES = {"document_publish": lambda p: f"{p['title']} published: upload it in Ask BOB (📎) so BOB can use it"}
+NOTICES = {"document_publish": lambda p: f"{p['title']} published"}
 
 
 def replan_for_events(db: Session, run: Run, fired: list[WorldEvent], now: datetime) -> None:

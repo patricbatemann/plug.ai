@@ -143,6 +143,8 @@ After you activate an action (section 8), **Open live monitoring** shows the sit
 
 The badge next to the site name reads **BOB acting**, **BOB paused** or **Monitoring only** (telemetry not connected).
 
+The links under the battery open the related pages: **View configured actions** (section 8), **View protected boundary** (the limits BOB cannot cross, checked independently before every action is sent), **Open maintenance** (the site's work orders: asset, job, hours and status), and **Connect data**.
+
 ## 8. Configure BOB
 
 The site's **BOB** tab lists every action BOB may take there, filtered by All, Active, Paused or Needs attention. Each card shows its status and how often it ran today; switch it off to pause it. Expand a card for its trigger conditions, its effective policy (how BOB acts, the automatic limit, the maximum, the approver and response time) and its recent activity.
