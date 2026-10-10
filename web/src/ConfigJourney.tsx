@@ -83,7 +83,7 @@ function Secondary({ onClick, children }: { onClick: () => void; children: React
 }
 
 function Missing({ onClose }: { onClose: () => void }) {
-  return <Frame stage={1} status="Not found" onClose={onClose}><p className="text-[14px] text-[#525252]">This configuration is not a draft at {SITE.name} any more. Start again from the BOB actions.</p></Frame>;
+  return <Frame stage={1} status="Not found" onClose={onClose}><p className="text-[14px] text-[#525252]">This configuration is not a draft at this site any more. Start again from the BOB actions.</p></Frame>;
 }
 
 export function ReviewConfig({ id, onEdit, onTest, onClose }: { id: number; onEdit: () => void; onTest: () => void; onClose: () => void }) {

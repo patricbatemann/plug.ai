@@ -1,7 +1,8 @@
+import re
 from datetime import date
 from typing import Any, Literal
 
-from pydantic import BaseModel, ConfigDict, Field, model_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 
 class Params(BaseModel):
@@ -138,6 +139,34 @@ class AssetResponse(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
 
+class SiteContact(BaseModel):
+    name: str = Field("", max_length=120)
+    role: str = Field("", max_length=80)
+    email: str = Field("", max_length=200)
+    phone: str = Field("", max_length=40)
+
+    @field_validator("email")
+    @classmethod
+    def looks_like_email(cls, value: str) -> str:
+        if value and not re.fullmatch(r"[^@\s]+@[^@\s]+\.[^@\s]+", value):
+            raise ValueError("Enter an email address such as name@example.com")
+        return value
+
+
+class SiteProfile(BaseModel):
+    """What people record about a site: who runs it, whom to call, where it is. The simulation does not use it."""
+    status: Literal["Operational", "Maintenance", "Degraded", "Offline"] = "Operational"
+    owner: str = Field("", max_length=120)
+    operator: str = Field("", max_length=120)
+    description: str = Field("", max_length=500)
+    contact: SiteContact = SiteContact()
+    address: str = Field("", max_length=200)
+    latitude: float | None = Field(None, ge=-90, le=90)
+    longitude: float | None = Field(None, ge=-180, le=180)
+    elevation_m: float | None = Field(None, ge=-500, le=9000)
+    grid_region: str = Field("", max_length=120)
+
+
 class SiteDetail(BaseModel):
     code: str
     name: str
@@ -145,4 +174,6 @@ class SiteDetail(BaseModel):
     location: str
     commissioned_on: date
     mode_code: str
+    tz: str
+    profile: SiteProfile
     assets: list[AssetResponse]

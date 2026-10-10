@@ -51,6 +51,19 @@ export interface Asset {
   active: boolean
 }
 
+export interface SiteProfile {
+  status: 'Operational' | 'Maintenance' | 'Degraded' | 'Offline'
+  owner: string
+  operator: string
+  description: string
+  contact: { name: string; role: string; email: string; phone: string }
+  address: string
+  latitude: number | null
+  longitude: number | null
+  elevation_m: number | null
+  grid_region: string
+}
+
 export interface SiteDetail {
   code: string
   name: string
@@ -58,6 +71,8 @@ export interface SiteDetail {
   location: string
   commissioned_on: string
   mode_code: string
+  tz: string
+  profile: SiteProfile
   assets: Asset[]
 }
 
@@ -204,7 +219,7 @@ async function send(path: string, init: RequestInit = {}): Promise<Response> {
       const body: { detail?: string | Array<{ msg?: string }> } = await response.json()
       if (typeof body.detail === 'string') message = body.detail
       else if (Array.isArray(body.detail)) {
-        message = body.detail.map((issue) => issue.msg).filter(Boolean).join('; ') || message
+        message = body.detail.map((issue) => issue.msg?.replace(/^Value error, /, '')).filter(Boolean).join('; ') || message
       }
     } catch {
       // Keep the status-based message when the response has no JSON body.
@@ -268,6 +283,8 @@ export const authApi = {
 export const portfolioApi = {
   get: () => request<Portfolio>('/api/portfolio'),
   site: (code: string) => request<SiteDetail>(`/api/sites/${encodeURIComponent(code)}`),
+  saveProfile: (code: string, profile: SiteProfile) =>
+    request<SiteDetail>(`/api/sites/${encodeURIComponent(code)}/profile`, { method: 'PUT', body: JSON.stringify(profile) }),
 }
 
 const post = <T>(path: string, body?: unknown) =>

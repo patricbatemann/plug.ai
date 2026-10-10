@@ -255,7 +255,7 @@ function Screens({ onLogout }: { onLogout?: () => void }) {
   }
 
   if (view === 'siteDetail' || view === 'aiActions' || view === 'recommendation' || view === 'audit') {
-    return <SiteDetail key={view} onBack={() => setView('dashboard')} onLiveOverview={() => setView('liveOverview')} onBob={() => setView('bob')} onConnectData={() => setView('connectData')} onTabChange={(tab) => setView(tab === 'live' ? 'liveOverview' : 'siteDetail')} />;
+    return <SiteDetail key={view} onBack={() => setView('dashboard')} onLiveOverview={() => setView('liveOverview')} onBob={() => setView('bob')} onConnectData={() => setView('connectData')} />;
   }
 
   return (
@@ -377,9 +377,9 @@ function Screens({ onLogout }: { onLogout?: () => void }) {
             </div>
             {/* Briefing Content */}
             <div className="flex flex-col gap-4">
-              <p className="font-['IBM Plex Sans:Bold'] font-bold text-[#161616] text-[22px] leading-normal" style={{ fontVariationSettings: '"wdth" 100' }}>{site.approvals.length ? `Approval waiting at ${SITE.name}` : `${SITE.name} operational summary`}</p>
+              <p className="font-['IBM Plex Sans:Bold'] font-bold text-[#161616] text-[22px] leading-normal" style={{ fontVariationSettings: '"wdth" 100' }}>{site.approvals.length ? `Approval waiting at ${site.siteName}` : `${site.siteName} operational summary`}</p>
               <p className="font-['IBM Plex Sans:Regular'] font-normal text-[#525252] text-[14px] leading-[1.5]" style={{ fontVariationSettings: '"wdth" 100' }}>
-                {SITE.name} is generating <span className="font-mono font-medium text-[#161616]">{mw(live?.generation?.actual_mw ?? 0)}</span>{live?.generation?.forecast_mw != null && <> against a <span className="font-mono font-medium text-[#161616]">{mw(live.generation.forecast_mw)}</span> forecast</>}. {battery ? <>{battery.name} is {batteryState(battery.mw, battery.available).toLowerCase()} and grid import is <span className="font-mono font-medium text-[#161616]">{mw(Math.max(live?.grid_mw ?? 0, 0))}</span>.</> : null}
+                {site.siteName} is generating <span className="font-mono font-medium text-[#161616]">{mw(live?.generation?.actual_mw ?? 0)}</span>{live?.generation?.forecast_mw != null && <> against a <span className="font-mono font-medium text-[#161616]">{mw(live.generation.forecast_mw)}</span> forecast</>}. {battery ? <>{battery.name} is {batteryState(battery.mw, battery.available).toLowerCase()} and grid import is <span className="font-mono font-medium text-[#161616]">{mw(Math.max(live?.grid_mw ?? 0, 0))}</span>.</> : null}
               </p>
               <div className="bg-[#f4f4f4] flex flex-col gap-2 p-4 rounded-[2px]">
                 <div className="flex gap-1.5 items-center max-sm:flex-wrap">

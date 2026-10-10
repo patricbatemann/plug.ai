@@ -42,6 +42,8 @@ class Site(Base):
     kind: Mapped[str] = mapped_column(String(16))
     location: Mapped[str] = mapped_column(String(120))
     commissioned_on: Mapped[date] = mapped_column(Date)
+    # status, owner, operator, description, contact, address, coordinates, grid region (schemas.SiteProfile)
+    profile: Mapped[dict[str, Any]] = mapped_column(JSONB, server_default="{}")
 
     portfolio: Mapped[Portfolio] = relationship(back_populates="sites")
     assets: Mapped[list["Asset"]] = relationship(back_populates="site", order_by="Asset.code")

@@ -42,7 +42,7 @@ function FlowBar({ sources, uses }: { sources: FlowItem[]; uses: FlowItem[] }) {
 }
 
 export default function ActiveMonitoring({ onBack, onApprovalReview }: { onBack: () => void; onApprovalReview: () => void }) {
-  const { run, live, approvals, activity, battery, reservePct, floorPct, bobActive } = useSite();
+  const { run, live, approvals, activity, battery, reservePct, floorPct, bobActive, siteName } = useSite();
   const [askBobOpen, setAskBobOpen] = useState(false);
   const chat = useBobChat('monitoring');
   const usable = battery && reservePct !== null ? Math.max(0, ((battery.soc_pct - reservePct) / 100) * battery.energy_mwh) : null;
@@ -54,7 +54,7 @@ export default function ActiveMonitoring({ onBack, onApprovalReview }: { onBack:
           <div className="bg-[#0f62fe] flex items-center justify-center rounded-[2px] size-8">
             <img alt="" className="size-5" src={imgBrainCog} />
           </div>
-          <p {...ibm('SemiBold', 'text-[#161616] text-[16px]')}>{SITE.name}</p>
+          <p {...ibm('SemiBold', 'text-[#161616] text-[16px]')}>{siteName}</p>
           <div className={`px-2 py-1 rounded-[2px] border ${live?.connected && bobActive ? 'bg-[#defbe6] border-[#198038]/40' : 'bg-[#f4f4f4] border-[#e0e0e0]'}`}>
             <p {...ibm('SemiBold', `text-[11px] font-mono tracking-tight ${live?.connected && bobActive ? 'text-[#198038]' : 'text-[#525252]'}`)}>
               {!live?.connected ? 'Monitoring only' : bobActive ? 'BOB acting' : 'BOB paused'}

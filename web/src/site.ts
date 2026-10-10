@@ -25,10 +25,13 @@ export function useSite() {
   }).data ?? []
   const configs = useQuery({ queryKey: ['configs', SITE.id], queryFn: () => configApi.list(SITE.id) }).data ?? []
   const portfolio = useQuery({ queryKey: ['portfolio'], queryFn: portfolioApi.get }).data
+  const info = useQuery({ queryKey: ['site', SITE.id], queryFn: () => portfolioApi.site(SITE.id) }).data
   const battery = live?.batteries[0]
   const discharge = configs.find((c) => c.kind === 'battery_discharge' && c.asset === battery?.code)
   return {
     run,
+    info,
+    siteName: info?.name ?? SITE.id,
     live,
     approvals,
     activity,

@@ -429,7 +429,7 @@ export default function AgentChat({ onClose, onComplete }: { onClose: () => void
 
 function WelcomeCard({ onStart, ready }: { onStart: () => void; ready: boolean }) {
   const ask = useContext(BobAskContext);
-  const { live, configs } = useSite();
+  const { live, configs, siteName } = useSite();
   const sources = useQuery({ queryKey: ['data-sources', SITE.id], queryFn: () => siteApi.sources(SITE.id) }).data ?? [];
   const cards = [
     { icon: `${assetPathPrefix}/2951d.svg`, title: 'Discharge battery to support demand', recommended: true },
@@ -446,12 +446,12 @@ function WelcomeCard({ onStart, ready }: { onStart: () => void; ready: boolean }
           <p className="font-sans font-normal text-[#8d8d8d] text-[12px]">AI energy assistant</p>
         </div>
       </div>
-      <p className="font-sans font-normal text-[#161616] text-[15px] leading-relaxed">Let's configure what I can do for {SITE.name}. I recommend starting with battery discharge.</p>
+      <p className="font-sans font-normal text-[#161616] text-[15px] leading-relaxed">Let's configure what I can do for {siteName}. I recommend starting with battery discharge.</p>
       <div className="border border-[#e0e0e0] bg-[#f4f4f4] p-4 rounded-[2px]">
         <h2 className="mb-4 text-[14px] font-semibold text-[#161616]">Prerequisites</h2>
         <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-3">
           {[
-            ['Site', SITE.name, SITE.id],
+            ['Site', siteName, SITE.id],
             ['Telemetry', live?.connected ? 'Connected' : 'Not connected', live?.connected ? 'BOB acts on the live feed' : 'BOB only monitors until the feed is connected'],
             ['Data sources', `${sources.length} connected`, sources.map((s) => s.kind === 'api' ? 'Live API' : 'CSV').join(', ') || 'None yet'],
             ['Batteries', `${live?.batteries.length ?? 0}`, live?.batteries.map((b) => `${b.name} ${b.soc_pct}%`).join(', ') || 'No battery at this site'],

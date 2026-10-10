@@ -14,7 +14,7 @@ function ibm(w: 'Regular' | 'Medium' | 'SemiBold' | 'Bold', extra = '') {
 }
 
 export default function ApprovalReview({ onBack }: { onBack: () => void }) {
-  const { run, approvals, configs, battery, floorPct } = useSite();
+  const { run, approvals, configs, battery, floorPct, siteName } = useSite();
 
   return (
     <div className="bg-[#f4f4f4] flex flex-col min-h-screen w-full font-sans">
@@ -23,7 +23,7 @@ export default function ApprovalReview({ onBack }: { onBack: () => void }) {
           <div className="bg-[#0f62fe] flex items-center justify-center rounded-[2px] size-8">
             <img alt="" className="size-5" src={imgBrainCog} />
           </div>
-          <p {...ibm('SemiBold', 'text-[#161616] text-[16px]')}>{SITE.name} · Approvals</p>
+          <p {...ibm('SemiBold', 'text-[#161616] text-[16px]')}>{siteName} · Approvals</p>
           <div className="bg-[#fef3c7] border border-[#f59e0b]/40 px-2.5 py-1 rounded-[2px]">
             <p {...ibm('SemiBold', 'text-[#b26207] text-[11px] font-mono tracking-tight')}>{approvals.length} waiting</p>
           </div>

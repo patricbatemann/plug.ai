@@ -1,6 +1,7 @@
 import { useRef, useState } from "react"
 import { fileUpload, siteApi } from "./api/client"
 import { SITE } from "./data"
+import { useSite } from "./site"
 
 interface ConnectDataProps {
   onBack: () => void
@@ -23,6 +24,7 @@ const button =
   "min-h-11 border border-[#e0e0e0] px-4 text-sm font-semibold hover:bg-[#f4f4f4] disabled:cursor-not-allowed disabled:opacity-50"
 
 export default function ConnectData({ onBack }: ConnectDataProps) {
+  const { siteName } = useSite()
   const [dataset, setDataset] = useState<Dataset | null>(null)
   const [phase, setPhase] = useState<"source" | "success">("source")
   const [error, setError] = useState("")
@@ -81,7 +83,7 @@ export default function ConnectData({ onBack }: ConnectDataProps) {
           </button>
           <span>/</span>
           <button onClick={onBack} className="text-[#0f62fe]">
-            {SITE.name}
+            {siteName}
           </button>
           <span>/</span>
           <span>Connect data</span>

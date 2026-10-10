@@ -42,7 +42,7 @@ export function JourneyNavigation() {
 }
 
 export default function OperationalPanels({ page }: { page: string }) {
-  const { configs, floorPct } = useSite()
+  const { configs, floorPct, siteName } = useSite()
   const ceiling = useQuery({ queryKey: ["portfolio"], queryFn: portfolioApi.get }).data?.protected.approval_above_mw
   const [params] = useSearchParams()
   const transaction = useTransactions().find(
@@ -63,7 +63,7 @@ export default function OperationalPanels({ page }: { page: string }) {
               : page === "protected"
                 ? "Protected boundary"
                 : page === "workOrder"
-                  ? `Maintenance · ${SITE.name}`
+                  ? `Maintenance · ${siteName}`
                   : page === "actionDetails"
                     ? "Action details"
                     : "Operational details"}
@@ -125,7 +125,7 @@ export default function OperationalPanels({ page }: { page: string }) {
         )}
         {page === "actionDetails" && (
           <section className="space-y-4 border border-[#e0e0e0] bg-white p-5">
-            <h2 className="font-semibold">Configured actions at {SITE.name}</h2>
+            <h2 className="font-semibold">Configured actions at {siteName}</h2>
             {configs.map((c) => (
               <div key={c.id} className="flex flex-wrap justify-between gap-3 border-b border-[#e0e0e0] py-3 text-sm">
                 <div>

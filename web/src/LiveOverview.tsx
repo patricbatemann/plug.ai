@@ -4,7 +4,7 @@ import { ComboChart, ScaleTypes, type AreaChartOptions, type ComboChartOptions, 
 import "@carbon/charts-react/styles.css";
 import BobToggle from "./BobToggle";
 import LiveFeed from "./LiveFeed";
-import { portfolioApi, siteApi, type FlowItem, type SiteLive } from "./api/client";
+import { siteApi, type FlowItem, type SiteLive } from "./api/client";
 import { SITE } from "./data";
 import { batteryState, kindLabel, mw, mwh, simDateTime } from "./format";
 import { useSite } from "./site";
@@ -102,8 +102,7 @@ function chartOptions(live: SiteLive): ComboChartOptions & AreaChartOptions & Li
 }
 
 export default function LiveOverview({ onBack, onTabChange, onBob, onConnectData }: LiveOverviewProps) {
-  const { live, battery, reservePct, bobActive } = useSite();
-  const detail = useQuery({ queryKey: ['site', SITE.id], queryFn: () => portfolioApi.site(SITE.id) }).data;
+  const { live, battery, reservePct, bobActive, info: detail, siteName } = useSite();
   const sources = useQuery({ queryKey: ['data-sources', SITE.id], queryFn: () => siteApi.sources(SITE.id) }).data ?? [];
   const generation = live?.generation;
   const deviation = generation?.forecast_mw != null ? generation.actual_mw - generation.forecast_mw : null;
@@ -115,7 +114,7 @@ export default function LiveOverview({ onBack, onTabChange, onBob, onConnectData
         <div className="flex gap-6 items-center max-sm:flex-wrap">
           <div className="flex gap-2 items-center">
             <img alt="" className="size-6" src={imgEllipse5} />
-            <p {...text('font-semibold text-[#161616] text-[16px]')}>{SITE.name}</p>
+            <p {...text('font-semibold text-[#161616] text-[16px]')}>{siteName}</p>
           </div>
           <nav className="flex gap-6 items-center">
             <div className="flex flex-col gap-1 items-center">
@@ -131,7 +130,7 @@ export default function LiveOverview({ onBack, onTabChange, onBob, onConnectData
         <div className="flex gap-2 items-center max-sm:flex-wrap">
           <button onClick={onBack} {...text('text-[#525252] text-[13px] hover:text-[#0f62fe]')}>Sites</button>
           <p className="text-[#8d8d8d] text-[13px]">/</p>
-          <button onClick={onBack} {...text('text-[#525252] text-[13px] hover:text-[#0f62fe]')}>{SITE.name}</button>
+          <button onClick={onBack} {...text('text-[#525252] text-[13px] hover:text-[#0f62fe]')}>{siteName}</button>
           <p className="text-[#8d8d8d] text-[13px]">/</p>
           <p {...text('text-[#525252] text-[13px]')}>Live overview</p>
         </div>
@@ -142,7 +141,7 @@ export default function LiveOverview({ onBack, onTabChange, onBob, onConnectData
                 <img alt="" className="size-6" src={imgIconSun} />
               </div>
               <p {...text('font-bold text-[#161616] text-[24px]')}>
-                {SITE.name} · <span className="font-mono text-[#525252] font-semibold">{SITE.id}</span>
+                {siteName} · <span className="font-mono text-[#525252] font-semibold">{SITE.id}</span>
               </p>
             </div>
             <div className="flex gap-2 items-center flex-wrap">
@@ -154,7 +153,7 @@ export default function LiveOverview({ onBack, onTabChange, onBob, onConnectData
               )}
             </div>
             <p {...text('text-[#525252] text-[14px]')}>
-              {SITE.location}{detail && <> · Commissioned {new Date(detail.commissioned_on).getFullYear()}</>}{live && <> · As of <span className="font-mono text-[#161616]">{simDateTime(live.as_of)} IST</span></>}
+              {detail?.location}{detail && <> · Commissioned {new Date(detail.commissioned_on).getFullYear()}</>}{live && <> · As of <span className="font-mono text-[#161616]">{simDateTime(live.as_of)} IST</span></>}
             </p>
           </div>
           <div className="flex gap-3 items-center w-full lg:w-auto min-w-0 flex-wrap lg:justify-end">

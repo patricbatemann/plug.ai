@@ -9,7 +9,7 @@ interface BobToggleProps {
 }
 
 export default function BobToggle({ className = "", compact = false }: BobToggleProps) {
-  const isActive = useSite().bobActive;
+  const { bobActive: isActive, siteName } = useSite();
   const setBobActive = useSetBobActive();
   const toggleBobActive = () => void setBobActive(!isActive);
   const [showConfirmModal, setShowConfirmModal] = useState(false);
@@ -141,7 +141,7 @@ export default function BobToggle({ className = "", compact = false }: BobToggle
                       Enable BOB Autonomous Agent
                     </h2>
                     <p className="text-xs text-[#525252]">
-                      {SITE.name} · {SITE.id}
+                      {siteName} · {SITE.id}
                     </p>
                   </div>
                 </div>

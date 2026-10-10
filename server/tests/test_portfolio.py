@@ -18,7 +18,6 @@ def test_portfolio_overview_matches_seeded_capacities(
         "solar_mw": 320, "wind_mw": 180, "battery_mw": 25, "battery_mwh": 100, "demand_mw": 225,
     }
     assert len(body["sites"]) == 9
-    # The client merges these over its mock site list by code.
     assert {s["code"]: (s["kind"], s["generation_mw"]) for s in body["sites"][:5]} == {
         "KUP-SOLAR-001": ("solar", 45), "NEL-SOLAR-002": ("solar", 55), "TIR-WIND-003": ("wind", 65),
         "CHI-HYBRID-004": ("hybrid", 70), "MAD-HYBRID-005": ("hybrid", 45)}
@@ -41,6 +40,15 @@ def test_settings_and_csv_data_sources(client: TestClient, db: Session, auth_hea
     clean = client.patch("/api/portfolio", json={"mode_code": "clean"}, headers=auth_headers)
     assert clean.json()["mode_code"] == "clean"
     assert client.patch("/api/portfolio", json={"mode_code": "reckless"}, headers=auth_headers).status_code == 422
+
+    profile = client.get("/api/sites/KUP-SOLAR-001", headers=auth_headers).json()["profile"]
+    assert profile["contact"]["role"] == "Site Manager" and profile["latitude"] == 12.748
+    profile.update(status="Maintenance", contact={**profile["contact"], "email": "ops@example.com"})
+    saved = client.put("/api/sites/KUP-SOLAR-001/profile", json=profile, headers=auth_headers).json()["profile"]
+    assert saved["status"] == "Maintenance" and saved["contact"]["email"] == "ops@example.com"
+    for wrong in ({"latitude": 120}, {"contact": {"email": "not an email"}}, {"status": "Closed"}):
+        assert client.put("/api/sites/KUP-SOLAR-001/profile", json={**profile, **wrong},
+                          headers=auth_headers).status_code == 422
 
     url = "/api/sites/KUP-SOLAR-001/data-sources"
     upload = lambda text: {"filename": "kuppam.csv", "data": base64.b64encode(text.encode()).decode()}  # noqa: E731

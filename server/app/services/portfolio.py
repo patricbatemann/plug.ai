@@ -70,5 +70,7 @@ def site_detail(portfolio: Portfolio, code: str) -> SiteDetail | None:
         location=site.location,
         commissioned_on=site.commissioned_on,
         mode_code=portfolio.mode_code,
+        tz=portfolio.tz,
+        profile=site.profile,
         assets=site.assets,
     )

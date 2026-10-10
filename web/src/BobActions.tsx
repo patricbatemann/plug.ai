@@ -5,6 +5,7 @@ import { useProfile } from "./auth/user"
 import { SITE } from "./data"
 import { AUTONOMY, actionLabel, configKindLabel, limitsSummary, mw, simTime, statusOf } from "./format"
 import { useCurrentRun } from "./runs/useCurrentRun"
+import { useSite } from "./site"
 
 const control =
   "min-h-11 border border-[#8d8d8d] px-4 text-xs hover:bg-[#f4f4f4] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#0f62fe] disabled:cursor-not-allowed disabled:opacity-50"
@@ -39,6 +40,7 @@ export default function BobActions({
   onAddAction: () => void
 }) {
   const profile = useProfile()
+  const { siteName } = useSite()
   const queryClient = useQueryClient()
   const run = useCurrentRun().data
   const configs = useQuery({ queryKey: ["configs", SITE.id], queryFn: () => configApi.list(SITE.id) }).data ?? []
@@ -95,7 +97,7 @@ export default function BobActions({
         >
           <strong className="flex items-center gap-2 text-[#161616]">
             <span className="size-6 rounded-full bg-[#0f62fe]" />
-            {SITE.name}
+            {siteName}
           </strong>
           <button className="min-h-11" onClick={onClose}>
             Site
@@ -142,7 +144,7 @@ export default function BobActions({
         </div>
         <p className="text-sm">
           Manage BOB’s automated actions, triggers, safety limits, and
-          permissions for {SITE.name}
+          permissions for {siteName}
         </p>
         <p className="flex flex-wrap gap-x-4 gap-y-2 text-sm">
           <span>

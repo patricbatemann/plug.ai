@@ -8,7 +8,7 @@ from sqlalchemy.orm import Session
 
 from app.core.database import SessionLocal
 from app.models.portfolio import ActionConfig, Asset, DataSource, Line, Node, Portfolio, Site
-from app.schemas.portfolio import validate_params
+from app.schemas.portfolio import SiteProfile, validate_params
 from app.services import runs
 from app.services.datasources import MOCK_PATH
 from app.services.portfolio import get_portfolio
@@ -92,6 +92,17 @@ SITES = [
 ]
 
 
+PROFILES = {
+    "KUP-SOLAR-001": {
+        "owner": "Kuppam Solar Site Operations", "operator": "Kuppam Operations Team",
+        "description": "Utility-scale solar photovoltaic installation with battery storage support.",
+        "contact": {"name": "Bharath Kumar", "role": "Site Manager", "email": "bharath.kumar@example.com",
+                    "phone": "+91 98765 43210"},
+        "address": "Kuppam, Chittoor District, Andhra Pradesh, India", "latitude": 12.748, "longitude": 78.341,
+        "elevation_m": 680, "grid_region": "Andhra Pradesh DISCOM",
+    },
+}
+
 UNCONNECTED = "KUP-SOLAR-001"  # the operator connects Kuppam's telemetry in the demo; BOB then acts there
 
 
@@ -110,8 +121,9 @@ def seed(db: Session) -> bool:
         for code, a, b, limit in LINES
     )
     for code, name, kind, location, commissioned, node, assets in SITES:
+        profile = PROFILES.get(code, {"address": location, "grid_region": "Andhra Pradesh DISCOM"})
         site = Site(portfolio_id=portfolio.id, code=code, name=name, kind=kind, location=location,
-                    commissioned_on=commissioned)
+                    commissioned_on=commissioned, profile=SiteProfile(**profile).model_dump())
         db.add(site)
         db.flush()
         db.add_all(
