@@ -338,6 +338,7 @@ export const runApi = {
   latestDecision: (id: number) => request<DecisionSummary>(`/api/runs/${id}/decisions/latest`),
   decision: (cycleId: number) => request<DecisionDetail>(`/api/runs/decisions/${cycleId}`),
   chat: (id: number) => request<ChatItem[]>(`/api/runs/${id}/chat`),
+  clearChat: (id: number) => request<void>(`/api/runs/${id}/chat`, { method: 'DELETE' }),
   ask: (id: number, message: string, context: string | undefined, onEvent: (e: ChatEvent) => void) =>
     stream(`/api/runs/${id}/chat`, { message, context }, onEvent),
   sites: (id: number) => request<SiteStatus[]>(`/api/runs/${id}/sites`),

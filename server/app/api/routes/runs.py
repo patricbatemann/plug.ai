@@ -15,7 +15,7 @@ from app.models.portfolio import Portfolio
 from app.models.run import Action, Cycle, Run, WorldEvent
 from app.models.user import User
 from app.schemas.runs import (
-    ActionOut, ChatAsk, ChatItem, ClientChat, ClientReply, DecisionDetail, DecisionSummary, EventOut, InjectEvent,
+    ActionOut, ChatAsk, ChatItem, DecisionDetail, DecisionSummary, EventOut, InjectEvent,
     PresetInfo, RunCreate, RunState, RunSummary, SiteLive, SiteStatus, SpeedUpdate,
 )
 from app.services import runs
@@ -68,20 +68,6 @@ def current_run(db: Session = Depends(get_db)) -> RunState:
     if run is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="No run yet")
     return _state(run)
-
-
-@router.post("/current/chat", response_model=ClientReply, response_model_by_alias=True)
-def ask_bob_once(payload: ClientChat, db: Session = Depends(get_db),
-                 user: User = Depends(get_current_user)) -> ClientReply:
-    """Ask BOB about the live run and wait for the whole answer."""
-    run = runs.latest_live(db)
-    if run is None:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="No run yet")
-    *_, (_, items) = chat.ask(db, run, user.id, payload.messages[-1].content,
-                              f"{payload.site_id}, {payload.scope} screen")
-    last = items[-1]
-    reply = last["text"] if last["role"] == "assistant" and last["text"] else "I have no answer to that yet."
-    return ClientReply(reply=reply, conversation_id=f"run-{run.id}")
 
 
 @router.post("", response_model=RunState, status_code=status.HTTP_201_CREATED)
@@ -230,6 +216,12 @@ def decision(cycle_id: int, db: Session = Depends(get_db)) -> DecisionDetail:
 def chat_history(run: Run = Depends(_run), db: Session = Depends(get_db),
                  user: User = Depends(get_current_user)) -> list[dict]:
     return chat.display(db, run, chat.history(db, run, user.id))
+
+
+@router.delete("/{run_id}/chat", status_code=status.HTTP_204_NO_CONTENT)
+def clear_chat(run: Run = Depends(_run), db: Session = Depends(get_db), user: User = Depends(get_current_user)) -> None:
+    """Start a new conversation: BOB forgets this operator's earlier questions on the run."""
+    chat.clear(db, run, user.id)
 
 
 @router.post("/{run_id}/chat")

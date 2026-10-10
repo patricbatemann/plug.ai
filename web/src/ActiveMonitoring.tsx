@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { Link } from 'react-router';
 import { useOperations } from './Operations';
-import { useBobChat, BobMessages, BobComposer, BobChatScrollArea } from './BobChat';
+import { useBobChat, BobMessages, BobComposer, BobChatScrollArea, BobNewChat } from './BobChat';
 import { BATTERY_POLICY, SITE, SNAPSHOT_14_32, SNAPSHOT_14_50, STATE_COLOR } from './data';
 import type { ActionConfig } from './AgentChat';
 
@@ -86,7 +86,7 @@ export default function ActiveMonitoring({ config, onBack, onApprovalReview }: A
   const currentGrid = flow.grid;
   const showDeficit = flow.deficit > 0;
 
-  const chat = useBobChat('monitoring', { config, scenario, solarMW: solar, batteryMW: battery, demandMW: currentDemand, gridImportMW: currentGrid, policy: BATTERY_POLICY });
+  const chat = useBobChat('monitoring');
 
   return (
     <div className="bg-[#f4f4f4] flex flex-col min-h-screen w-full font-sans">
@@ -274,6 +274,7 @@ export default function ActiveMonitoring({ config, onBack, onApprovalReview }: A
                 <img alt="" className="size-4" src={imgBot} />
                 <p {...ibm('SemiBold', 'text-[#161616] text-[14px]')}>Ask BOB</p>
               </div>
+              <BobNewChat chat={chat} />
               <button onClick={() => setAskBobOpen(false)} className="hover:bg-[#f4f4f4] rounded-[2px] p-1 cursor-pointer transition-colors">
                 <img alt="" className="size-4" src={imgXCircle} />
               </button>

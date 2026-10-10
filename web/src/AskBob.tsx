@@ -1,6 +1,6 @@
 import { useRef, useState } from 'react';
 import { Link, useNavigate } from 'react-router';
-import { BobChatScrollArea, BobMessages, useBobChat } from './BobChat';
+import { BobChatScrollArea, BobMessages, BobNewChat, useBobChat } from './BobChat';
 import { useOperations } from './Operations';
 
 const assets = '/assets/ask-bob';
@@ -15,17 +15,10 @@ export default function AskBob() {
   const { state, flow } = operations;
   const navigate = useNavigate();
   const [draft, setDraft] = useState('');
-  const [protectedRequest, setProtectedRequest] = useState(false);
   const input = useRef<HTMLTextAreaElement>(null);
-  const chat = useBobChat('monitoring', {
-    config: state.activeConfig ?? state.config, state: state.stage, flow,
-    audit: state.audit, approval: state.approval, connections: state.connections,
-  }, rule => {
-    setProtectedRequest(true);
-    operations.addAudit('Unsafe chat request blocked', rule);
-  });
+  const chat = useBobChat('monitoring');
   const pending = state.approval?.decision === 'pending';
-  const systemStatus = state.gridTelemetryAgeSeconds !== null && state.gridTelemetryAgeSeconds > 120 ? 'Telemetry delayed' : chat.connected ? 'AI API connected · Preview telemetry' : 'Preview · API not connected';
+  const systemStatus = state.gridTelemetryAgeSeconds !== null && state.gridTelemetryAgeSeconds > 120 ? 'Telemetry delayed' : 'AI API connected · Preview telemetry';
   const balance = flow.solar + flow.battery + flow.grid;
   const ask = (text: string) => {
     if (text === 'Open configured actions') { navigate('/bob'); return; }
@@ -45,6 +38,7 @@ export default function AskBob() {
         <span className="flex size-8 items-center justify-center rounded-[2px] bg-[#0f62fe]"><img alt="" src={`${assets}/0b229.svg`} /></span>
         <h1 className="ask-semibold text-[16px] text-[#161616]">BOB Admin Assistant</h1>
         <span className="ask-semibold rounded-[2px] bg-[#edf5ff] border border-[#a6c8ff]/60 px-2 py-1 text-[11px] font-mono text-[#0f62fe]">{systemStatus}</span>
+        <span className="ml-auto"><BobNewChat chat={chat} /></span>
       </header>
       <BobChatScrollArea className="flex-1 p-4 md:p-6" updateKey={`${chat.messages.length}:${chat.pending}:${chat.error}`} lastUserId={chat.messages.filter(message => message.role === 'user').at(-1)?.id}>
         <Link to={state.activated ? '/monitoring' : '/'} className="ask-medium flex min-h-11 w-fit items-center gap-2 text-[14px] text-[#0f62fe] hover:text-[#0043ce] underline"><span className="text-[16px]">←</span> Back</Link>
@@ -109,7 +103,6 @@ export default function AskBob() {
         </section>
         <section className="flex items-start gap-3"><Avatar /><div className="space-y-1.5"><h2 className="ask-semibold text-[15px] text-[#161616]">Need more detail?</h2><p className="text-[13px] leading-[1.5] text-[#525252]">You can ask for specific data, such as “show battery history”, “list configured actions”, or “what is the current grid price?”.</p></div></section>
         <BobMessages chat={chat} variant="admin" />
-        {protectedRequest && <Link to="/protected" className="flex min-h-11 items-center text-[13px] text-[#0f62fe] hover:text-[#0043ce] underline">View protected boundary</Link>}
       </BobChatScrollArea>
       <footer className="shrink-0 bg-[#f4f4f4] px-4 pb-4 pt-2 md:px-6 md:pb-6">
         <form onSubmit={event => { event.preventDefault(); if (draft.trim() && !chat.pending && !chat.error) ask(draft); }} className="flex min-h-14 items-center gap-2 rounded-[2px] border border-[#e0e0e0] bg-white px-3">
@@ -118,7 +111,7 @@ export default function AskBob() {
           <Link aria-label="Connect a data source or upload CSV" title="Connect a data source or upload CSV" to="/connectData" className="flex size-11 shrink-0 items-center justify-center"><img alt="" src={`${assets}/f0842.svg`} /></Link>
           <button type="submit" aria-label="Send message" disabled={!draft.trim() || chat.pending || Boolean(chat.error)} className="flex size-11 shrink-0 items-center justify-center rounded-[2px] bg-[#0f62fe] hover:bg-[#0043ce] transition-colors disabled:opacity-50 cursor-pointer"><img alt="" src={`${assets}/536bf.svg`} /></button>
         </form>
-        <p className="mt-2 text-[11px] text-[#525252]">{chat.connected ? 'API-backed conversation' : 'Preview conversation · API not connected'} · Chat cannot execute or approve actions. Shift + Enter for a new line.</p>
+        <p className="mt-2 text-[11px] text-[#525252]">Chat cannot execute or approve actions. Shift + Enter for a new line.</p>
       </footer>
     </main>
   );

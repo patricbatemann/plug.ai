@@ -8,7 +8,7 @@ from typing import Literal
 
 import numpy as np
 from pydantic import BaseModel, Field
-from sqlalchemy import func, select
+from sqlalchemy import delete, func, select
 from sqlalchemy.orm import Session
 
 from app.agent.llm import Tool, Unavailable, turn
@@ -89,6 +89,11 @@ def history(db: Session, run: Run, user_id: int) -> list[ChatMessage]:
     while rows and rows[0].role != "user":  # never start mid-turn
         rows.pop(0)
     return rows
+
+
+def clear(db: Session, run: Run, user_id: int) -> None:
+    db.execute(delete(ChatMessage).where(ChatMessage.run_id == run.id, ChatMessage.user_id == user_id))
+    db.commit()
 
 
 def ask(db: Session, run: Run, user_id: int, text: str, context: str | None) -> Iterator[tuple[str, object]]:

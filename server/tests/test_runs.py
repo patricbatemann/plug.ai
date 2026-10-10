@@ -264,6 +264,8 @@ def test_bob_decides_within_bounds_falls_back_to_rules_and_chat_never_breaches_l
     assert reply["cards"][0]["type"] == "blocked" and "30 %" in reply["cards"][0]["text"]
     assert db.scalar(select(func.count()).select_from(ActionConfig)) == drafts
     assert [m["role"] for m in client.get(f"{url}/chat", headers=auth_headers).json()] == ["user", "assistant"]
+    assert client.delete(f"{url}/chat", headers=auth_headers).status_code == 204
+    assert client.get(f"{url}/chat", headers=auth_headers).json() == []
 
 
 def test_storm_bulletin_moves_maintenance_and_brings_an_inspection(
@@ -329,13 +331,6 @@ def test_storm_bulletin_moves_maintenance_and_brings_an_inspection(
     assert feed["headers"] == ["timestamp", "device_id", "soc_percent", "battery_power_mw"]
     assert feed["rows"] and {r[1] for r in feed["rows"]} == {"BESS-01"} and all(map(all, feed["rows"]))
     assert connect("TIR-WIND-003").status_code == 422  # no battery
-
-    ask = {"scope": "monitoring", "siteId": "KUP-SOLAR-001", "context": {"solarMW": 38},
-           "messages": [{"role": "user", "content": "Status?"}]}
-    answer = client.post("/api/runs/current/chat", json=ask, headers=auth_headers).json()
-    assert answer["reply"].startswith("I can't answer right now") and answer["conversationId"] == f"run-{run['id']}"
-    ask["messages"].append({"role": "assistant", "content": "Hello"})
-    assert client.post("/api/runs/current/chat", json=ask, headers=auth_headers).status_code == 422
 
 
 def test_what_if_and_replay_study_leave_the_live_run_alone(

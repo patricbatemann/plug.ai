@@ -5,8 +5,8 @@ import {
   useState,
   type ReactNode,
 } from "react"
-import { Link } from "react-router"
-import { SITE, BATTERY_POLICY } from "./data"
+import { runApi, type ChatItem } from "./api/client"
+import { SITE } from "./data"
 
 export interface BobMessage {
   id: string
@@ -14,162 +14,75 @@ export interface BobMessage {
   text: string
 }
 
-interface Conversation {
-  messages: BobMessage[]
-  conversationId?: string
-}
+// The new UI shows text only; a reply that is only a card would be an empty bubble.
+const toMessages = (items: ChatItem[]): BobMessage[] =>
+  items.filter((item) => item.text).map((item) => ({ id: String(item.id), role: item.role, text: item.text }))
+const reason = (failure: unknown) => failure instanceof Error ? failure.message : "Unable to reach BOB. Please retry."
 
-const sessions = new Map<string, Conversation>()
-try {
-  const saved = JSON.parse(sessionStorage.getItem('plug-bob-conversations-v2') || '[]')
-  for (const [scope, conversation] of saved) if (Array.isArray(conversation.messages)) sessions.set(scope, conversation)
-} catch {}
-const endpoint = import.meta.env.VITE_BOB_CHAT_ENDPOINT?.trim()
-
-export function useBobChat(scope: string, context: Record<string, unknown>, onProtectedRequest?: (rule: string) => void) {
-  const [conversation, setConversation] = useState<Conversation>(
-    () => sessions.get(scope) ?? { messages: [] },
-  )
+export function useBobChat(scope: string) {
+  const [runId, setRunId] = useState<number>()
+  const [messages, setMessages] = useState<BobMessage[]>([])
+  const [reply, setReply] = useState("")
   const [pending, setPending] = useState(false)
   const [error, setError] = useState("")
-  const controller = useRef<AbortController | null>(null)
-  const lastRequest = useRef<Conversation | null>(null)
-  const current = useRef(conversation)
+  const last = useRef("")
 
-  useEffect(() => () => controller.current?.abort(), [])
-
-  const update = (next: Conversation) => {
-    current.current = next
-    sessions.set(scope, next)
-    try { sessionStorage.setItem('plug-bob-conversations-v2', JSON.stringify([...sessions])) } catch {}
-    setConversation(next)
+  const load = async () => {
+    setError("")
+    try {
+      const run = await runApi.current()
+      setMessages(toMessages(await runApi.chat(run.id)))
+      setRunId(run.id)
+    } catch (failure) {
+      setError(reason(failure))
+    }
   }
 
-  const request = async (next: Conversation) => {
-    if (controller.current) return
-    const abort = new AbortController()
-    controller.current = abort
-    lastRequest.current = next
+  useEffect(() => { void load() }, [])
+
+  const ask = async (text: string) => {
+    if (!runId) return
+    last.current = text
     setPending(true)
     setError("")
-    const timeout = window.setTimeout(() => abort.abort(), 30000)
     try {
-      let reply: string
-      let conversationId = next.conversationId
-      if (!endpoint) {
-        await new Promise((resolve) => window.setTimeout(resolve, 350))
-        if (abort.signal.aborted) return
-        const lastUser = next.messages.filter(m => m.role === 'user').at(-1)?.text.toLowerCase() ?? ""
-        if (lastUser.includes("status") || lastUser.includes("balance") || lastUser.includes("solar") || lastUser.includes("power")) {
-          reply = `Current snapshot at 01 Oct 2026 14:32 IST for ${SITE.name} (${SITE.id}): Solar generation is 38 MW, demand is 44 MW, Battery 1 discharge is 6 MW, and grid import is 0 MW. Energy balance is 38 + 6 = 44 MW. Battery SOC is 72% with 3.4 MWh usable above the 55% reserve floor. Action runtime capped at 30 minutes / 3 MWh.`
-        } else if (lastUser.includes("14:50") || lastUser.includes("spike") || lastUser.includes("grid") || lastUser.includes("import")) {
-          reply = `At 14:50 IST, site demand is forecast to surge to 52 MW against 38 MW solar. Battery 1 provides automatic discharge up to 6 MW, leaving an 8 MW deficit. BOB recommends an 8 MW grid import for 15 minutes, which strictly requires administrator approval and expires after 10 minutes. If modified to 6 MW, a 2 MW deficit remains uncovered.`
-        } else if (lastUser.includes("test") || lastUser.includes("simulation")) {
-          reply = `Before activation, 7 mandatory simulation scenarios must pass: normal 6 MW discharge, 58% SOC block (<60% start threshold), stop at 55% reserve, high temperature hold, stale telemetry (>2 min delay), battery unavailable recovery, and discharge >6 MW approval gate.`
-        } else if (lastUser.includes("evidence") || lastUser.includes("audit") || lastUser.includes("history")) {
-          reply = `Audit evidence record for ${SITE.name}: 14:32 IST baseline established (38 MW solar, 44 MW demand, 6 MW battery discharge, 72% SOC). Historical transactions logged. All proposed grid actions enforce 10-minute expiry windows and verified control boundaries.`
-        } else if (lastUser.includes("policy") || lastUser.includes("limit") || lastUser.includes("safety") || lastUser.includes("reserve")) {
-          reply = `Canonical Battery Policy: Start only when demand exceeds solar by >3 MW for 5 min with SOC >60%. Automatic discharge limit: 6 MW (equipment maximum 8 MW). Stop at 55% configured reserve. Locked emergency floor: 30% SOC. Cap: 30 minutes / 3 MWh. Approvals expire in 10 minutes.`
-        } else {
-          reply = `Preview mode — no live AI backend is connected. BOB is operating under canonical policy: 38 MW solar + 6 MW battery discharge = 44 MW demand. The locked 30% emergency floor, 55% configured reserve, and 6 MW automatic discharge limit remain strictly protected.`
-        }
-      } else {
-        const url = new URL(endpoint, window.location.origin)
-        if (url.origin !== window.location.origin)
-          throw new Error(
-            "Use a same-origin server endpoint to keep API credentials private.",
-          )
-        const response = await fetch(url, {
-          method: "POST",
-          credentials: "same-origin",
-          headers: { "Content-Type": "application/json" },
-          signal: abort.signal,
-          body: JSON.stringify({
-            conversationId,
-            scope,
-            siteId: SITE.id,
-            messages: next.messages.map(({ role, text }) => ({
-              role,
-              content: text,
-            })),
-            context,
-          }),
-        })
-        if (!response.ok)
-          throw new Error(
-            response.status === 401 || response.status === 403
-              ? "Your session does not have permission to use BOB. Sign in or ask an administrator."
-              : `BOB is unavailable (HTTP ${response.status}). Your message is saved; retry when ready.`,
-          )
-        const body: unknown = await response.json()
-        if (
-          !body ||
-          typeof body !== "object" ||
-          !("reply" in body) ||
-          typeof body.reply !== "string" ||
-          !body.reply.trim()
-        )
-          throw new Error(
-            "BOB returned an invalid response. Expected a non-empty reply.",
-          )
-        reply = body.reply
-        if ("conversationId" in body && typeof body.conversationId === "string")
-          conversationId = body.conversationId
-      }
-      if (!abort.signal.aborted)
-        update({
-          conversationId,
-          messages: [
-            ...next.messages,
-            { id: crypto.randomUUID(), role: "assistant", text: reply },
-          ],
-        })
+      await runApi.ask(runId, text, `${SITE.id}, ${scope} screen`, (event) => {
+        // A status means the text so far was a preamble to a tool call.
+        if (event.event === "status") setReply("")
+        else if (event.event === "delta") setReply((so) => so + event.data)
+        else setMessages(toMessages(event.data))
+      })
     } catch (failure) {
-      setError(
-        abort.signal.aborted
-          ? "The response timed out. Your message is saved; try again."
-          : failure instanceof Error
-            ? failure.message
-            : "Unable to reach BOB. Please retry.",
-      )
+      setError(reason(failure))
     } finally {
-      window.clearTimeout(timeout)
-      controller.current = null
+      setReply("")
       setPending(false)
     }
   }
 
-  const send = async (text: string) => {
-    if (!text.trim() || controller.current || error) return
-    const next = {
-      ...current.current,
-      messages: [
-        ...current.current.messages,
-        { id: crypto.randomUUID(), role: "user" as const, text: text.trim() },
-      ],
-    }
-    update(next)
-    const lower = text.toLowerCase()
-    const soc = lower.match(/(?:reserve|floor|soc)[^\d]{0,30}(\d+)\s*%/)
-    const power = lower.match(/(?:discharg\w*|automatic|auto|output|rate)[^\d]{0,30}(\d+(?:\.\d+)?)\s*mw/)
-    const isBypass = /(?:disable|bypass|ignore|override|skip|turn off).*(?:safety|approval|telemetry|floor|reserve|limit|check)/.test(lower)
-    if (onProtectedRequest && ((soc && Number(soc[1]) < 55) || (power && Number(power[1]) > 6) || isBypass)) {
-      const warning = 'Requested change conflicts with protected limits. Automatic discharge stays at or below 6 MW, reserve stays at or above 55%, and safety checks cannot be bypassed. Approval never overrides the 8 MW equipment maximum or 30% locked floor.'
-      onProtectedRequest(warning)
-      update({ ...next, messages: [...next.messages, { id: crypto.randomUUID(), role: 'assistant', text: warning }] })
-      return
-    }
-    await request(next)
-  }
-
   return {
-    messages: conversation.messages,
+    messages,
+    reply,
     pending,
     error,
-    send,
-    connected: Boolean(endpoint),
-    retry: () => lastRequest.current && request(lastRequest.current),
+    ready: runId !== undefined,
+    send: async (text: string) => {
+      if (!text.trim() || pending || error || !runId) return
+      setMessages((so) => [...so, { id: `new-${so.length}`, role: "user", text: text.trim() }])
+      await ask(text.trim())
+    },
+    retry: () => (runId ? ask(last.current) : load()),
     dismissError: () => setError(""),
+    reset: async () => {
+      if (!runId || pending) return
+      try {
+        await runApi.clearChat(runId)
+        setMessages([])
+        setError("")
+      } catch (failure) {
+        setError(reason(failure))
+      }
+    },
   }
 }
 
@@ -247,25 +160,11 @@ export function BobMessages({ chat, variant = "default" }: { chat: BobChatState;
             }`}
           >
             <p className="mb-1 text-[11px] font-semibold text-[#525252]">
-              {message.role === "user"
-                ? "You"
-                : chat.connected
-                  ? "BOB"
-                  : "BOB · Preview"}
+              {message.role === "user" ? "You" : "BOB"}
             </p>
             <p className="whitespace-pre-wrap break-words text-[14px] leading-relaxed text-[#161616] [overflow-wrap:anywhere]">
               {message.text}
             </p>
-            {message.role === "assistant" && message.text.includes("conflicts with protected limits") && (
-              <div className="mt-3 border-t border-[#fca5a5] pt-2">
-                <Link
-                  to="/protected"
-                  className="inline-flex items-center gap-1.5 text-[12px] font-semibold text-[#da1e28] hover:underline"
-                >
-                  ⚠ View protected boundary &amp; safe alternatives →
-                </Link>
-              </div>
-            )}
           </div>
         </div>
       ))}
@@ -280,6 +179,11 @@ export function BobMessages({ chat, variant = "default" }: { chat: BobChatState;
             <span className="size-1.5 rounded-full bg-[#0f62fe] motion-safe:animate-pulse" />
           </span>
           BOB is responding…
+        </p>
+      )}
+      {chat.reply && (
+        <p className="whitespace-pre-wrap break-words pl-11 text-[14px] leading-relaxed text-[#161616] [overflow-wrap:anywhere]">
+          {chat.reply}
         </p>
       )}
       {chat.error && (
@@ -363,11 +267,21 @@ export function BobComposer({
         </button>
       </div>
       <p className="mt-2 text-[11px] leading-relaxed text-[#6f6f6f]">
-        {chat.connected
-          ? "API-backed conversation · Actions still require review and simulation."
-          : "Preview conversation · API not connected. No actions are executed."}{" "}
-        Shift + Enter for a new line.
+        Actions still require review and simulation. Shift + Enter for a new line.
       </p>
     </form>
+  )
+}
+
+export function BobNewChat({ chat }: { chat: BobChatState }) {
+  return (
+    <button
+      type="button"
+      onClick={() => { if (window.confirm("Start a new chat? BOB forgets this conversation.")) void chat.reset() }}
+      disabled={!chat.ready || chat.pending || !chat.messages.length}
+      className="min-h-8 rounded-[2px] border border-[#e0e0e0] bg-white px-3 text-[13px] text-[#161616] hover:bg-[#f4f4f4] disabled:cursor-not-allowed disabled:opacity-50 cursor-pointer"
+    >
+      New chat
+    </button>
   )
 }

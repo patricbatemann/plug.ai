@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef, createContext, useContext } from 'react';
 import { BATTERY_POLICY, CONFIG_STEPS, STATE_COLOR, SITE, SNAPSHOT_14_32, type ActionState } from './data';
 
-import { useBobChat, BobMessages, BobComposer, BobChatScrollArea } from './BobChat';
+import { useBobChat, BobMessages, BobComposer, BobChatScrollArea, BobNewChat } from './BobChat';
 import { Link } from 'react-router';
 import { policyErrors, useOperations } from './Operations';
 
@@ -125,7 +125,7 @@ export default function AgentChat({ onClose, onComplete }: AgentChatProps) {
     desktop.addEventListener('change', closeDrawer);
     return () => desktop.removeEventListener('change', closeDrawer);
   }, []);
-  const chat = useBobChat('configuration', { config, phase, activeStep, confirmedSteps: [...confirmed], snapshot: SNAPSHOT_14_32, policy: BATTERY_POLICY }, rule => { setBoundary(rule); operations.addAudit('Unsafe configuration request blocked', rule); });
+  const chat = useBobChat('configuration');
   useEffect(() => { operations.saveConfig(config, activeStep, [...confirmed], phase !== 'welcome'); }, [phase, activeStep, confirmed, config]);
 
   const confirmStep = (step: ConfigStep) => {
@@ -184,6 +184,7 @@ export default function AgentChat({ onClose, onComplete }: AgentChatProps) {
   const conversationPanel = (drawer = false) => <>
     <div className="flex shrink-0 items-center justify-between gap-3 border-b border-[#e0e0e0] bg-white px-5 py-4">
       <div className="flex min-w-0 items-center gap-3"><BobAvatar /><div><h2 id={drawer ? 'bob-drawer-title' : 'bob-conversation-title'} className="text-[15px] font-semibold text-[#161616]">BOB</h2><p className="text-[12px] text-[#525252]">AI energy assistant · {SNAPSHOT_14_32.timestamp}</p></div></div>
+      <BobNewChat chat={chat} />
       {drawer && <button autoFocus aria-label="Close BOB conversation" onClick={() => setAssistantOpen(false)} className="flex size-11 items-center justify-center rounded-[2px] border border-[#e0e0e0] text-xl text-[#525252]">×</button>}
     </div>
     <BobChatScrollArea className="flex-1 px-4 py-6 lg:px-5" updateKey={`${phase}:${confirmed.size}:${chat.messages.length}:${chat.pending}:${chat.error}`} lastUserId={chat.messages.filter(message => message.role === 'user').at(-1)?.id}>
