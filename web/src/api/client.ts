@@ -140,6 +140,8 @@ export interface RunSummary {
   bob: PolicyTotals
   baseline: PolicyTotals
   saving_inr: number
+  actions: number
+  by_people: number
 }
 
 export interface ActionOut {

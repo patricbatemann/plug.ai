@@ -97,6 +97,8 @@ def test_run_controls_events_and_live_overview(
     assert summary["block"] == 26
     assert summary["bob"]["unserved_mwh"] == 0
     assert summary["saving_inr"] == summary["baseline"]["cost_inr"] - summary["bob"]["cost_inr"]
+    assert summary["actions"] == len(client.get(f"{url}/actions?limit=200", headers=auth_headers).json())
+    assert summary["by_people"] == 0
     latest = client.get(f"{url}/decisions/latest", headers=auth_headers).json()
     assert latest["tests"] >= 5 and latest["chosen"]
     decision = client.get(f"/api/runs/decisions/{latest['id']}", headers=auth_headers).json()

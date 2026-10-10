@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react';
+import { mw } from './format';
 import SiteDetail from './SiteDetail';
 import BobActions from './BobActions';
 import LiveOverview from './LiveOverview';
@@ -18,15 +19,8 @@ import { useProfile } from './auth/user';
 import { createBrowserRouter, RouterProvider, useLocation, useNavigate } from 'react-router';
 import { OperationsProvider, useOperations } from './Operations';
 import OperationalPanels, { JourneyNavigation } from './OperationalPanels';
-import { transactions } from './Transactions';
-import {
-  getPortfolioCategories,
-  getPortfolioStats,
-  getRegisteredSites,
-  refreshPortfolioFromBackend,
-  subscribePortfolio,
-  type RegisteredSite,
-} from './services';
+import { usePortfolio, type SiteRow, type Tone } from './portfolio';
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 
 const assetPathPrefix = '/assets';
 const imgSun = `${assetPathPrefix}/7c8f1.svg`;
@@ -97,7 +91,7 @@ function getGridIcon(status: string) {
   return imgXCircle;
 }
 
-function getStatusBadge(status: RegisteredSite['status']) {
+function getStatusBadge(status: SiteRow['status']) {
   switch (status.tone) {
     case 'amber':
       return {
@@ -136,6 +130,14 @@ function getStatusBadge(status: RegisteredSite['status']) {
       };
   }
 }
+
+const TONE_TAG: Record<Tone, string> = {
+  green: 'bg-[#defbe6] text-[#198038]',
+  blue: 'bg-[#edf5ff] text-[#0f62fe]',
+  amber: 'bg-[#fef3c7] text-[#b26207]',
+  red: 'bg-[#fff1f1] text-[#da1e28]',
+  gray: 'bg-[#f4f4f4] text-[#525252]',
+};
 
 function getStatIcon(icon: string) {
   if (icon === 'cpu') return imgCpu2;
@@ -182,7 +184,8 @@ function OperationalRoute() {
   );
 }
 const router = createBrowserRouter([{ path: '*', Component: OperationalRoute }]);
-export default function App() { return <OperationsProvider><RouterProvider router={router} /></OperationsProvider>; }
+const queryClient = new QueryClient();
+export default function App() { return <QueryClientProvider client={queryClient}><OperationsProvider><RouterProvider router={router} /></OperationsProvider></QueryClientProvider>; }
 
 function Screens({ onLogout }: { onLogout?: () => void }) {
   const [activeFilter, setActiveFilter] = useState<'all' | 'bob' | 'user'>('all');
@@ -196,19 +199,7 @@ function Screens({ onLogout }: { onLogout?: () => void }) {
   const [siteSearch, setSiteSearch] = useState('');
   const [statusFilter, setStatusFilter] = useState('all');
   const [sortOrder, setSortOrder] = useState<'attention' | 'name' | 'output'>('attention');
-  const [, setPortfolioTick] = useState(0);
-
-  useEffect(() => {
-    refreshPortfolioFromBackend();
-    const unsubscribe = subscribePortfolio(() => {
-      setPortfolioTick((t) => t + 1);
-    });
-    return unsubscribe;
-  }, []);
-
-  const portfolioCategories = getPortfolioCategories();
-  const portfolioStats = getPortfolioStats();
-  const registeredSites = getRegisteredSites();
+  const { simTime, categories: portfolioCategories, stats: portfolioStats, sites: registeredSites, transactions: transactionRows } = usePortfolio();
 
   const filteredSites = registeredSites
     .filter(site => {
@@ -232,7 +223,6 @@ function Screens({ onLogout }: { onLogout?: () => void }) {
       return 0;
     });
 
-  const transactionRows = transactions(state);
   const visibleTransactions = transactionRows.filter(row => (activeFilter === 'all' || (activeFilter === 'bob') === row.initIsBot) && `${row.id} ${row.type} ${row.initiator}`.toLowerCase().includes(transactionSearch.toLowerCase()));
   const actionConfig = state.config;
   const setActionConfig = (config: ActionConfig) => operations.setState(current => ({ ...current, config }));
@@ -308,7 +298,7 @@ function Screens({ onLogout }: { onLogout?: () => void }) {
           <div className="flex gap-6 items-center max-sm:flex-wrap">
             <div className="flex flex-col gap-0.5 items-end">
               <p className="font-['IBM Plex Sans:Medium'] font-medium text-[#8d8d8d] text-[11px] uppercase leading-normal" style={{ fontVariationSettings: '"wdth" 100' }}>Last Updated</p>
-              <p className="font-mono font-medium text-[#525252] text-[13px] leading-normal">01 Oct 2026, 14:32 IST</p>
+              <p className="font-mono font-medium text-[#525252] text-[13px] leading-normal">{simTime}</p>
             </div>
             <div
               className="bg-[#fdecef] border border-[#e82127] flex items-center justify-center rounded-full size-10 shrink-0 max-sm:flex-wrap cursor-pointer hover:opacity-90 transition-opacity"
@@ -336,9 +326,6 @@ function Screens({ onLogout }: { onLogout?: () => void }) {
                 </p>
               </div>
             ))}
-            <div className="bg-[#f4f4f4] border border-[#e0e0e0] px-2 py-1 rounded-[2px]">
-              <p className="font-['IBM Plex Sans:Medium'] font-medium text-[#525252] text-[12px] leading-normal whitespace-nowrap max-sm:whitespace-normal" style={{ fontVariationSettings: '"wdth" 100' }}>Scope: Kuppam Solar Site</p>
-            </div>
           </div>
         </div>
 
@@ -363,8 +350,8 @@ function Screens({ onLogout }: { onLogout?: () => void }) {
                   <p className="font-mono font-semibold text-[#161616] text-[20px] leading-normal whitespace-nowrap max-sm:whitespace-normal">{card.capacity}</p>
                 </div>
                 <div className="flex flex-col gap-1 items-end">
-                  <p className="font-['IBM Plex Sans:Medium'] font-medium text-[#8d8d8d] text-[11px] uppercase leading-normal" style={{ fontVariationSettings: '"wdth" 100' }}>Portfolio Health</p>
-                  <p className="font-mono font-semibold text-[#198038] text-[20px] leading-normal whitespace-nowrap max-sm:whitespace-normal">{card.health}</p>
+                  <p className="font-['IBM Plex Sans:Medium'] font-medium text-[#8d8d8d] text-[11px] uppercase leading-normal" style={{ fontVariationSettings: '"wdth" 100' }}>Live Output</p>
+                  <p className="font-mono font-semibold text-[#198038] text-[20px] leading-normal whitespace-nowrap max-sm:whitespace-normal">{card.live}</p>
                 </div>
               </div>
               <div className="bg-[#f4f4f4] h-1.5 rounded-[2px] overflow-hidden w-full">
@@ -536,37 +523,19 @@ function Screens({ onLogout }: { onLogout?: () => void }) {
             {/* Table Body */}
             <div className="flex flex-col">
               {filteredSites.map((site) => {
-                const isKuppam = site.id === 'KUP-SOLAR-001';
-                const liveOutput = isKuppam ? operations.flow.solar : site.liveOutputMw;
-                const livePercent = Math.round((liveOutput / site.capacityMw) * 100);
-                const batterySoc = isKuppam ? Math.round(operations.flow.soc) : site.storage.soc;
-                const batteryStatusText = isKuppam
-                  ? operations.flow.battery > 0
-                    ? `Discharging at ${operations.flow.battery} MW`
-                    : operations.flow.battery < 0
-                      ? `Charging at ${Math.abs(operations.flow.battery)} MW`
-                      : 'Holding reserve (55% floor)'
-                  : site.storage.statusText;
-                const gridStatus = isKuppam
-                  ? 'Importing'
-                  : site.grid.status;
-                const gridLoadText = isKuppam
-                  ? `${operations.flow.grid} MW grid load`
-                  : site.grid.loadText;
-                const statusObj = isKuppam
-                  ? (state.approval?.decision === 'pending'
-                    ? { label: 'Pending approval', badgeCount: 1, tone: 'amber' as const }
-                    : state.activated
-                      ? { label: 'Operating normally', badgeCount: undefined, tone: 'green' as const }
-                      : site.status)
-                  : site.status;
+                const liveOutput = site.liveOutputMw;
+                const livePercent = site.capacityMw ? Math.round((liveOutput / site.capacityMw) * 100) : 0;
+                const batterySoc = site.storage.soc === null ? null : Math.round(site.storage.soc);
+                const batteryStatusText = site.storage.statusText;
+                const gridStatus = site.grid.status;
+                const gridLoadText = site.grid.loadText;
+                const statusObj = site.status;
                 const badgeStyle = getStatusBadge(statusObj);
 
                 return (
                   <div
                     key={site.id}
-                    className={`${isKuppam ? 'bg-[#f4f4f4]' : 'bg-white'
-                      } border-b border-[#e0e0e0] grid grid-cols-[240px_140px_160px_140px_130px_180px_160px_80px] min-w-[1278px] items-center [&>div]:w-auto [&>div]:min-w-0 [&>div:last-child]:justify-start px-6 py-4`}
+                    className={`bg-white border-b border-[#e0e0e0] grid grid-cols-[240px_140px_160px_140px_130px_180px_160px_80px] min-w-[1278px] items-center [&>div]:w-auto [&>div]:min-w-0 [&>div:last-child]:justify-start px-6 py-4`}
                   >
                     {/* Site */}
                     <div className="w-[240px] flex gap-3 items-center max-sm:flex-wrap">
@@ -586,7 +555,7 @@ function Screens({ onLogout }: { onLogout?: () => void }) {
                           )}
                         </div>
                         <p className="font-['IBM Plex Sans:Regular'] font-normal text-[#525252] text-[12px] leading-normal whitespace-nowrap max-sm:whitespace-normal" style={{ fontVariationSettings: '"wdth" 100' }}>
-                          {isKuppam ? <>Site ID <span className="font-mono">{site.id}</span> · {site.type}</> : `${site.location || 'Andhra Pradesh'} · ${site.type}`}
+                          {site.location} · {site.type}
                         </p>
                       </div>
                     </div>
@@ -594,7 +563,7 @@ function Screens({ onLogout }: { onLogout?: () => void }) {
                     {/* Live Output */}
                     <div className="w-[140px] flex flex-col gap-1.5">
                       <div className="flex gap-1 items-baseline max-sm:flex-wrap">
-                        <p className="font-mono font-bold text-[#161616] text-[14px] leading-normal">{liveOutput} MW</p>
+                        <p className="font-mono font-bold text-[#161616] text-[14px] leading-normal">{mw(liveOutput)}</p>
                         <p className="font-['IBM Plex Sans:Regular'] font-normal text-[#525252] text-[11px] leading-normal" style={{ fontVariationSettings: '"wdth" 100' }}>active</p>
                       </div>
                       <div className="bg-[#f4f4f4] h-1 rounded-[2px] overflow-hidden w-20">
@@ -747,8 +716,7 @@ function Screens({ onLogout }: { onLogout?: () => void }) {
                 <div className="flex flex-col gap-1">
                   <p className="font-mono font-semibold text-[#161616] text-[24px] leading-normal whitespace-nowrap max-sm:whitespace-normal">{stat.value}</p>
                   <div className="flex gap-1 items-center text-[12px] max-sm:flex-wrap">
-                    <p className="font-mono font-semibold leading-normal" style={{ color: stat.changeColor }}>{stat.change}</p>
-                    <p className="font-['IBM Plex Sans:Regular'] font-normal text-[#525252] leading-normal" style={{ fontVariationSettings: '"wdth" 100' }}>vs last month</p>
+                    <p className="font-['IBM Plex Sans:Regular'] font-normal text-[#525252] leading-normal" style={{ fontVariationSettings: '"wdth" 100' }}>{stat.note}</p>
                   </div>
                 </div>
               </div>
@@ -776,11 +744,11 @@ function Screens({ onLogout }: { onLogout?: () => void }) {
                 ))}
               </div>
               <div className="bg-white border-b border-[#e0e0e0] flex items-center px-3.5 py-2.5 max-sm:flex-wrap">
-                <p className="font-['IBM Plex Sans:Medium'] font-medium text-[#525252] text-[14px] leading-normal whitespace-nowrap max-sm:whitespace-normal" style={{ fontVariationSettings: '"wdth" 100' }}>Kuppam Solar Site</p>
+                <p className="font-['IBM Plex Sans:Medium'] font-medium text-[#525252] text-[14px] leading-normal whitespace-nowrap max-sm:whitespace-normal" style={{ fontVariationSettings: '"wdth" 100' }}>All sites</p>
               </div>
               <div className="bg-white border-b border-[#e0e0e0] flex gap-2 items-center px-3.5 py-2.5 max-sm:flex-wrap">
                 <div className="size-3.5 relative shrink-0"><img alt="" className="absolute inset-0 size-full" src={imgCalendar} /></div>
-                <p className="font-['IBM Plex Sans:Medium'] font-medium text-[#525252] text-[14px] leading-normal whitespace-nowrap max-sm:whitespace-normal" style={{ fontVariationSettings: '"wdth" 100' }}><span className="font-mono">01 Oct 2026</span> · IST</p>
+                <p className="font-['IBM Plex Sans:Medium'] font-medium text-[#525252] text-[14px] leading-normal whitespace-nowrap max-sm:whitespace-normal" style={{ fontVariationSettings: '"wdth" 100' }}><span className="font-mono">{simTime.split(',')[0]}</span> · IST</p>
                 <div className="size-3.5 relative shrink-0"><img alt="" className="absolute inset-0 size-full" src={imgChevronDown1} /></div>
               </div>
             </div>
@@ -800,7 +768,7 @@ function Screens({ onLogout }: { onLogout?: () => void }) {
                 { label: 'Type', w: 'w-[160px]' },
                 { label: 'Initiated By', w: 'w-[180px]' },
                 { label: 'Amount', w: 'w-[130px]' },
-                { label: 'Revenue', w: 'w-[130px]' },
+                { label: 'Tier', w: 'w-[130px]' },
                 { label: 'Status', w: 'w-[120px]' },
               ].map(col => (
                 <p key={col.label} className={`font-['IBM Plex Sans:SemiBold'] font-semibold text-[#161616] text-[12px] tracking-[0.32px] uppercase leading-normal ${col.w} shrink-0`} style={{ fontVariationSettings: '"wdth" 100' }}>{col.label}</p>
@@ -810,12 +778,12 @@ function Screens({ onLogout }: { onLogout?: () => void }) {
 
             {/* Table Rows */}
             {visibleTransactions.map((row, i) => (
-              <div key={i} className={`${row.bg} border-b border-[#e0e0e0] grid grid-cols-[140px_minmax(180px,1.4fr)_160px_180px_130px_130px_120px_80px] min-w-[1280px] gap-4 [&>div]:w-auto [&>p]:w-auto items-center px-6 py-4`}>
+              <div key={row.id} className={`bg-white border-b border-[#e0e0e0] grid grid-cols-[140px_minmax(180px,1.4fr)_160px_180px_130px_130px_120px_80px] min-w-[1280px] gap-4 [&>div]:w-auto [&>p]:w-auto items-center px-6 py-4`}>
                 <div className="w-[140px] shrink-0">
                   <p className="font-mono font-medium text-[#161616] text-[13px] leading-normal whitespace-nowrap max-sm:whitespace-normal">{row.date}</p>
                 </div>
                 <div className="w-[220px] shrink-0">
-                  <p className="font-['IBM Plex Sans:Medium'] font-medium text-[#161616] text-[14px] leading-normal overflow-hidden text-ellipsis whitespace-nowrap max-sm:whitespace-normal" style={{ fontVariationSettings: '"wdth" 100' }}>Kuppam Solar Site</p>
+                  <p className="font-['IBM Plex Sans:Medium'] font-medium text-[#161616] text-[14px] leading-normal overflow-hidden text-ellipsis whitespace-nowrap max-sm:whitespace-normal" style={{ fontVariationSettings: '"wdth" 100' }}>{row.site}</p>
                 </div>
                 <div className="w-[160px] shrink-0 flex gap-2 items-center max-sm:flex-wrap">
                   <div className="size-3.5 relative shrink-0"><img alt="" className="absolute inset-0 size-full" src={row.typeIcon} /></div>
@@ -823,25 +791,25 @@ function Screens({ onLogout }: { onLogout?: () => void }) {
                 </div>
                 <div className="w-[180px] shrink-0 flex gap-2 items-center max-sm:flex-wrap">
                   {row.initIsBot ? (
-                    <div className="p-1 shrink-0" style={{ background: row.initBg }}>
-                      <div className="size-3.5 relative"><img alt="" className="absolute inset-0 size-full" src={row.initIcon} /></div>
+                    <div className="p-1 shrink-0 bg-[#defbe6]">
+                      <div className="size-3.5 relative"><img alt="" className="absolute inset-0 size-full" src={imgCpu3} /></div>
                     </div>
                   ) : (
-                    <div className="flex items-center justify-center size-[22px] shrink-0 max-sm:flex-wrap" style={{ background: row.initBg }}>
+                    <div className="flex items-center justify-center size-[22px] shrink-0 max-sm:flex-wrap bg-[#e0f2fe]">
                       <p className="font-['IBM Plex Sans:SemiBold'] font-semibold text-[#161616] text-[10px] leading-normal" style={{ fontVariationSettings: '"wdth" 100' }}>{row.initInitials}</p>
                     </div>
                   )}
-                  <p className="font-['IBM Plex Sans:Medium'] font-medium text-[14px] leading-normal whitespace-nowrap max-sm:whitespace-normal" style={{ color: row.initColor, fontVariationSettings: '"wdth" 100' }}>{row.initiator}</p>
+                  <p className="font-['IBM Plex Sans:Medium'] font-medium text-[14px] leading-normal whitespace-nowrap max-sm:whitespace-normal" style={{ fontVariationSettings: '"wdth" 100' }}>{row.initiator}</p>
                 </div>
                 <div className="w-[130px] shrink-0">
                   <p className="font-mono font-semibold text-[#161616] text-[14px] leading-normal whitespace-nowrap max-sm:whitespace-normal">{row.amount}</p>
                 </div>
                 <div className="w-[130px] shrink-0">
-                  <p className="font-mono font-semibold text-[14px] leading-normal whitespace-nowrap max-sm:whitespace-normal" style={{ color: row.revColor }}>{row.revenue}</p>
+                  <p className="font-['IBM Plex Sans:Medium'] font-medium text-[#525252] text-[14px] leading-normal whitespace-nowrap max-sm:whitespace-normal">{row.tier}</p>
                 </div>
                 <div className="w-[120px] shrink-0">
-                  <div className="flex items-start px-2.5 py-1 w-fit rounded-[2px] max-sm:flex-wrap" style={{ background: row.statusBg }}>
-                    <p className="font-['IBM Plex Sans:SemiBold'] font-semibold text-[12px] uppercase leading-normal whitespace-nowrap max-sm:whitespace-normal" style={{ color: row.statusColor, fontVariationSettings: '"wdth" 100' }}>{row.status}</p>
+                  <div className={`flex items-start px-2.5 py-1 w-fit rounded-[2px] max-sm:flex-wrap ${TONE_TAG[row.statusTone]}`}>
+                    <p className="font-['IBM Plex Sans:SemiBold'] font-semibold text-[12px] uppercase leading-normal whitespace-nowrap max-sm:whitespace-normal" style={{ fontVariationSettings: '"wdth" 100' }}>{row.status}</p>
                   </div>
                 </div>
                 <div className="flex-1 flex items-start justify-end max-sm:flex-wrap">

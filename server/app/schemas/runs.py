@@ -253,6 +253,8 @@ class RunSummary(BaseModel):
     bob: PolicyTotals
     baseline: PolicyTotals
     saving_inr: float
+    actions: int  # BOB's actions, less those replaced before they took effect
+    by_people: int  # of those, the ones a person approved or declined
 
 
 class ActionOut(BaseModel):

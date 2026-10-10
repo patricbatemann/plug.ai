@@ -1,6 +1,6 @@
 import { Link, useLocation, useSearchParams } from "react-router"
 import { BOB_ACTION_TEMPLATES } from "./BobActions"
-import { transactions } from "./Transactions"
+import { useTransactions } from "./portfolio"
 import { useOperations } from "./Operations"
 import { useProfile } from "./auth/user"
 import { CONFIG_STEPS } from "./data"
@@ -45,7 +45,7 @@ export default function OperationalPanels({ page }: { page: string }) {
   const template = BOB_ACTION_TEMPLATES.find(
     (action) => action.id === params.get("template"),
   )
-  const transaction = transactions(state).find(
+  const transaction = useTransactions().find(
     (row) => row.id === params.get("id"),
   )
   return (
@@ -109,18 +109,14 @@ export default function OperationalPanels({ page }: { page: string }) {
             {transaction && (
               <dl className="space-y-3 text-sm">
                 {[
-                  ["Date", transaction.date + ", 2026 IST"],
+                  ["Date", transaction.date + " IST"],
+                  ["Site", transaction.site],
                   ["Type", transaction.type],
                   ["Initiated by", transaction.initiator],
                   ["Energy", transaction.amount],
-                  ["Revenue / cost", transaction.revenue],
+                  ["Tier", transaction.tier],
                   ["State", transaction.status],
-                  [
-                    "Evidence",
-                    transaction.historical
-                      ? "Historical preview record, before the canonical snapshot"
-                      : "Current approval outcome; no delivered energy reported yet",
-                  ],
+                  ["Reason", transaction.reason || "—"],
                 ].map(([label, value]) => (
                   <div
                     key={label}

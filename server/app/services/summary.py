@@ -22,8 +22,13 @@ def summary(db: Session, run: Run) -> RunSummary:
             .where(SystemBlock.run_id == run.id, SystemBlock.policy == policy)
         ).one()
         totals[policy] = PolicyTotals(**dict(zip(SUMMED, row[:-1])), deviation_mwh=row[-1])
+    actions, by_people = db.execute(
+        select(func.count(), func.count(Action.decided_by))
+        .where(Action.run_id == run.id, Action.policy == "bob", Action.status != "superseded")
+    ).one()
     return RunSummary(block=run.current_block, bob=totals["bob"], baseline=totals["baseline"],
-                      saving_inr=totals["baseline"].cost_inr - totals["bob"].cost_inr)
+                      saving_inr=totals["baseline"].cost_inr - totals["bob"].cost_inr,
+                      actions=actions, by_people=by_people)
 
 
 def recent_actions(db: Session, run: Run, limit: int, status: list[str] | None = None, site: str | None = None,
