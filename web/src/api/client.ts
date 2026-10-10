@@ -61,12 +61,6 @@ export interface SiteDetail {
   assets: Asset[]
 }
 
-export interface Preset {
-  code: string
-  name: string
-  description: string
-}
-
 export interface RunState {
   id: number
   preset: string
@@ -166,40 +160,6 @@ export interface ActionOut {
   actual_mw: number | null
   status: string
   reason: string | null
-}
-
-export interface DecisionSummary {
-  id: number
-  time: string
-  mode: string
-  mode_by: string
-  mode_reason: string
-  chosen: string | null
-  selected_by: 'bob' | 'rule'
-  agent: string | null
-  rationale: string
-  holds: number
-  tests: number
-}
-
-export interface DecisionDetail extends DecisionSummary {
-  trigger: string
-  trigger_detail: string
-  floors: string[]
-  situation: Array<{ code: string; label: string; value: string; threshold: string; material: boolean; mode: string }>
-  scenarios: Record<string, string>
-  options: Array<{
-    variant: string
-    label: string
-    chosen: boolean
-    actions: string[]
-    cost_inr: number
-    carbon_t: number
-    curtailed_mwh: number
-    deviation_mwh: number
-    worst_regret_inr: number | null
-    stress: Record<string, { regret_inr: number | null; holds: boolean; reserve_shortfall_mwh: number | null }>
-  }>
 }
 
 export class ApiError extends Error {
@@ -307,8 +267,6 @@ export const authApi = {
 
 export const portfolioApi = {
   get: () => request<Portfolio>('/api/portfolio'),
-  setMode: (mode_code: string) =>
-    request<Portfolio>('/api/portfolio', { method: 'PATCH', body: JSON.stringify({ mode_code }) }),
   site: (code: string) => request<SiteDetail>(`/api/sites/${encodeURIComponent(code)}`),
 }
 
@@ -316,15 +274,7 @@ const post = <T>(path: string, body?: unknown) =>
   request<T>(path, { method: 'POST', body: body === undefined ? undefined : JSON.stringify(body) })
 
 export const runApi = {
-  presets: () => request<Preset[]>('/api/runs/presets'),
   current: () => request<RunState>('/api/runs/current'),
-  create: (preset: string) => post<RunState>('/api/runs', { preset }),
-  pause: (id: number) => post<RunState>(`/api/runs/${id}/pause`),
-  play: (id: number) => post<RunState>(`/api/runs/${id}/play`),
-  step: (id: number) => post<RunState>(`/api/runs/${id}/step`),
-  speed: (id: number, speed: number) =>
-    request<RunState>(`/api/runs/${id}`, { method: 'PATCH', body: JSON.stringify({ speed }) }),
-  inject: (id: number, event: Record<string, unknown>) => post<RunState>(`/api/runs/${id}/events`, event),
   summary: (id: number) => request<RunSummary>(`/api/runs/${id}/summary`),
   actions: (id: number, filter: { limit?: number; status?: string[]; site?: string; block?: number } = {}) => {
     const query = new URLSearchParams({ limit: String(filter.limit ?? 20) })
@@ -335,12 +285,6 @@ export const runApi = {
   },
   approve: (id: number, actionId: number) => post<RunState>(`/api/runs/${id}/actions/${actionId}/approve`),
   decline: (id: number, actionId: number) => post<RunState>(`/api/runs/${id}/actions/${actionId}/decline`),
-  events: (id: number, after: number) =>
-    request<Array<{ id: number; kind: string; sim_at: string; source: string; label: string }>>(
-      `/api/runs/${id}/events?after=${after}`,
-    ),
-  latestDecision: (id: number) => request<DecisionSummary>(`/api/runs/${id}/decisions/latest`),
-  decision: (cycleId: number) => request<DecisionDetail>(`/api/runs/decisions/${cycleId}`),
   chat: (id: number) => request<ChatItem[]>(`/api/runs/${id}/chat`),
   clearChat: (id: number) => request<void>(`/api/runs/${id}/chat`, { method: 'DELETE' }),
   ask: (id: number, message: string, context: string | undefined, onEvent: (e: ChatEvent) => void) =>
@@ -390,59 +334,10 @@ export interface MaintenanceTask {
 }
 
 export const documentApi = {
-  samples: () => request<Array<{ name: string; title: string }>>('/api/document-samples'),
-  upload: (runId: number, doc: { sample: string } | { filename: string; data: string }) =>
-    post<ChatItem[]>(`/api/runs/${runId}/documents`, doc),
-  decide: (runId: number, id: number, decision: 'apply' | 'reject' | 'withdraw') =>
-    post<ChatItem[]>(`/api/runs/${runId}/constraints/${id}/${decision}`),
   maintenance: (runId: number, site: string) =>
     request<{ tasks: MaintenanceTask[]; proposals: ActionOut[] }>(
       `/api/runs/${runId}/sites/${encodeURIComponent(site)}/maintenance`,
     ),
-}
-
-export interface WhatIfChange {
-  assets_out: string[]
-  demand_pct: number | null
-  renewables_pct: number | null
-  price_pct: number | null
-  line_limits: Array<{ line: string; limit_mw: number }>
-  mode: string | null
-}
-
-export interface Study {
-  id: number
-  preset: string
-  created_at: string
-  created_by: string
-  metrics: Record<string, string>
-  seeds: Array<{
-    seed: number
-    progress: number
-    done: boolean
-    bob: PolicyTotals | null
-    baseline: PolicyTotals | null
-    saving_inr: number | null
-    violations: string[]
-  }>
-  reliability: {
-    replays_done: number
-    hard_limit_violations: number
-    unserved_mwh: Record<'bob' | 'baseline', number>
-    safe_holds: number
-    approvals_expired: number
-  }
-}
-
-export const simulationApi = {
-  whatIf: (runId: number, change: WhatIfChange) =>
-    post<{ current: WhatIfPlan; what_if: WhatIfPlan }>(`/api/runs/${runId}/what-if`, change),
-  studies: () => request<Array<{ id: number; preset: string; seeds: number; created_at: string }>>('/api/studies'),
-  study: (id: number) => request<Study>(`/api/studies/${id}`),
-  createStudy: (preset: string, seeds: number) => post<Study>('/api/studies', { preset, seeds }),
-  bobCalls: () =>
-    request<{ calls: number; ok: number; by_purpose: Record<string, number>; failures: Record<string, number>
-      median_ms: number | null }>('/api/bob-calls'),
 }
 
 export interface SiteStatus {
@@ -495,31 +390,16 @@ export const siteApi = {
     categories.forEach((c) => query.append('category', c))
     return request<ActivityEntry[]>(`/api/runs/${runId}/sites/${encodeURIComponent(code)}/activity?${query}`)
   },
-  /** The run's telemetry for the site as CSV, saved by the browser (a link cannot carry the token). */
-  downloadTelemetry: async (runId: number, code: string) => {
-    const response = await send(`/api/runs/${runId}/sites/${encodeURIComponent(code)}/telemetry.csv`)
-    const link = document.createElement('a')
-    link.href = URL.createObjectURL(await response.blob())
-    link.download = `${code.toLowerCase()}-telemetry.csv`
-    link.click()
-    URL.revokeObjectURL(link.href)
-  },
   sources: (code: string) => request<DataSource[]>(`${site(code)}/data-sources`),
   checkCsv: (code: string, file: { filename: string; data: string }) =>
     post<CsvCheck>(`${site(code)}/data-sources/csv/check`, file),
   importCsv: (code: string, file: { filename: string; data: string }) =>
     post<DataSource>(`${site(code)}/data-sources/csv`, file),
-  testApi: (code: string, api: { endpoint: string; refresh_min: number }) =>
-    post<CsvCheck>(`${site(code)}/data-sources/api/test`, api),
-  connectApi: (code: string, api: { endpoint: string; refresh_min: number }) =>
-    post<DataSource>(`${site(code)}/data-sources/api`, api),
   /** Tests the site's telemetry API and keeps it as the site's live source; returns a sample of the feed. */
   connectFeed: (code: string, endpoint: string, apiKey: string, refreshMin: number) =>
     post<{ headers: string[]; rows: Array<Array<string | number>> }>('/api/data-sources/connect', {
       siteId: code, endpoint, apiKey, refreshIntervalMin: refreshMin,
     }),
-  removeSource: (code: string, id: number) =>
-    request<void>(`${site(code)}/data-sources/${id}`, { method: 'DELETE' }),
 }
 
 /** Kept with a configuration for people; dispatch does not act on them. */
@@ -573,8 +453,4 @@ export const configApi = {
   activate: (id: number) => post<ConfigOut>(`/api/configs/${id}/activate`),
   setStatus: (id: number, status: 'active' | 'paused') =>
     request<ConfigOut>(`/api/configs/${id}`, { method: 'PATCH', body: JSON.stringify({ status }) }),
-  watch: (runId: number, site: string) =>
-    request<Array<{ asset: string; label: string; value: number | null; met: boolean }>>(
-      `/api/runs/${runId}/sites/${site}/watch`,
-    ),
 }
