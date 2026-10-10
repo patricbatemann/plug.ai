@@ -1,5 +1,6 @@
 import { useOperations } from "./Operations";
 import BobToggle from "./BobToggle";
+import LiveFeed from "./LiveFeed";
 import { getWeatherTelemetry, getGenerationConditions, getActiveAlerts, getMonitoringFeeds } from "./services/siteService";
 const assetPathPrefix = '/assets';
 const imgLine = `${assetPathPrefix}/be6c1.png`;
@@ -32,9 +33,10 @@ interface LiveOverviewProps {
   onBack: () => void;
   onTabChange?: (tab: string) => void;
   onBob?: () => void;
+  onConnectData: () => void;
 }
 
-export default function LiveOverview({ onBack, onTabChange, onBob }: LiveOverviewProps) {
+export default function LiveOverview({ onBack, onTabChange, onBob, onConnectData }: LiveOverviewProps) {
   const { state, flow } = useOperations();
   const weather = getWeatherTelemetry();
   const generationConditions = getGenerationConditions();
@@ -152,6 +154,8 @@ export default function LiveOverview({ onBack, onTabChange, onBob }: LiveOvervie
           </button>
         ))}
       </div>
+
+      <LiveFeed onConnect={onConnectData} />
 
       {/* Weather Strip */}
       <div className="bg-white border-b border-[#e0e0e0] flex flex-col gap-2 px-4 py-2.5">

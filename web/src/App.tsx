@@ -285,7 +285,7 @@ function Screens({ onLogout }: { onLogout?: () => void }) {
   }
 
   if (view === 'liveOverview') {
-    return <LiveOverview onBack={() => setView('siteDetail')} onBob={() => setView('bob')} onTabChange={(tab) => setView(tab === 'Live overview' ? 'liveOverview' : 'siteDetail')} />;
+    return <LiveOverview onBack={() => setView('siteDetail')} onBob={() => setView('bob')} onConnectData={() => setView('connectData')} onTabChange={(tab) => setView(tab === 'Live overview' ? 'liveOverview' : 'siteDetail')} />;
   }
 
   if (view === 'siteDetail' || view === 'aiActions' || view === 'recommendation' || view === 'audit') {

@@ -11,6 +11,7 @@ from sqlalchemy import func, select, update
 from sqlalchemy.orm import Session
 
 from app.agent import cycle as agent_cycle, llm
+from app.models.portfolio import Asset, DataSource
 from app.models.run import Action, AssetBlock, Constraint, Cycle, Forecast, LineBlock, Plan, Run, SystemBlock
 from app.optimize import baseline
 from app.optimize.dispatch import MIN_MW, Inputs, here_and_now, plan
@@ -141,6 +142,10 @@ def bob_inputs(db: Session, ctx, truth: World, run: Run, t0: int, forecasts: dic
                  **{a.code: p50("load", a.code) for a in of_kind("consumer")}}
     line_limit = dict(ctx.line_limits)
     kind_of = {a.code: a.kind for a in ctx.assets}
+    # BOB commands only the assets of sites whose telemetry it receives; market trades are the portfolio's.
+    connected = {"portfolio", *db.scalars(select(Asset.code).join(DataSource, DataSource.site_id == Asset.site_id)
+                                          .where(Asset.portfolio_id == run.portfolio_id, DataSource.kind == "api"))}
+    allowed = {k: v for k, v in policy.allowed(db, run.portfolio_id).items() if k.split(":")[1] in connected}
     for k in knowledge(db, ctx, run):
         begin, end = _blocks(run, k, t0)
         now = slice(max(begin, 0), min(end, horizon))
@@ -177,7 +182,7 @@ def bob_inputs(db: Session, ctx, truth: World, run: Run, t0: int, forecasts: dic
                              if x.asset_id == ctx.asset_ids[a.code])
             for a in of_kind("consumer")
         },
-        market=ctx.market, profile=BALANCED, allowed=policy.allowed(db, run.portfolio_id), protected=ctx.protected,
+        market=ctx.market, profile=BALANCED, allowed=allowed, protected=ctx.protected,
     )
 
 

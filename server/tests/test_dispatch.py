@@ -9,7 +9,7 @@ from app.optimize.robust import choose_option
 from app.optimize.situation import Signal, apply_floors, choose_mode
 from app.optimize.validator import check
 from app.seed import seed
-from app.services import documents, policy
+from app.services import datasources, documents, policy
 from app.services.dispatch import bob_inputs, latest_forecasts
 from app.services.portfolio import get_portfolio
 from app.services.runs import RunContext, create_run
@@ -89,11 +89,17 @@ def test_tiers_follow_config_and_protected_limits() -> None:
     assert "approval ceiling" in policy.tier("bess_discharge", "BESS-01", 150, configs, protected)[1]
 
 
-def test_unconfigured_actions_are_never_planned_and_fallbacks_keep_automatic_authority(db: Session) -> None:
+def test_unconnected_or_unconfigured_actions_are_never_planned_and_fallbacks_keep_automatic_authority(
+        db: Session) -> None:
     seed(db)
     run = create_run(db, get_portfolio(db), "evening_spike", NOW)
     ctx = RunContext.load(db, run)
-    # The first block's 24-hour plan reaches the evening, when discharging pays.
+    # Kuppam's telemetry is not connected: BOB does not command its battery.
+    inputs = bob_inputs(db, ctx, ctx.world(), run, 0, latest_forecasts(db, ctx, run, 0))
+    assert plan(inputs).battery["BESS-01"].max() <= 1e-6
+    kuppam = next(s for s in get_portfolio(db).sites if s.code == "KUP-SOLAR-001")
+    datasources.save(db, kuppam, "api", datasources.MOCK_PATH.format(kuppam.code), "test")
+    # Connected, the first block's 24-hour plan reaches the evening, when discharging pays.
     inputs = bob_inputs(db, ctx, ctx.world(), run, 0, latest_forecasts(db, ctx, run, 0))
     assert plan(inputs).battery["BESS-01"].max() > 0
     # A price spike now makes discharging pay now. A fallback for a gated discharge still

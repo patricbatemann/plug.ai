@@ -23,6 +23,7 @@ from app.services.policy import WORK_ORDERS
 from app.services.summary import recent_actions
 
 router = APIRouter(dependencies=[Depends(get_current_user)])
+mock_router = APIRouter()
 
 
 def _run(run_id: int, db: Session) -> Run:
@@ -91,14 +92,26 @@ def import_csv(upload: CsvUpload, site: Site = Depends(current_site), db: Sessio
     return source
 
 
-@router.post("/data-sources/connect")
-def connect_api(payload: DataConnect, db: Session = Depends(get_db),
-                portfolio: Portfolio = Depends(current_portfolio)) -> dict:
-    """The client's API connection test: recent battery telemetry, answered by the simulator."""
+@mock_router.get("/mock/sites/{code}/telemetry")
+def mock_telemetry(site: Site = Depends(current_site), db: Session = Depends(get_db)) -> dict:
+    """A site's telemetry API, open like a vendor's sandbox: the live run's last three hours."""
     try:
-        return datasources.battery_feed(db, current_site(payload.site_id, portfolio), payload.endpoint)
+        return datasources.feed(db, site)
     except ValueError as error:
         raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=str(error)) from None
+
+
+@router.post("/data-sources/connect")
+def connect_feed(payload: DataConnect, db: Session = Depends(get_db), portfolio: Portfolio = Depends(current_portfolio),
+                 user: User = Depends(get_current_user)) -> dict:
+    """The client's API connection: tests the site's telemetry endpoint and keeps it as the site's source."""
+    try:
+        data = datasources.connect(db, current_site(payload.site_id, portfolio), payload.endpoint, user.email,
+                                   payload.refresh_min)
+    except ValueError as error:
+        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=str(error)) from None
+    db.commit()
+    return data
 
 
 @router.post("/sites/{code}/data-sources/api/test", response_model=CsvCheck)

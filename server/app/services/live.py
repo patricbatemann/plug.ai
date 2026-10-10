@@ -12,6 +12,7 @@ from app.models.run import AssetBlock, Cycle, Forecast, Plan, Run, WorldEvent
 from app.schemas.runs import (
     Alert, BatteryCard, ChartPoint, FlowItem, GenerationCard, SiteLive, SiteStatus, Weather,
 )
+from app.services.datasources import site_sources
 from app.services.runs import BLOCK, IST, RunContext, sim_now
 from app.services.summary import recent_actions
 
@@ -222,6 +223,7 @@ def site_live(db: Session, run: Run, site: Site, now: datetime) -> SiteLive:
         demand_mw=round(demand[b], 2) if has("consumer") else None,
         grid_mw=round(grid, 2) if has("interconnection") else None,
         alerts=alerts, bob_now=doing(run, b + 1, db).get(site.name, []), chart=chart,
+        connected=any(s.kind == "api" for s in site_sources(db, site)),
         sources=[FlowItem(label=f.label, mw=round(f.mw, 2)) for f in sources],
         uses=[FlowItem(label=f.label, mw=round(f.mw, 2)) for f in uses],
     )

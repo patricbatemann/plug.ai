@@ -7,9 +7,10 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.core.database import SessionLocal
-from app.models.portfolio import ActionConfig, Asset, Line, Node, Portfolio, Site
+from app.models.portfolio import ActionConfig, Asset, DataSource, Line, Node, Portfolio, Site
 from app.schemas.portfolio import validate_params
 from app.services import runs
+from app.services.datasources import MOCK_PATH
 from app.services.portfolio import get_portfolio
 from app.sim.market import DEFAULT_MARKET
 
@@ -91,6 +92,9 @@ SITES = [
 ]
 
 
+UNCONNECTED = "KUP-SOLAR-001"  # the operator connects Kuppam's telemetry in the demo; BOB then acts there
+
+
 def seed(db: Session) -> bool:
     if db.scalar(select(Portfolio.id).limit(1)) is not None:
         return False
@@ -115,6 +119,8 @@ def seed(db: Session) -> bool:
                   name=a_name, capacity_mw=capacity, params=validate_params(a_kind, params))
             for a_code, a_name, a_kind, capacity, params in assets
         )
+        if code != UNCONNECTED:
+            db.add(DataSource(site_id=site.id, kind="api", name=MOCK_PATH.format(code), created_by="seed"))
     db.flush()
     db.add_all(default_configs(db.scalars(select(Asset).where(Asset.portfolio_id == portfolio.id)).all()))
     db.commit()

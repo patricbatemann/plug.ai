@@ -319,18 +319,28 @@ def test_storm_bulletin_moves_maintenance_and_brings_an_inspection(
 
     csv = client.get(f"{url}/sites/TIR-WIND-003/telemetry.csv", headers=auth_headers).text
     assert csv.startswith("timestamp,asset,power_mw") and "WND-TIR" in csv
+    tir_api = "https://scada.example.invalid/api/mock/sites/TIR-WIND-003/telemetry"
     tested = client.post("/api/sites/TIR-WIND-003/data-sources/api/test",
-                         json={"endpoint": "https://scada.example.invalid/v1", "refresh_min": 5}, headers=auth_headers)
+                         json={"endpoint": tir_api, "refresh_min": 5}, headers=auth_headers)
     assert tested.json()["problems"] == [] and tested.json()["rows"] == 1
-    assert client.post("/api/sites/TIR-WIND-003/data-sources/api/test", json={"endpoint": "ftp://x", "refresh_min": 5},
-                       headers=auth_headers).status_code == 422
+    for wrong in ("ftp://x/api/mock/sites/TIR-WIND-003/telemetry", "https://scada.example.invalid/v1"):
+        assert client.post("/api/sites/TIR-WIND-003/data-sources/api/test", json={"endpoint": wrong, "refresh_min": 5},
+                           headers=auth_headers).status_code == 422
 
-    connect = lambda site: client.post("/api/data-sources/connect", headers=auth_headers, json={  # noqa: E731
-        "siteId": site, "endpoint": "https://bms.example.invalid/v1", "apiKey": "unused", "refreshIntervalMin": 5})
-    feed = connect("KUP-SOLAR-001").json()
-    assert feed["headers"] == ["timestamp", "device_id", "soc_percent", "battery_power_mw"]
-    assert feed["rows"] and {r[1] for r in feed["rows"]} == {"BESS-01"} and all(map(all, feed["rows"]))
-    assert connect("TIR-WIND-003").status_code == 422  # no battery
+    kup_api = "http://localhost:5173/api/mock/sites/KUP-SOLAR-001/telemetry"
+    feed = client.get("/api/mock/sites/KUP-SOLAR-001/telemetry").json()  # open, like a vendor's sandbox
+    assert feed["headers"][:4] == ["timestamp", "device_id", "soc_percent", "battery_power_mw"]
+    assert {r[1] for r in feed["rows"]} == {"BESS-01"} and all(len(r) == len(feed["headers"]) for r in feed["rows"])
+    assert not client.get(f"{url}/sites/KUP-SOLAR-001/live", headers=auth_headers).json()["connected"]
+    connect = lambda site, endpoint: client.post("/api/data-sources/connect", headers=auth_headers, json={  # noqa: E731
+        "siteId": site, "endpoint": endpoint, "apiKey": "unused", "refreshIntervalMin": 5})
+    assert connect("KUP-SOLAR-001", "https://bms.example.invalid/v1").status_code == 422
+    assert connect("KUP-SOLAR-001", kup_api).json() == feed
+    connect("KUP-SOLAR-001", kup_api)  # connecting again keeps one source
+    assert [s["name"] for s in client.get("/api/sites/KUP-SOLAR-001/data-sources", headers=auth_headers).json()
+            if s["kind"] == "api"] == [kup_api]
+    assert client.get(f"{url}/sites/KUP-SOLAR-001/live", headers=auth_headers).json()["connected"]
+    assert connect("TIR-WIND-003", tir_api).status_code == 422  # no battery
 
 
 def test_what_if_and_replay_study_leave_the_live_run_alone(

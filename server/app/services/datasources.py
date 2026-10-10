@@ -1,14 +1,16 @@
 """Connect data source (a mock, docs/spec/05). A CSV of telemetry history is checked against fixed
-known columns, typed and previewed, then stored for the site. A live API is "tested" against the
-simulator: no external system is ever called. BOB keeps planning on simulated telemetry."""
+known columns, typed and previewed, then stored for the site. A site's live API is the mock telemetry
+endpoint, answered by the simulator: no external system is ever called. BOB commands only the assets
+of sites with a connected API."""
 
 import csv
 import io
-import re
+from collections import defaultdict
 from collections.abc import Iterator
 from datetime import datetime
+from urllib.parse import urlsplit
 
-from sqlalchemy import select
+from sqlalchemy import delete, select
 from sqlalchemy.orm import Session
 
 from app.models.portfolio import Asset, DataSource, Site
@@ -19,7 +21,11 @@ REQUIRED = ("timestamp", "asset", "power_mw")
 KNOWN = (*REQUIRED, "available_mw", "soc_pct", "voltage_v", "cell_temp_c", "status", "frequency_hz")
 MAX_BYTES = 5_000_000
 PREVIEW_ROWS = 10
-FEED_ROWS = 12  # three hours of one battery
+FEED_BLOCKS = 12  # three hours
+MOCK_PATH = "/api/mock/sites/{}/telemetry"
+FEED = {"timestamp": "DateTime", "device_id": "String", "soc_percent": "Number", "battery_power_mw": "Number",
+        "solar_mw": "Number", "wind_mw": "Number", "irradiance_wm2": "Number", "wind_ms": "Number",
+        "temperature_c": "Number", "frequency_hz": "Number"}
 
 
 def _type(values: list[str]) -> str:
@@ -68,10 +74,11 @@ def read_csv(site: Site, content: bytes) -> dict:
     return {"rows": len(rows), "columns": columns, "preview": rows[:PREVIEW_ROWS], "problems": problems}
 
 
-def _telemetry(db: Session, run: Run, site: Site) -> Iterator[tuple[datetime, Asset, AssetBlock]]:
+def _telemetry(db: Session, run: Run, site: Site, since: int = 0) -> Iterator[tuple[datetime, Asset, AssetBlock]]:
     assets = {a.id: a for a in site.assets}
     for row in db.scalars(select(AssetBlock).where(AssetBlock.run_id == run.id, AssetBlock.policy == "bob",
-                                                   AssetBlock.asset_id.in_(assets)).order_by(AssetBlock.block)):
+                                                   AssetBlock.asset_id.in_(assets), AssetBlock.block >= since)
+                          .order_by(AssetBlock.block)):
         yield (run.sim_start_at + row.block * runs.BLOCK).astimezone(runs.IST), assets[row.asset_id], row
 
 
@@ -86,32 +93,58 @@ def telemetry_csv(db: Session, run: Run, site: Site) -> str:
     return out.getvalue()
 
 
-def _simulator(db: Session, endpoint: str) -> Run:
-    """The live run answers for the connected system; the endpoint is only checked."""
-    if not re.fullmatch(r"https?://[^\s/]+(/\S*)?", endpoint):
-        raise ValueError("Enter an http or https endpoint URL")
+def _live(db: Session) -> Run:
     run = runs.latest_live(db)
     if run is None or run.current_block < 0:
         raise ValueError("Start a run: the simulator answers for the connected system")
     return run
 
 
+def _check(site: Site, endpoint: str) -> None:
+    """Only the site's mock endpoint can be connected; nothing outside is ever called."""
+    url = urlsplit(endpoint)
+    if url.scheme not in ("http", "https") or not url.netloc or url.path.rstrip("/") != MOCK_PATH.format(site.code):
+        raise ValueError(f"Enter {site.name}'s telemetry endpoint: http(s)://<host>{MOCK_PATH.format(site.code)}")
+
+
 def test_api(db: Session, site: Site, endpoint: str) -> dict:
-    """What a connected system would send now, answered by the simulator from the live run."""
-    text = telemetry_csv(db, _simulator(db, endpoint), site)
-    lines = text.strip().splitlines()
-    latest = [lines[0], *lines[-len(site.assets):]]  # the last settled block, one row per asset
-    return read_csv(site, "\n".join(latest).encode())
+    """What the connected system sends now: the last settled block, one row per asset."""
+    _check(site, endpoint)
+    lines = telemetry_csv(db, _live(db), site).strip().splitlines()
+    return read_csv(site, "\n".join([lines[0], *lines[-len(site.assets):]]).encode())
 
 
-def battery_feed(db: Session, site: Site, endpoint: str) -> dict:
-    """A battery management API, answered by the simulator: recent blocks in the columns the client maps."""
-    rows = [[at.isoformat(), a.code, str(round(row.soc_mwh / a.params["energy_mwh"] * 100, 1)),
-             str(round(row.actual_mw, 2))]
-            for at, a, row in _telemetry(db, _simulator(db, endpoint), site) if a.kind == "bess"]
-    if not rows:
-        raise ValueError(f"{site.name} has no battery telemetry yet")
-    return {"headers": ["timestamp", "device_id", "soc_percent", "battery_power_mw"], "rows": rows[-FEED_ROWS:]}
+def feed(db: Session, site: Site) -> dict:
+    """The site's telemetry API: a row per battery per block for the last three hours, with the site's
+    generation and weather. It moves on every settled block, and BOB plans on the same readings."""
+    run = _live(db)
+    if not any(a.kind == "bess" for a in site.assets):
+        raise ValueError(f"{site.name} has no battery telemetry")
+    truth = runs.RunContext.load(db, run).world()
+    node = site.assets[0].node.code
+    blocks = defaultdict(dict)
+    for at, a, row in _telemetry(db, run, site, since=run.current_block - FEED_BLOCKS + 1):
+        blocks[row.block, at][a] = row
+    rows = []
+    for (b, at), readings in blocks.items():
+        made = lambda kind: round(sum(r.actual_mw for a, r in readings.items() if a.kind == kind), 2)  # noqa: E731
+        shared = [made("solar"), made("wind"), round(float(truth.irradiance[node][b])),
+                   round(float(truth.wind_speed[node][b]), 1), round(float(truth.temperature[b]), 1),
+                   round(float(truth.frequency[b]), 2)]
+        rows += [[at.isoformat(), a.code, round(r.soc_mwh / a.params["energy_mwh"] * 100, 1), round(r.actual_mw, 2),
+                  *shared] for a, r in readings.items() if a.kind == "bess"]
+    return {"headers": list(FEED), "rows": rows}
+
+
+def connect(db: Session, site: Site, endpoint: str, user: str, refresh_min: int | None) -> dict:
+    """Test the site's API and keep it as the site's one live source; BOB acts at the site from the next plan."""
+    _check(site, endpoint)
+    data = feed(db, site)
+    db.execute(delete(DataSource).where(DataSource.site_id == site.id, DataSource.kind == "api"))
+    save(db, site, "api", endpoint, user, {"rows": len(data["rows"]),
+                                          "columns": [{"name": n, "type": t} for n, t in FEED.items()]},
+         refresh_min=refresh_min)
+    return data
 
 
 def save(db: Session, site: Site, kind: str, name: str, user: str, found: dict | None = None,

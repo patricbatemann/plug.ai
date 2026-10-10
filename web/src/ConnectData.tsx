@@ -72,7 +72,7 @@ export default function ConnectData({ onBack }: ConnectDataProps) {
     apiRequest.current = controller
     try {
       const url = new URL(endpoint)
-      if (url.protocol !== "https:")
+      if (url.protocol !== "https:" && !(url.protocol === "http:" && ["localhost", "127.0.0.1"].includes(url.hostname)))
         throw new Error("Use an HTTPS API endpoint.")
       const adapter = import.meta.env.VITE_DATA_CONNECT_ENDPOINT
       if (
@@ -239,8 +239,8 @@ export default function ConnectData({ onBack }: ConnectDataProps) {
             <p className="text-sm">
               {dataset?.kind === "CSV"
                 ? "Historical/imported data only — this does not refresh live telemetry."
-                : "API response validated. Continuous refresh requires the server-side adapter to retain the connection securely."}{" "}
-              Monitoring only; no BOB control permission granted.
+                : "Live feed connected. It refreshes every block, and BOB now plans on it and acts at this site within its configured limits."}
+              {dataset?.kind === "CSV" && " Monitoring only; no BOB control permission granted."}
             </p>
             <button
               onClick={onBack}
@@ -345,7 +345,7 @@ export default function ConnectData({ onBack }: ConnectDataProps) {
                   <input
                     value={endpoint}
                     onChange={(event) => setEndpoint(event.target.value)}
-                    placeholder="https://api.example.com/v1/data"
+                    placeholder={`${location.origin}/api/mock/sites/KUP-SOLAR-001/telemetry`}
                     type="url"
                     className={input}
                   />

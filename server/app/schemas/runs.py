@@ -79,6 +79,7 @@ class DataConnect(BaseModel):
     """The client's API data-source form. The key is neither stored nor used: the simulator answers."""
     site_id: str = Field(alias="siteId", max_length=40)
     endpoint: str = Field(max_length=300)
+    refresh_min: int | None = Field(default=None, alias="refreshIntervalMin", ge=1, le=60)
 
 
 class ChatItem(BaseModel):
@@ -215,6 +216,7 @@ class SiteLive(BaseModel):
     grid_mw: float | None
     alerts: list[Alert]
     bob_now: list[str]  # what BOB is doing at the site in the block in progress
+    connected: bool  # BOB commands the site's assets only while its telemetry API is connected
     chart: list[ChartPoint]
     sources: list[FlowItem]
     uses: list[FlowItem]

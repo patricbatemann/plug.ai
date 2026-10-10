@@ -115,6 +115,7 @@ export interface SiteLive {
   grid_mw: number | null
   alerts: Alert[]
   bob_now: string[]
+  connected: boolean
   chart: ChartPoint[]
   sources: Array<{ label: string; mw: number }>
   uses: Array<{ label: string; mw: number }>
