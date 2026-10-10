@@ -1,8 +1,8 @@
 # PlugAI user manual
 
-[![Watch the BOB demo (3½ minutes)](images/demo-video.png)](demo/bob-demo.webm)
+[![Watch the BOB demo (3½ minutes)](images/demo-video.png)](demo/bob-demo.mp4)
 
-*Click the picture to play the demo video ([`docs/demo/bob-demo.webm`](demo/bob-demo.webm), 3 min 26 s).*
+*Click the picture to play the demo video ([`docs/demo/bob-demo.mp4`](demo/bob-demo.mp4), 3 min 26 s).*
 
 PlugAI runs a simulated renewable energy portfolio in Andhra Pradesh (solar, wind, two batteries, an industrial cluster and a market connection) in 15-minute blocks. **BOB** is its AI operator. Every block it plans what each asset should do, acts within the limits you set, asks you when an action is above its authority, and explains every decision. Each run is also settled under **today's practice**: batteries on a fixed clock and a trading desk. That gives you a fair comparison on the same weather and prices.
 
@@ -166,7 +166,7 @@ Try these:
 
 ## 10. The demo script
 
-The [demo video](demo/bob-demo.webm) follows this path.
+The [demo video](demo/bob-demo.mp4) follows this path.
 
 1. **Sign in.** The Demo story run is already live (`make seed` started it). The portfolio fills in and the comparison with today's practice builds from the morning.
 2. **Open Kuppam Solar Site → Live overview.** The feed says *Not connected*: BOB only watches the site.
