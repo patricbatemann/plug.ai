@@ -127,3 +127,17 @@ pre {
   font-weight: 400;
 }
 
+
+/* BOB's markdown replies */
+.bob-markdown { font-size: 14px; line-height: 1.6; color: var(--color-carbon-gray-100); overflow-wrap: anywhere; }
+.bob-markdown > * + * { margin-top: 0.6em; }
+.bob-markdown h1, .bob-markdown h2, .bob-markdown h3 { font-weight: 600; font-size: 15px; }
+.bob-markdown ul { list-style: disc; padding-left: 1.25em; }
+.bob-markdown ol { list-style: decimal; padding-left: 1.25em; }
+.bob-markdown li + li { margin-top: 0.2em; }
+.bob-markdown strong { font-weight: 600; }
+.bob-markdown a { color: var(--color-carbon-blue-60); text-decoration: underline; }
+.bob-markdown code { font-family: var(--font-mono); font-size: 13px; background: var(--color-carbon-gray-10); padding: 0 0.25em; }
+.bob-markdown table { border-collapse: collapse; font-size: 13px; display: block; overflow-x: auto; max-width: 100%; }
+.bob-markdown th, .bob-markdown td { border: 1px solid var(--color-carbon-gray-20); padding: 0.35em 0.6em; text-align: left; }
+.bob-markdown th { background: var(--color-carbon-gray-10); font-weight: 600; }

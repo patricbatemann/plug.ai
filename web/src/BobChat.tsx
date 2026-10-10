@@ -5,6 +5,8 @@ import {
   useState,
   type ReactNode,
 } from "react"
+import ReactMarkdown from "react-markdown"
+import remarkGfm from "remark-gfm"
 import { runApi, type ChatItem } from "./api/client"
 import { SITE } from "./data"
 
@@ -88,6 +90,17 @@ export function useBobChat(scope: string) {
 
 export type BobChatState = ReturnType<typeof useBobChat>
 
+/** BOB's reply as GitHub-flavoured markdown; raw HTML in it is shown as text, never rendered. */
+export function Markdown({ text }: { text: string }) {
+  return (
+    <div className="bob-markdown">
+      <ReactMarkdown remarkPlugins={[remarkGfm]} components={{ a: ({ href, children }) => <a href={href} target="_blank" rel="noreferrer">{children}</a> }}>
+        {text}
+      </ReactMarkdown>
+    </div>
+  )
+}
+
 export function BobChatScrollArea({ children, updateKey, lastUserId, className = "" }: {
   children: ReactNode
   updateKey: string
@@ -162,9 +175,11 @@ export function BobMessages({ chat, variant = "default" }: { chat: BobChatState;
             <p className="mb-1 text-[11px] font-semibold text-[#525252]">
               {message.role === "user" ? "You" : "BOB"}
             </p>
-            <p className="whitespace-pre-wrap break-words text-[14px] leading-relaxed text-[#161616] [overflow-wrap:anywhere]">
-              {message.text}
-            </p>
+            {message.role === "assistant" ? <Markdown text={message.text} /> : (
+              <p className="whitespace-pre-wrap break-words text-[14px] leading-relaxed text-[#161616] [overflow-wrap:anywhere]">
+                {message.text}
+              </p>
+            )}
           </div>
         </div>
       ))}
@@ -181,11 +196,7 @@ export function BobMessages({ chat, variant = "default" }: { chat: BobChatState;
           BOB is responding…
         </p>
       )}
-      {chat.reply && (
-        <p className="whitespace-pre-wrap break-words pl-11 text-[14px] leading-relaxed text-[#161616] [overflow-wrap:anywhere]">
-          {chat.reply}
-        </p>
-      )}
+      {chat.reply && <div className="pl-11"><Markdown text={chat.reply} /></div>}
       {chat.error && (
         <div
           role="alert"
