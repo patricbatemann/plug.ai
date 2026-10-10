@@ -1,7 +1,6 @@
 import { Link, useLocation, useSearchParams } from "react-router"
 import { useTransactions } from "./portfolio"
 import { useOperations } from "./Operations"
-import { useProfile } from "./auth/user"
 import { CONFIG_STEPS, SITE } from "./data"
 import { useQuery } from "@tanstack/react-query"
 import { documentApi } from "./api/client"
@@ -42,8 +41,7 @@ export function JourneyNavigation() {
 }
 
 export default function OperationalPanels({ page }: { page: string }) {
-  const { state, flow, edit, addAudit, setState } = useOperations()
-  const profile = useProfile()
+  const { state, edit } = useOperations()
   const [params] = useSearchParams()
   const transaction = useTransactions().find(
     (row) => row.id === params.get("id"),
@@ -129,13 +127,7 @@ export default function OperationalPanels({ page }: { page: string }) {
             <div className="flex flex-wrap gap-4">
               <Link
                 to="/agentChat"
-                onClick={() => {
-                  edit(3)
-                  addAudit(
-                    "Safe alternative selected",
-                    "Safety limits opened for review; no immutable policy changed.",
-                  )
-                }}
+                onClick={() => edit(3)}
                 className="bg-[#0f62fe] px-4 py-3 text-sm text-white"
               >
                 Choose a safe alternative
@@ -177,19 +169,6 @@ export default function OperationalPanels({ page }: { page: string }) {
               {JSON.stringify(state.activeConfig ?? state.config, null, 2)}
             </pre>
             <div className="flex flex-wrap items-center gap-3 pt-2">
-              <button
-                type="button"
-                onClick={() => {
-                  addAudit("Action details saved", `Battery 1 configuration details saved by ${profile?.name ?? "the operator"}.`);
-                  alert("Action details saved successfully.");
-                }}
-                className="flex min-h-11 items-center gap-2 rounded-[2px] bg-[#0f62fe] px-4 text-xs font-semibold text-white hover:bg-[#0043ce] transition-colors cursor-pointer shadow-xs"
-              >
-                <svg className="size-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
-                  <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
-                </svg>
-                Save details
-              </button>
               <Link
                 to="/protected"
                 className="inline-flex min-h-11 items-center text-sm text-[#0f62fe]"
@@ -201,62 +180,6 @@ export default function OperationalPanels({ page }: { page: string }) {
         )}
         {page === "workOrder" && <WorkOrders />}
 
-        <section className="space-y-3 border border-[#e0e0e0] bg-white p-4">
-          <label className="flex flex-wrap items-center gap-3 text-xs">
-            Preview permission role
-            <select
-              aria-label="Preview permission role"
-              value={state.role}
-              onChange={(event) =>
-                setState((current) => ({
-                  ...current,
-                  role: event.target.value as "operator" | "administrator",
-                }))
-              }
-              className="min-h-11 border border-[#8d8d8d] px-3"
-            >
-              <option value="operator">
-                Operator (no approval permission)
-              </option>
-              <option value="administrator">
-                Administrator (preview only)
-              </option>
-            </select>
-          </label>
-          <p className="text-xs">
-            Grid remote control:{" "}
-            {state.gridRemoteAvailable
-              ? "Adapter capability verified"
-              : "Unavailable"}
-            . BOB grid permission:{" "}
-            {state.gridControlGranted ? "Granted" : "Not granted"}.
-          </p>
-          {state.gridRemoteAvailable && (
-            <button
-              disabled={state.role !== "administrator"}
-              onClick={() => {
-                setState((current) => ({
-                  ...current,
-                  gridControlGranted: !current.gridControlGranted,
-                }))
-                addAudit(
-                  "Grid control permission updated",
-                  state.gridControlGranted
-                    ? "Administrator revoked preview BOB grid-control permission."
-                    : "Administrator explicitly granted preview BOB grid-control permission after adapter verification. Existing approvals are not automatically executed.",
-                )
-              }}
-              className="min-h-11 border border-[#8d8d8d] px-4 text-xs disabled:opacity-50"
-            >
-              {state.gridControlGranted ? "Revoke" : "Grant"} BOB grid
-              permission
-            </button>
-          )}
-          <p className="text-xs text-[#6f6f6f]">
-            This selector tests UI permissions only. Production authorization
-            must be enforced by the backend.
-          </p>
-        </section>
       </div>
     </main>
   )

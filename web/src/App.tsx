@@ -1,5 +1,7 @@
 import { useState } from 'react';
-import { mw } from './format';
+import { batteryState, mw, mwh } from './format';
+import { useSite } from './site';
+import { SITE } from './data';
 import SiteDetail from './SiteDetail';
 import BobActions from './BobActions';
 import LiveOverview from './LiveOverview';
@@ -191,6 +193,8 @@ function Screens({ onLogout }: { onLogout?: () => void }) {
   const [siteSearch, setSiteSearch] = useState('');
   const [statusFilter, setStatusFilter] = useState('all');
   const [sortOrder, setSortOrder] = useState<'attention' | 'name' | 'output'>('attention');
+  const site = useSite();
+  const { live, battery } = site;
   const { simTime, categories: portfolioCategories, stats: portfolioStats, sites: registeredSites, transactions: transactionRows } = usePortfolio();
 
   const filteredSites = registeredSites
@@ -224,14 +228,9 @@ function Screens({ onLogout }: { onLogout?: () => void }) {
 
   if (['review', 'test', 'activate'].includes(view) && state.confirmed.length !== 7) return <AgentChat onClose={() => setView('bob')} onComplete={(config) => { setActionConfig(config); setView('review'); }} />;
 
-  if (view === 'approval' && actionConfig) {
-    return <ApprovalReview config={state.activeConfig ?? actionConfig} onBack={() => setView('monitoring')} onApprove={() => setView('monitoring')} onReject={() => setView('monitoring')} />;
-  }
+  if (view === 'approval') return <ApprovalReview onBack={() => setView('monitoring')} />;
 
-  if (view === 'monitoring' && actionConfig) {
-    if (!state.activated) return <BobActions onClose={() => setView('siteDetail')} onAddAction={() => setView('agentChat')} />;
-    return <ActiveMonitoring config={state.activeConfig ?? actionConfig} onBack={() => setView('siteDetail')} onApprovalReview={() => setView('approval')} />;
-  }
+  if (view === 'monitoring') return <ActiveMonitoring onBack={() => setView('siteDetail')} onApprovalReview={() => setView('approval')} />;
 
   if (view === 'activate' && actionConfig) {
     if (!operations.testsPassed) return <TestSimulation config={actionConfig} onBack={() => setView('review')} onComplete={() => { operations.setState(current => ({ ...current, stage: 'Ready to activate' })); setView('activate'); }} />;
@@ -239,7 +238,7 @@ function Screens({ onLogout }: { onLogout?: () => void }) {
   }
 
   if (view === 'test' && actionConfig) {
-    return <TestSimulation config={actionConfig} onBack={() => setView('review')} onComplete={() => { if (state.activated && JSON.stringify(state.activeConfig) === JSON.stringify(actionConfig) && ['Active', 'Executing', 'Completed'].includes(state.stage)) { setView('monitoring'); return; } operations.setState(current => ({ ...current, stage: 'Ready to activate' })); operations.addAudit('Required simulations passed', 'Seven of seven scenarios passed for the proposed configuration.'); setView('activate'); }} onConfigure={() => setView('agentChat')} onConnectData={() => setView('connectData')} onExit={() => setView('siteDetail')} />;
+    return <TestSimulation config={actionConfig} onBack={() => setView('review')} onComplete={() => { if (state.activated && JSON.stringify(state.activeConfig) === JSON.stringify(actionConfig) && ['Active', 'Executing', 'Completed'].includes(state.stage)) { setView('monitoring'); return; } operations.setState(current => ({ ...current, stage: 'Ready to activate' })); setView('activate'); }} onConfigure={() => setView('agentChat')} onConnectData={() => setView('connectData')} onExit={() => setView('siteDetail')} />;
   }
 
   if (view === 'review' && actionConfig) {
@@ -386,16 +385,16 @@ function Screens({ onLogout }: { onLogout?: () => void }) {
                   <div className="size-1.5 relative shrink-0">
                     <img alt="" className="absolute inset-0 size-full" src={imgStatusDot} />
                   </div>
-                  <p className="font-['IBM Plex Sans:SemiBold'] font-semibold text-[#161616] text-[12px] leading-normal whitespace-nowrap max-sm:whitespace-normal" style={{ fontVariationSettings: '"wdth" 100' }}>{state.approval?.decision === 'pending' ? 'Admin Approval Required' : 'Operational summary'}</p>
+                  <p className="font-['IBM Plex Sans:SemiBold'] font-semibold text-[#161616] text-[12px] leading-normal whitespace-nowrap max-sm:whitespace-normal" style={{ fontVariationSettings: '"wdth" 100' }}>{site.approvals.length ? `${site.approvals.length} approval${site.approvals.length > 1 ? 's' : ''} waiting` : 'Operational summary'}</p>
                 </div>
               </div>
-              <p className="font-['IBM Plex Sans:Regular'] font-normal text-[#8d8d8d] text-[13px] leading-normal whitespace-nowrap max-sm:whitespace-normal" style={{ fontVariationSettings: '"wdth" 100' }}>Latest analysis · <span className="font-mono">01 Oct 2026, 14:32 IST</span></p>
+              <p className="font-['IBM Plex Sans:Regular'] font-normal text-[#8d8d8d] text-[13px] leading-normal whitespace-nowrap max-sm:whitespace-normal" style={{ fontVariationSettings: '"wdth" 100' }}>Latest analysis · <span className="font-mono">{simTime}</span></p>
             </div>
             {/* Briefing Content */}
             <div className="flex flex-col gap-4">
-              <p className="font-['IBM Plex Sans:Bold'] font-bold text-[#161616] text-[22px] leading-normal" style={{ fontVariationSettings: '"wdth" 100' }}>{state.approval?.decision === 'pending' ? 'Pending grid-import approval' : 'Kuppam Solar operational summary'}</p>
+              <p className="font-['IBM Plex Sans:Bold'] font-bold text-[#161616] text-[22px] leading-normal" style={{ fontVariationSettings: '"wdth" 100' }}>{site.approvals.length ? `Approval waiting at ${SITE.name}` : `${SITE.name} operational summary`}</p>
               <p className="font-['IBM Plex Sans:Regular'] font-normal text-[#525252] text-[14px] leading-[1.5]" style={{ fontVariationSettings: '"wdth" 100' }}>
-                Kuppam Solar Site is generating <span className="font-mono font-medium text-[#161616]">38 MW</span>. Demand is <span className="font-mono font-medium text-[#161616]">{operations.flow.demand} MW</span>. Battery 1 discharges <span className="font-mono font-medium text-[#161616]">{operations.flow.battery} MW</span> and grid import is <span className="font-mono font-medium text-[#161616]">{operations.flow.grid} MW</span>. {operations.flow.deficit > 0 ? <><span className="font-mono font-medium text-[#da1e28]">{operations.flow.deficit} MW</span> remains uncovered.</> : "Demand is fully covered."} No surplus is available for export.
+                {SITE.name} is generating <span className="font-mono font-medium text-[#161616]">{mw(live?.generation?.actual_mw ?? 0)}</span>{live?.generation?.forecast_mw != null && <> against a <span className="font-mono font-medium text-[#161616]">{mw(live.generation.forecast_mw)}</span> forecast</>}. {battery ? <>{battery.name} is {batteryState(battery.mw, battery.available).toLowerCase()} and grid import is <span className="font-mono font-medium text-[#161616]">{mw(Math.max(live?.grid_mw ?? 0, 0))}</span>.</> : null}
               </p>
               <div className="bg-[#f4f4f4] flex flex-col gap-2 p-4 rounded-[2px]">
                 <div className="flex gap-1.5 items-center max-sm:flex-wrap">
@@ -405,7 +404,7 @@ function Screens({ onLogout }: { onLogout?: () => void }) {
                   <p className="font-['IBM Plex Sans:Bold'] font-bold text-[#161616] text-[13px] leading-normal whitespace-nowrap max-sm:whitespace-normal" style={{ fontVariationSettings: '"wdth" 100' }}>Operational impact</p>
                 </div>
                 <p className="font-['IBM Plex Sans:Regular'] font-normal text-[#525252] text-[14px] leading-[1.4]" style={{ fontVariationSettings: '"wdth" 100' }}>
-                  Battery SOC is <span className="font-mono font-medium text-[#161616]">{operations.flow.soc}%</span>, with <span className="font-mono font-medium text-[#161616]">{((operations.flow.soc - 55) * 0.2).toFixed(1)} MWh</span> usable above the <span className="font-mono">55%</span> reserve. At <span className="font-mono">6 MW</span>, each action is capped at <span className="font-mono">30 minutes</span> / <span className="font-mono">3 MWh</span>; discharge stops at the reserve.
+                  {battery ? <>{battery.name} is at <span className="font-mono font-medium text-[#161616]">{battery.soc_pct}%</span>{site.reservePct !== null && <>, with <span className="font-mono font-medium text-[#161616]">{mwh(Math.max(0, ((battery.soc_pct - site.reservePct) / 100) * battery.energy_mwh))}</span> usable above the <span className="font-mono">{site.reservePct}%</span> reserve</>}.{site.floorPct !== null && <> The locked floor is <span className="font-mono">{site.floorPct}%</span>.</>}</> : 'This site has no battery.'}
                 </p>
               </div>
               <div className="border-l-[3px] border-[#0f62fe] flex flex-col gap-2 pl-4 pr-3 py-3">
@@ -416,14 +415,14 @@ function Screens({ onLogout }: { onLogout?: () => void }) {
                   <p className="font-['IBM Plex Sans:Bold'] font-bold text-[#161616] text-[13px] leading-normal whitespace-nowrap max-sm:whitespace-normal" style={{ fontVariationSettings: '"wdth" 100' }}>Current response</p>
                 </div>
                 <p className="font-['IBM Plex Sans:Regular'] font-normal text-[#525252] text-[14px] leading-[1.4]" style={{ fontVariationSettings: '"wdth" 100' }}>
-                  Battery 1 discharges <span className="font-mono font-medium text-[#161616]">{operations.flow.battery} MW</span> in the site preview. {state.approval ? `Grid recommendation status: ${state.approval.decision}.` : <>No grid approval is pending at <span className="font-mono">14:32 IST</span>.</>} {state.activated ? "BOB configuration activated." : "New BOB configuration not yet activated."}
+                  {live?.bob_now.length ? live.bob_now.join('; ') : 'BOB is not acting at this site in this block.'} {!live?.connected ? 'The site’s telemetry is not connected, so BOB only monitors it.' : site.bobActive ? 'BOB’s actions here are active.' : 'BOB’s actions here are paused.'}
                 </p>
               </div>
             </div>
             {/* Actions */}
             <div className="flex gap-3 items-center pt-2 max-sm:flex-wrap">
-              <button onClick={() => { operations.requestImport(); setView("approval"); }} className="bg-[#0f62fe] flex items-center justify-center px-[18px] py-2.5 rounded-[2px] cursor-pointer hover:bg-[#0043ce] transition-colors max-sm:flex-wrap">
-                <p className="font-['IBM Plex Sans:SemiBold'] font-semibold text-white text-[14px] leading-normal whitespace-nowrap max-sm:whitespace-normal" style={{ fontVariationSettings: '"wdth" 100' }}>Review forecast import</p>
+              <button onClick={() => setView("approval")} className="bg-[#0f62fe] flex items-center justify-center px-[18px] py-2.5 rounded-[2px] cursor-pointer hover:bg-[#0043ce] transition-colors max-sm:flex-wrap">
+                <p className="font-['IBM Plex Sans:SemiBold'] font-semibold text-white text-[14px] leading-normal whitespace-nowrap max-sm:whitespace-normal" style={{ fontVariationSettings: '"wdth" 100' }}>Review approvals</p>
               </button>
               <button onClick={() => setView("askBob")} className="bg-white border border-[#0f62fe] flex gap-2 items-center justify-center px-[18px] min-h-11 rounded-[2px] cursor-pointer hover:bg-[#edf5ff] transition-colors max-sm:flex-wrap">
                 <div className="size-3.5 relative shrink-0">

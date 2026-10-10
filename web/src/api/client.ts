@@ -97,6 +97,11 @@ export interface ChartPoint {
   high: number | null
 }
 
+export interface FlowItem {
+  label: string
+  mw: number
+}
+
 export interface SiteLive {
   sim_time: string
   as_of: string
@@ -118,8 +123,8 @@ export interface SiteLive {
   connected: boolean
   replanned: string | null
   chart: ChartPoint[]
-  sources: Array<{ label: string; mw: number }>
-  uses: Array<{ label: string; mw: number }>
+  sources: FlowItem[]
+  uses: FlowItem[]
 }
 
 export interface PolicyTotals {

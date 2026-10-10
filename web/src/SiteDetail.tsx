@@ -1,7 +1,8 @@
 import { useState } from 'react';
 import BobToggle from './BobToggle';
-import { SITE, SNAPSHOT_14_32, BATTERY_POLICY } from './data';
-import { useOperations } from './Operations';
+import { SITE, BATTERY_POLICY } from './data';
+import { useSite } from './site';
+import { simDateTime } from './format';
 import { Link } from 'react-router';
 import { getSiteAssets, getMonitoringFeeds } from './services/siteService';
 
@@ -169,7 +170,7 @@ export type AssetItem = (typeof ASSETS)[number] & {
 
 export default function SiteDetail({ onBack, onLiveOverview, onBob, onConnectData, initialTab = 'site', onTabChange }: SiteDetailProps) {
   const [activeTab, setActiveTab] = useState<TabId>(initialTab);
-  const { state, flow, addAudit } = useOperations();
+  const { live, battery, bobActive } = useSite();
   const [siteDetails, setSiteDetails] = useState<SiteDetailsData>(() => {
     try {
       const stored = localStorage.getItem(`plug_site_details_${SITE.id}`);
@@ -187,12 +188,6 @@ export default function SiteDetail({ onBack, onLiveOverview, onBob, onConnectDat
     } catch { }
     setSiteDetails(editSiteForm);
     setIsEditingSite(false);
-    if (typeof addAudit === 'function') {
-      addAudit(
-        'Site details updated',
-        `Site details updated for ${editSiteForm.name} (Capacity: ${editSiteForm.capacityMW} MW, Status: ${editSiteForm.status}).`
-      );
-    }
     setSaveSuccessMsg('Site details saved successfully.');
     setTimeout(() => setSaveSuccessMsg(null), 4000);
   };
@@ -220,12 +215,6 @@ export default function SiteDetail({ onBack, onLiveOverview, onBob, onConnectDat
     } catch { }
     setPrimaryContact(editContactForm);
     setIsEditingContact(false);
-    if (typeof addAudit === 'function') {
-      addAudit(
-        'Primary contact updated',
-        `Primary contact updated to ${editContactForm.nameRole} (${editContactForm.email}).`
-      );
-    }
     setContactSuccessMsg('Primary contact saved successfully.');
     setTimeout(() => setContactSuccessMsg(null), 4000);
   };
@@ -253,12 +242,6 @@ export default function SiteDetail({ onBack, onLiveOverview, onBob, onConnectDat
     } catch { }
     setLocation(editLocationForm);
     setIsEditingLocation(false);
-    if (typeof addAudit === 'function') {
-      addAudit(
-        'Site location updated',
-        `Location updated to ${editLocationForm.latitude}, ${editLocationForm.longitude} (${editLocationForm.address}).`
-      );
-    }
     setLocationSuccessMsg('Location details saved successfully.');
     setTimeout(() => setLocationSuccessMsg(null), 4000);
   };
@@ -288,16 +271,7 @@ export default function SiteDetail({ onBack, onLiveOverview, onBob, onConnectDat
   const [assetSuccessMsg, setAssetSuccessMsg] = useState<string | null>(null);
   const [deletedAssetBackup, setDeletedAssetBackup] = useState<AssetItem | null>(null);
 
-  const assets: AssetItem[] = assetsList.map(asset =>
-    asset.name === "Grid Connection"
-      ? {
-          ...asset,
-          remote: state.gridRemoteAvailable ? "Available ✓" : "Not available —",
-          bob: state.gridControlGranted ? "Granted & verified" : null,
-          bobLink: state.gridControlGranted ? "Review permission" : null,
-        }
-      : asset
-  );
+  const assets = assetsList;
 
   const confirmDeleteAsset = () => {
     if (!assetToDelete) return;
@@ -310,13 +284,6 @@ export default function SiteDetail({ onBack, onLiveOverview, onBob, onConnectDat
     setDeletedAssetBackup(toRemove);
     setAssetSuccessMsg(`Asset "${toRemove.name}" was removed from the site.`);
     setAssetToDelete(null);
-
-    if (typeof addAudit === 'function') {
-      addAudit(
-        'Asset deleted',
-        `Asset "${toRemove.name}" (${toRemove.type}) was removed from ${siteDetails.name}.`
-      );
-    }
     setTimeout(() => {
       setAssetSuccessMsg(null);
     }, 5000);
@@ -329,12 +296,6 @@ export default function SiteDetail({ onBack, onLiveOverview, onBob, onConnectDat
     try {
       localStorage.setItem(`plug_site_assets_${SITE.id}`, JSON.stringify(restored));
     } catch {}
-    if (typeof addAudit === 'function') {
-      addAudit(
-        'Asset restored',
-        `Asset "${deletedAssetBackup.name}" was restored to ${siteDetails.name}.`
-      );
-    }
     setDeletedAssetBackup(null);
     setAssetSuccessMsg(`Asset "${deletedAssetBackup.name}" restored.`);
     setTimeout(() => setAssetSuccessMsg(null), 3000);
@@ -411,21 +372,21 @@ export default function SiteDetail({ onBack, onLiveOverview, onBob, onConnectDat
               <Tag text={siteDetails.type} color="gray" />
               <div className="flex items-center gap-1.5 px-2 py-1 rounded-[2px] border border-[#e0e0e0] bg-[#f4f4f4] shrink-0 max-sm:flex-wrap">
                 <p className="font-mono font-medium text-[#525252] text-[12px] whitespace-nowrap max-sm:whitespace-normal">
-                  {siteDetails.capacityMW} MW · {flow.soc}% SOC
+                  {siteDetails.capacityMW} MW{battery && <> · {battery.soc_pct}% SOC</>}
                 </p>
               </div>
             </div>
             <p {...ibm('Regular', 'text-[#525252] text-[14px] leading-normal')}>
-              {location.gridRegion.includes('Andhra') ? 'Andhra Pradesh, India' : (location.address.split(',').slice(-2).join(',').trim() || location.gridRegion)} · Commissioned {siteDetails.commissionedDate} · Snapshot <span className="font-mono text-[#161616]">{SNAPSHOT_14_32.timestamp}</span>
+              {location.gridRegion.includes('Andhra') ? 'Andhra Pradesh, India' : (location.address.split(',').slice(-2).join(',').trim() || location.gridRegion)} · Commissioned {siteDetails.commissionedDate}
             </p>
           </div>
 
           <div className="flex gap-3 items-center shrink-0 max-sm:flex-wrap">
             <div className="bg-[#f4f0ff] border border-[#d4bbff] flex gap-1.5 items-center px-2 py-1 rounded-[2px] max-sm:flex-wrap">
               <img alt="" className="size-4" src={imgIconBot} />
-              <p {...ibm('SemiBold', 'text-[#8a3ffc] text-[12px]')}>{state.activated ? (state.stage === 'Executing' ? 'BOB Executing' : 'BOB Active') : `BOB ${state.stage}`}</p>
+              <p {...ibm('SemiBold', 'text-[#8a3ffc] text-[12px]')}>{bobActive ? 'BOB active' : 'BOB paused'}</p>
             </div>
-            <Tag text="Data: Preview" color="green" />
+            <Tag text={live?.connected ? 'Data: Live' : 'Data: Not connected'} color={live?.connected ? 'green' : 'gray'} />
             <Tag text="Mode: Balanced" color="gray" />
             <BobToggle />
             <button onClick={onBob}
@@ -440,7 +401,7 @@ export default function SiteDetail({ onBack, onLiveOverview, onBob, onConnectDat
 
         {/* Freshness */}
         <p {...ibm('Regular', 'text-[#525252] text-[13px]')}>
-          Snapshot <span className="font-mono text-[#161616]">{flow.timestamp}</span> · Preview source ages: site sensors <span className="font-mono">12s</span>, weather <span className="font-mono">24s</span>, battery <span className="font-mono">8s</span>, grid <span className="font-mono">15s</span> (not live telemetry)
+          {live ? <>Readings as of <span className="font-mono text-[#161616]">{simDateTime(live.as_of)} IST</span> · telemetry {live.connected ? 'connected' : 'not connected'}</> : 'Loading readings…'}
         </p>
       </div>
 
@@ -518,7 +479,7 @@ export default function SiteDetail({ onBack, onLiveOverview, onBob, onConnectDat
               <DetailRow label="Site type"><DetailText value={siteDetails.type} /></DetailRow>
               <DetailRow label="Capacity">
                 <p className="font-['IBM Plex Sans:Regular'] font-normal text-[#525252] text-[14px] leading-normal text-right">
-                  <span className="font-mono font-medium text-[#161616]">{siteDetails.capacityMW} MW</span> · {assets.length} connected {assets.length === 1 ? 'asset' : 'assets'} (<span className="font-mono font-medium text-[#161616]">{state.gridRemoteAvailable ? 2 : 1}</span> remote-controllable)
+                  <span className="font-mono font-medium text-[#161616]">{siteDetails.capacityMW} MW</span> · {assets.length} connected {assets.length === 1 ? 'asset' : 'assets'} (<span className="font-mono font-medium text-[#161616]">1</span> remote-controllable)
                 </p>
               </DetailRow>
               <DetailRow label="Status">
@@ -1131,7 +1092,7 @@ export default function SiteDetail({ onBack, onLiveOverview, onBob, onConnectDat
                   </div>
                 ))}
               </div>
-              <p {...ibm('SemiBold', 'text-[#198038] text-[13px]')}>6 of 6 monitoring feeds available · {state.connections.length} additional read-only data sources</p>
+              <p {...ibm('SemiBold', 'text-[#198038] text-[13px]')}>6 of 6 monitoring feeds available</p>
             </div>
 
             {/* Col 2: Remote control */}
@@ -1153,10 +1114,10 @@ export default function SiteDetail({ onBack, onLiveOverview, onBob, onConnectDat
                 </div>
                 <div className="flex flex-col gap-1">
                   <p {...ibm('Medium', 'text-[#161616] text-[14px]')}>Grid connection</p>
-                  <p {...ibm('Regular', 'text-[#525252] text-[13px]')}>{state.gridRemoteAvailable ? "Available; permission configured separately" : "Not available"}</p>
+                  <p {...ibm('Regular', 'text-[#525252] text-[13px]')}>Not available</p>
                 </div>
               </div>
-              <p {...ibm('SemiBold', 'text-[#161616] text-[13px]')}>{state.gridRemoteAvailable ? 2 : 1} systems support remote control</p>
+              <p {...ibm('SemiBold', 'text-[#161616] text-[13px]')}>1 system supports remote control</p>
             </div>
 
             {/* Col 3: BOB control permissions */}
@@ -1176,7 +1137,7 @@ export default function SiteDetail({ onBack, onLiveOverview, onBob, onConnectDat
                 </div>
                 <div className="flex flex-col gap-1">
                   <p {...ibm('Medium', 'text-[#161616] text-[14px]')}>Grid & other assets</p>
-                  <p {...ibm('Regular', 'text-[#525252] text-[13px]')}>{state.gridControlGranted ? "Grid connection: granted by administrator" : "Grid connection: not granted"}</p><button onClick={onBob} className="inline-flex min-h-11 items-center text-sm text-[#0f62fe] cursor-pointer hover:underline">Review control permissions</button>
+                  <p {...ibm('Regular', 'text-[#525252] text-[13px]')}>Grid connection: not granted</p><button onClick={onBob} className="inline-flex min-h-11 items-center text-sm text-[#0f62fe] cursor-pointer hover:underline">Review control permissions</button>
                 </div>
               </div>
             </div>

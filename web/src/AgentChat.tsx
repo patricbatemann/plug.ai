@@ -194,7 +194,7 @@ export default function AgentChat({ onClose, onComplete }: AgentChatProps) {
   </>;
 
   return (
-    <BoundaryContext.Provider value={rule => { setBoundary(rule); operations.addAudit("Protected request blocked", rule); }}><BobAskContext.Provider value={text => { if (!window.matchMedia('(min-width: 1024px)').matches) setAssistantOpen(true); void chat.send(text); }}>
+    <BoundaryContext.Provider value={setBoundary}><BobAskContext.Provider value={text => { if (!window.matchMedia('(min-width: 1024px)').matches) setAssistantOpen(true); void chat.send(text); }}>
     <div className="bg-[#f4f4f4] font-sans flex flex-col h-full min-h-0 overflow-hidden w-full [&_button]:min-h-11 [&_button]:min-w-11 [&_button]:focus-visible:outline-2 [&_button]:focus-visible:outline-offset-2 [&_button]:focus-visible:outline-[#0f62fe]">
 
       {/* Header */}

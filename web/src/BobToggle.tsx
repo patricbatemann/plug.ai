@@ -1,6 +1,7 @@
 import { useState, useEffect } from "react";
 import { createPortal } from "react-dom";
-import { useOperations } from "./Operations";
+import { SITE } from "./data";
+import { useSetBobActive, useSite } from "./site";
 
 interface BobToggleProps {
   className?: string;
@@ -8,8 +9,9 @@ interface BobToggleProps {
 }
 
 export default function BobToggle({ className = "", compact = false }: BobToggleProps) {
-  const { state, toggleBobActive } = useOperations();
-  const isActive = state.activated;
+  const isActive = useSite().bobActive;
+  const setBobActive = useSetBobActive();
+  const toggleBobActive = () => void setBobActive(!isActive);
   const [showConfirmModal, setShowConfirmModal] = useState(false);
 
   const handleToggleClick = (e?: React.MouseEvent | React.KeyboardEvent) => {
@@ -139,7 +141,7 @@ export default function BobToggle({ className = "", compact = false }: BobToggle
                       Enable BOB Autonomous Agent
                     </h2>
                     <p className="text-xs text-[#525252]">
-                      Kuppam Solar Site · KUP-SOLAR-001
+                      {SITE.name} · {SITE.id}
                     </p>
                   </div>
                 </div>

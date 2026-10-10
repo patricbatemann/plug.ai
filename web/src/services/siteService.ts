@@ -36,26 +36,6 @@ export interface MonitoringFeed {
   ageSeconds: number;
 }
 
-export interface WeatherTelemetry {
-  condition: string;
-  ambientTemp: string;
-  moduleTemp: string;
-  solarIrradiance: string;
-  windSpeed: string;
-  humidity: string;
-  cloudCover: string;
-  uvIndex: string;
-  uvLevel: string;
-  forecastTrend: string;
-  lastUpdated: string;
-}
-
-export interface GenerationCondition {
-  label: string;
-  value: string;
-  valueClass: string;
-}
-
 /**
  * Service functions for Site Details and Telemetry.
  * Swap with backend API calls when live endpoints are available.
@@ -70,22 +50,6 @@ export function getSiteAssets(siteId: string = 'KUP-SOLAR-001'): SiteAsset[] {
 
 export function getMonitoringFeeds(siteId: string = 'KUP-SOLAR-001'): MonitoringFeed[] {
   return siteData.monitoringFeeds;
-}
-
-export function getTechnicalSpecs(siteId: string = 'KUP-SOLAR-001') {
-  return siteData.technicalSpecs;
-}
-
-export function getWeatherTelemetry(siteId: string = 'KUP-SOLAR-001'): WeatherTelemetry {
-  return telemetryData.weather;
-}
-
-export function getGenerationConditions(siteId: string = 'KUP-SOLAR-001'): GenerationCondition[] {
-  return telemetryData.generationConditions;
-}
-
-export function getActiveAlerts(siteId: string = 'KUP-SOLAR-001'): string[] {
-  return telemetryData.activeAlerts;
 }
 
 export function getOperationalSnapshots() {
