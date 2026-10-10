@@ -234,14 +234,6 @@ async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
   return (response.status === 204 ? undefined : response.json()) as Promise<T>
 }
 
-/** A file as the API takes it: its name and its content in base64. */
-export const fileUpload = (file: File) => new Promise<{ filename: string; data: string }>((resolve, reject) => {
-  const reader = new FileReader()
-  reader.onload = () => resolve({ filename: file.name, data: String(reader.result).split(',')[1] })
-  reader.onerror = () => reject(reader.error)
-  reader.readAsDataURL(file)
-})
-
 export type ChatEvent =
   | { event: 'status'; data: string }
   | { event: 'delta'; data: string }
@@ -381,13 +373,6 @@ export interface ActivityEntry {
   asset: string | null
 }
 
-export interface CsvCheck {
-  rows: number
-  columns: Array<{ name: string; type: string; known?: boolean }>
-  preview: string[][]
-  problems: string[]
-}
-
 export interface DataSource {
   id: number
   kind: 'csv' | 'api'
@@ -408,10 +393,6 @@ export const siteApi = {
     return request<ActivityEntry[]>(`/api/runs/${runId}/sites/${encodeURIComponent(code)}/activity?${query}`)
   },
   sources: (code: string) => request<DataSource[]>(`${site(code)}/data-sources`),
-  checkCsv: (code: string, file: { filename: string; data: string }) =>
-    post<CsvCheck>(`${site(code)}/data-sources/csv/check`, file),
-  importCsv: (code: string, file: { filename: string; data: string }) =>
-    post<DataSource>(`${site(code)}/data-sources/csv`, file),
   /** Tests the site's telemetry API and keeps it as the site's live source; returns a sample of the feed. */
   connectFeed: (code: string, endpoint: string, apiKey: string, refreshMin: number) =>
     post<{ headers: string[]; rows: Array<Array<string | number>> }>('/api/data-sources/connect', {
