@@ -1,6 +1,4 @@
-import type { Asset, SiteStatus } from './api/client'
-
-export const PRODUCT_NAME = 'PlugAI'
+import type { SiteStatus } from './api/client'
 
 const number = new Intl.NumberFormat('en-IN', { maximumFractionDigits: 1 })
 
@@ -19,30 +17,6 @@ const KIND_LABELS: Record<string, string> = {
 }
 
 export const kindLabel = (kind: string) => KIND_LABELS[kind] ?? kind
-
-export const MODES = ['balanced', 'economic', 'clean', 'resilience', 'grid_support']
-
-export const sentence = (text: string) => text.charAt(0).toUpperCase() + text.slice(1)
-
-export const modeLabel = (code: string) => sentence(code.replace(/_/g, ' '))
-
-export function assetSummary({ kind, params: p }: Asset): string {
-  const n = (key: string) => number.format(p[key] as number)
-  switch (kind) {
-    case 'bess':
-      return `${n('energy_mwh')} MWh · SOC ${n('soc_min_pct')}–${n('soc_max_pct')} % · ${n('cycles_per_day')} cycles/day`
-    case 'wind':
-      return `Cut-in ${n('cut_in')} · rated ${n('rated')} · cut-out ${n('cut_out')} m/s`
-    case 'solar':
-      return p.curtail_comp_inr_mwh ? `Contracted · curtailment compensation ₹${n('curtail_comp_inr_mwh')}/MWh` : 'Owned'
-    case 'consumer':
-      return `Critical ${n('critical_mw')} MW · demand response up to ${n('dr_max_mw')} MW`
-    case 'interconnection':
-      return `Import ${n('import_max_mw')} MW · export ${n('export_max_mw')} MW`
-    default:
-      return ''
-  }
-}
 
 const clock = new Intl.DateTimeFormat('en-IN', {
   timeZone: 'Asia/Kolkata',
@@ -84,16 +58,10 @@ export const STATUS = {
 export const statusOf = (status: string) =>
   STATUS[status as keyof typeof STATUS] ?? { label: status, tag: 'gray' as const }
 
-/** Work orders to the maintenance system: no MW, no fallback plan. */
-export const WORK_ORDERS = ['maintenance_schedule', 'inspection_dispatch']
-
 export function actionLabel(kind: string, mw: number): string {
   if (kind === 'load_shift') return mw < 0 ? 'Load moved in' : 'Load moved out'
   return ACTION_LABELS[kind] ?? kind
 }
-
-/** A cost that is negative is money earned; say so instead of showing a minus sign. */
-export const netCost = (value: number) => (value < 0 ? `${inr(-value)} earned` : `${inr(value)} cost`)
 
 export function batteryState(mw: number, available: boolean): string {
   if (!available) return 'Unavailable'
