@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react"
 import { useQuery, useQueryClient } from "@tanstack/react-query"
-import { siteApi } from "./api/client"
+import { FEEDS, feedApi, siteApi } from "./api/client"
 import { SITE } from "./data"
 import { useSite } from "./site"
 
@@ -75,7 +75,7 @@ export default function ConnectData({ onBack }: ConnectDataProps) {
           Connect data source
         </h1>
         <p className="text-sm">
-          Connect the site’s live telemetry API
+          The data BOB works from: the site’s telemetry, the portfolio’s forecasts and the market’s prices
         </p>
       </header>
       <main className="space-y-6 px-4 py-6 md:px-8 xl:px-12">
@@ -184,6 +184,14 @@ export default function ConnectData({ onBack }: ConnectDataProps) {
                   row per asset for every settled 15-minute block.
                 </p>
               </section>
+            <section className="space-y-4">
+              <h2 className="font-semibold text-[#161616]">Forecast and market data</h2>
+              <p className="text-sm">BOB also receives the portfolio’s forecasts and the market’s prices. Both refresh every block and are what BOB plans on.</p>
+              <div className="grid gap-6 xl:grid-cols-2">
+                <FeedCard title="Demand and renewables forecast" path={FEEDS.forecast} />
+                <FeedCard title="Market prices" path={FEEDS.prices} />
+              </div>
+            </section>
             {dataset && (
               <section className="min-w-0 overflow-hidden rounded-[2px] border border-[#e0e0e0] bg-white">
                 <div className="flex flex-wrap items-center justify-between gap-4 p-5">
@@ -288,5 +296,34 @@ export default function ConnectData({ onBack }: ConnectDataProps) {
         </footer>
       )}
     </div>
+  )
+}
+
+/** One of the portfolio's feeds as BOB receives it: its endpoint and the next rows it sends. */
+function FeedCard({ title, path }: { title: string; path: string }) {
+  const feed = useQuery({ queryKey: ["feed", path], queryFn: () => feedApi(path), refetchInterval: 30_000 })
+  return (
+    <section className="min-w-0 space-y-3 border border-[#e0e0e0] bg-white p-4 md:p-6">
+      <h3 className="font-semibold text-[#161616]">{title}</h3>
+      <p className="break-all font-mono text-xs">{location.origin}{path}</p>
+      {feed.error && <p role="alert" className="text-sm text-[#da1e28]">{feed.error.message}</p>}
+      {feed.data && (
+        <div className="overflow-x-auto" role="region" aria-label={`${title} sample`} tabIndex={0}>
+          <table className="w-full border-collapse text-left text-xs">
+            <thead className="bg-[#f4f4f4]">
+              <tr>{feed.data.headers.map((h) => <th key={h} className="whitespace-nowrap px-3 py-2 font-semibold">{h}</th>)}</tr>
+            </thead>
+            <tbody>
+              {feed.data.rows.slice(0, 8).map((row) => (
+                <tr key={String(row[0])} className="border-b border-[#e0e0e0]">
+                  {row.map((cell, i) => <td key={i} className="whitespace-nowrap px-3 py-2 font-mono">{i === 0 ? String(cell).slice(11, 16) : cell}</td>)}
+                </tr>
+              ))}
+            </tbody>
+          </table>
+          <p className="mt-2 text-xs">Next 2 hours shown of {feed.data.rows.length / 4} hours sent.</p>
+        </div>
+      )}
+    </section>
   )
 }

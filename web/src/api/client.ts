@@ -395,10 +395,18 @@ export const siteApi = {
   sources: (code: string) => request<DataSource[]>(`${site(code)}/data-sources`),
   /** Tests the site's telemetry API and keeps it as the site's live source; returns a sample of the feed. */
   connectFeed: (code: string, endpoint: string, apiKey: string, refreshMin: number) =>
-    post<{ headers: string[]; rows: Array<Array<string | number>> }>('/api/data-sources/connect', {
-      siteId: code, endpoint, apiKey, refreshIntervalMin: refreshMin,
-    }),
+    post<Feed>('/api/data-sources/connect', { siteId: code, endpoint, apiKey, refreshIntervalMin: refreshMin }),
 }
+
+/** A mock vendor API's answer: column names and rows. */
+export interface Feed {
+  headers: string[]
+  rows: Array<Array<string | number>>
+}
+
+/** The portfolio's forecast and market price APIs, open like a vendor's sandbox. */
+export const FEEDS = { forecast: '/api/mock/portfolio/forecast', prices: '/api/mock/market/prices' }
+export const feedApi = (path: string) => request<Feed>(path)
 
 /** Kept with a configuration for people; dispatch does not act on them. */
 export interface Preferences {

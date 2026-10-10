@@ -15,7 +15,7 @@ from app.agent.llm import Tool, Unavailable, turn
 from app.core.config import settings
 from app.models.portfolio import ActionConfig, Asset, Portfolio, Site
 from app.models.run import Action, AssetBlock, ChatMessage, Constraint, Cycle, Forecast, Run
-from app.services import configs, decisions, documents, policy, runs
+from app.services import configs, datasources, decisions, documents, policy, runs
 from app.services.dispatch import connected
 from app.services.deliberation import IST
 from app.services.summary import recent_actions, summary
@@ -24,14 +24,15 @@ from app.services.whatif import WhatIf, what_if
 HISTORY_ROWS = 40
 WORKING_ON = {"get_situation": "Reading the live situation", "get_cycle": "Reading the decision record",
               "get_asset": "Checking the asset", "explain_action": "Looking up the action",
-              "what_if": "Planning the what-if", "draft_action_config": "Drafting the setup",
+              "what_if": "Planning the what-if", "get_forecasts": "Reading the forecasts", "draft_action_config": "Drafting the setup",
               "test_action_config": "Testing the draft"}
 SYSTEM = """You are BOB, the AI orchestrator of an Indian renewable portfolio, answering a control-room \
 operator in PlugAI. Times are IST; money is ₹ (write lakh for 1,00,000); power in MW, energy in MWh.
 
-Answer from tool outputs only, briefly, in GitHub-flavoured markdown: short paragraphs, a bullet list \
-for several items, a small table when comparing numbers, **bold** for the figures that matter. No \
-headings above ###, no code blocks, no HTML. When explaining a decision, cite the cycle time, the mode \
+For forecasts of demand, renewables or market prices use get_forecasts. Answer from tool outputs only, \
+briefly, in GitHub-flavoured markdown: short paragraphs, a bullet list for several items, a small table \
+when comparing numbers, **bold** for the figures that matter. No headings above ###, no code blocks, no \
+HTML. When explaining a decision, cite the cycle time, the mode \
 and why, the option chosen and the criterion that decided it. You cannot execute actions, approve them \
 or activate configurations: say what the operator can do instead.
 
@@ -57,6 +58,12 @@ class GetCycle(BaseModel):
     """The decision records for one 15-minute block: trigger, mode, options, stress tests, choice,
     rationale and resulting actions."""
     at: str  # "HH:MM" in IST, or "latest"
+
+
+class GetForecasts(BaseModel):
+    """The portfolio's outlook hour by hour: forecast demand, renewable availability and net demand (P50, MW),
+    and the real-time market price (P10/P50/P90, ₹/MWh) with the day-ahead price. The same forecasts BOB plans on."""
+    hours: int = Field(description="Hours ahead, 1 to 24")
 
 
 class GetAsset(BaseModel):
@@ -212,6 +219,20 @@ def _tools(db: Session, run: Run, cards: list[dict]) -> dict[str, Tool]:
         return {"cycles": [{**decisions.detail(db, c).model_dump(mode="json"), "actions": [
             x.model_dump(mode="json") for x in recent_actions(db, run, 20, cycle_id=c.id)]} for c in rows]}
 
+    def forecasts(a: GetForecasts) -> dict:
+        o = datasources.outlook(db)
+        hours = min(max(a.hours, 1), 24, len(o["times"]) // 4)
+
+        def hourly(values) -> list[float]:
+            return [round(float(np.mean(values[4 * h:4 * h + 4])), 1) for h in range(hours)]
+
+        return {"hours": [o["times"][4 * h].strftime("%H:%M") for h in range(hours)],
+                "demand_mw": hourly(o["demand_mw"]), "renewables_mw": hourly(o["renewables_mw"]),
+                "net_demand_mw": hourly(o["demand_mw"] - o["renewables_mw"]),
+                "rtm_price_inr_mwh": {"p10": hourly(o["rtm"].p10), "p50": hourly(o["rtm"].p50),
+                                      "p90": hourly(o["rtm"].p90)},
+                "dam_price_inr_mwh": hourly(o["dam"].p50)}
+
     def asset_info(a: GetAsset) -> dict:
         x = asset(a.code)
         row = db.scalar(select(AssetBlock).where(AssetBlock.run_id == run.id, AssetBlock.policy == "bob",
@@ -302,6 +323,7 @@ def _tools(db: Session, run: Run, cards: list[dict]) -> dict[str, Tool]:
         return {"tests": results}
 
     return {"get_situation": Tool(GetSituation, situation), "get_cycle": Tool(GetCycle, cycle),
-            "get_asset": Tool(GetAsset, asset_info), "explain_action": Tool(ExplainAction, explain),
+            "get_asset": Tool(GetAsset, asset_info), "get_forecasts": Tool(GetForecasts, forecasts),
+            "explain_action": Tool(ExplainAction, explain),
             "what_if": Tool(WhatIf, what_if_card), "draft_action_config": Tool(DraftActionConfig, draft),
             "test_action_config": Tool(TestActionConfig, test)}

@@ -361,6 +361,11 @@ def test_storm_bulletin_moves_maintenance_and_brings_an_inspection(
                            headers=auth_headers).status_code == 422
 
     kup_api = "http://localhost:5173/api/mock/sites/KUP-SOLAR-001/telemetry"
+    outlook = client.get("/api/mock/portfolio/forecast").json()
+    assert outlook["headers"] == ["timestamp", "demand_mw", "renewables_mw", "net_demand_mw"] and outlook["rows"]
+    assert all(abs(d - r - n) < 0.15 for _, d, r, n in outlook["rows"])
+    prices = client.get("/api/mock/market/prices").json()
+    assert len(prices["rows"]) == len(outlook["rows"]) and all(lo <= mid <= hi for _, lo, mid, hi, _ in prices["rows"])
     feed = client.get("/api/mock/sites/KUP-SOLAR-001/telemetry").json()  # open, like a vendor's sandbox
     assert feed["headers"][:6] == ["timestamp", "device_id", "device_type", "power_mw", "available_mw", "soc_percent"]
     assert {(r[1], r[2]) for r in feed["rows"]} == {("BESS-01", "bess"), ("SOL-KUP", "solar"), ("IC-KUP", "interconnection")}

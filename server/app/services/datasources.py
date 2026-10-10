@@ -9,11 +9,13 @@ from collections.abc import Iterator
 from datetime import datetime
 from urllib.parse import urlsplit
 
+import numpy as np
+
 from sqlalchemy import delete, select
 from sqlalchemy.orm import Session
 
 from app.models.portfolio import Asset, DataSource, Site
-from app.models.run import AssetBlock, Run
+from app.models.run import AssetBlock, Forecast, Run
 from app.services import runs
 
 REQUIRED = ("timestamp", "asset", "power_mw")
@@ -128,6 +130,42 @@ def feed(db: Session, site: Site) -> dict:
                      round(float(truth.irradiance[node][r.block])), round(float(truth.wind_speed[node][r.block]), 1),
                      round(float(truth.temperature[r.block]), 1), round(float(truth.frequency[r.block]), 2)])
     return {"headers": list(FEED), "rows": rows}
+
+
+def outlook(db: Session) -> dict:
+    """The latest forecast issue for the whole portfolio, per block ahead: demand and renewable
+    availability (P50, summed over loads and plants) and the market prices (P10/P50/P90)."""
+    run = _live(db)
+    kind = {a.id: a.kind for a in db.scalars(select(Asset).where(Asset.portfolio_id == run.portfolio_id))}
+    issue = list(db.scalars(select(Forecast).where(Forecast.run_id == run.id,
+                                                   Forecast.issued_block == run.current_block)))
+    if not issue:
+        raise ValueError("No forecast issued yet in this run")
+
+    def total(series: str) -> np.ndarray:
+        return sum(np.array(f.p50) for f in issue if f.series == series and f.asset_id in kind)
+
+    rtm, dam = (next(f for f in issue if f.series == name) for name in ("rtm_price", "dam_price"))
+    starts = [run.sim_start_at + (run.current_block + 1 + i) * runs.BLOCK for i in range(len(rtm.p50))]
+    return {"times": [t.astimezone(runs.IST) for t in starts], "demand_mw": total("load"),
+            "renewables_mw": total("re_avail"), "rtm": rtm, "dam": dam}
+
+
+def forecast_feed(db: Session) -> dict:
+    """The portfolio's forecast API: demand and renewable availability for the next 24 hours, per block."""
+    o = outlook(db)
+    rows = [[t.isoformat(), round(float(d), 1), round(float(r), 1), round(float(d - r), 1)]
+            for t, d, r in zip(o["times"], o["demand_mw"], o["renewables_mw"])]
+    return {"headers": ["timestamp", "demand_mw", "renewables_mw", "net_demand_mw"], "rows": rows}
+
+
+def market_feed(db: Session) -> dict:
+    """The market price API: the real-time price forecast with its range, and the day-ahead price, per block."""
+    o = outlook(db)
+    rows = [[t.isoformat(), round(lo), round(mid), round(hi), round(dam)]
+            for t, lo, mid, hi, dam in zip(o["times"], o["rtm"].p10, o["rtm"].p50, o["rtm"].p90, o["dam"].p50)]
+    return {"headers": ["timestamp", "rtm_p10_inr_mwh", "rtm_p50_inr_mwh", "rtm_p90_inr_mwh", "dam_inr_mwh"],
+            "rows": rows}
 
 
 def connect(db: Session, site: Site, endpoint: str, user: str, refresh_min: int) -> dict:

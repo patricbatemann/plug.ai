@@ -101,6 +101,24 @@ def mock_telemetry(site: Site = Depends(current_site), db: Session = Depends(get
         raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=str(error)) from None
 
 
+@mock_router.get("/mock/portfolio/forecast")
+def mock_forecast(db: Session = Depends(get_db)) -> dict:
+    """The portfolio's forecast API, open like a vendor's sandbox: demand and renewables for the next 24 hours."""
+    try:
+        return datasources.forecast_feed(db)
+    except ValueError as error:
+        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=str(error)) from None
+
+
+@mock_router.get("/mock/market/prices")
+def mock_prices(db: Session = Depends(get_db)) -> dict:
+    """The market's price API, open like a vendor's sandbox: price forecasts for the next 24 hours."""
+    try:
+        return datasources.market_feed(db)
+    except ValueError as error:
+        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=str(error)) from None
+
+
 @router.post("/data-sources/connect")
 def connect_feed(payload: DataConnect, db: Session = Depends(get_db), portfolio: Portfolio = Depends(current_portfolio),
                  user: User = Depends(get_current_user)) -> dict:
