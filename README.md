@@ -2,7 +2,7 @@
 
 A demo of BOB, an AI agent that orchestrates a renewable energy portfolio (solar, wind, batteries, industrial demand, grid and market) in 15-minute blocks. The client is React + TypeScript with Tailwind; the API is FastAPI on PostgreSQL.
 
-[![Watch the BOB demo (3½ minutes)](docs/images/demo-video.png)](docs/demo/bob-demo.mp4)
+[![Watch the BOB demo (3½ minutes)](docs/images/demo-video.png)](docs/demo/bohttps://github.com/user-attachments/assets/24b43eee-65d0-4478-bbab-091e6796e9a9)
 
 The [user manual](docs/user-manual.md) walks through every screen.
 
