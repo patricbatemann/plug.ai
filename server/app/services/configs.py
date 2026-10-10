@@ -85,13 +85,14 @@ def site_configs(db: Session, site: Site, run: Run | None) -> list[dict]:
     counts = {}
     if run is not None:
         day = run.current_block - run.current_block % 96 if run.current_block >= 0 else 0
-        counts = dict(db.execute(
-            select(Action.asset_id, func.count()).where(
+        counts = {(asset_id, kind): n for asset_id, kind, n in db.execute(
+            select(Action.asset_id, Action.kind, func.count()).where(
                 Action.run_id == run.id, Action.policy == "bob", Action.block >= day,
                 Action.status.in_(("acked", "verified")))
-            .group_by(Action.asset_id)).all())
+            .group_by(Action.asset_id, Action.kind))}
     assets = {a.id: a for a in site.assets}
-    return [dict(config=c, asset=assets[c.asset_id], actions_today=counts.get(c.asset_id, 0)) for c in latest]
+    return [dict(config=c, asset=assets[c.asset_id], actions_today=counts.get((c.asset_id, ACTION_OF[c.kind]), 0))
+            for c in latest]
 
 
 def market_asset(db: Session, portfolio_id: int, kind: str) -> Asset | None:

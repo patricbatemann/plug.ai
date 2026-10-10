@@ -187,7 +187,7 @@ export default function LiveOverview({ onBack, onTabChange, onBob, onConnectData
           <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-4 items-stretch w-full">
             <Metric title="Generation" note={generation?.capacity_mw ? `${Math.round((generation.actual_mw / generation.capacity_mw) * 100)}% of capacity` : undefined} value={mw(generation?.actual_mw ?? 0)}>
               {generation?.forecast_mw != null && deviation !== null && (
-                <p {...text('text-[#525252] text-[12px]')}>Forecast <span className="font-mono font-medium">{mw(generation.forecast_mw)}</span> · <span className="font-mono font-medium">{mw(Math.abs(deviation))}</span> {deviation < 0 ? 'below' : 'above'} forecast</p>
+                <p {...text('text-[#525252] text-[12px]')}>Forecast <span className="font-mono font-medium">{mw(generation.forecast_mw)}</span> · {Math.abs(deviation) < 0.05 ? 'on forecast' : <><span className="font-mono font-medium">{mw(Math.abs(deviation))}</span> {deviation < 0 ? 'below' : 'above'} forecast</>}</p>
               )}
             </Metric>
             <Metric title={live.demand_mw === null ? 'Sent to the network' : 'Local demand'} value={mw(live.demand_mw ?? live.uses.find((u) => u.label === 'Sent to the network')?.mw ?? 0)}>

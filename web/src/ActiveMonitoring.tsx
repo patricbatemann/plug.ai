@@ -4,7 +4,7 @@ import { useBobChat, BobMessages, BobComposer, BobChatScrollArea, BobNewChat } f
 import type { FlowItem } from './api/client';
 import ApprovalCard from './ApprovalCard';
 import { SITE } from './data';
-import { mw, mwh, simDateTime } from './format';
+import { actionLabel, mw, mwh, simDateTime, statusOf } from './format';
 import { useSite } from './site';
 
 const assetPathPrefix = '/assets';
@@ -80,7 +80,7 @@ export default function ActiveMonitoring({ onBack, onApprovalReview }: { onBack:
 
       <div className="flex flex-1 flex-col lg:flex-row min-w-0">
         <div className="flex-1 overflow-y-auto p-6">
-          <div className="flex flex-col gap-6 max-w-3xl">
+          <div className="flex flex-col gap-6">
             <div className="bg-white border border-[#e0e0e0] p-5 rounded-[2px]">
               <p {...ibm('Bold', 'text-[#161616] text-[18px]')}>What BOB is doing now</p>
               <ul className="mt-2 mb-4 list-disc pl-5">
@@ -145,7 +145,7 @@ export default function ActiveMonitoring({ onBack, onApprovalReview }: { onBack:
                   <div key={i} className="flex gap-4 border-b border-[#f4f4f4] last:border-0 py-3">
                     <p {...ibm('Regular', 'text-[#8d8d8d] font-mono text-[12px] whitespace-nowrap mt-0.5')}>{simDateTime(entry.at)}</p>
                     <div>
-                      <p {...ibm('SemiBold', `text-[13px] ${entry.status === 'rejected' || entry.status === 'expired' ? 'text-[#da1e28]' : 'text-[#161616]'}`)}>{entry.title ?? entry.category}</p>
+                      <p {...ibm('SemiBold', `text-[13px] ${entry.status === 'rejected' || entry.status === 'expired' ? 'text-[#da1e28]' : 'text-[#161616]'}`)}>{entry.title ?? (entry.kind ? `${actionLabel(entry.kind, entry.mw ?? 0)}${entry.mw ? ` ${mw(Math.abs(entry.mw))}` : ''}${entry.asset ? ` · ${entry.asset}` : ''} · ${statusOf(entry.status ?? '').label}` : entry.category)}</p>
                       <p {...ibm('Regular', 'text-[#525252] text-[12px] leading-normal')}>{entry.detail}{entry.by ? ` · ${entry.by}` : ''}</p>
                     </div>
                   </div>
