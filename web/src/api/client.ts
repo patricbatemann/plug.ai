@@ -458,6 +458,7 @@ export interface ConfigOptions {
     watch_metric: string | null
     watch_label: string | null
   }>
+  limits: Record<string, string[]>
   protected: { battery_soc_floor_pct?: number; approval_above_mw?: number }
 }
 

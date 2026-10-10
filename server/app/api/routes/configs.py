@@ -13,7 +13,7 @@ from app.models.user import User
 from app.schemas.configs import (
     AssetOption, ConfigDraft, ConfigOptions, ConfigOut, ConfigValues, StatusUpdate, WatchStatus,
 )
-from app.services import configs, runs
+from app.services import configs, policy, runs
 from app.services.dispatch import latest_forecasts
 from app.services.runs import RunContext
 
@@ -50,14 +50,19 @@ def list_configs(site: Site = Depends(current_site), db: Session = Depends(get_d
 
 
 @router.get("/sites/{code}/config-options", response_model=ConfigOptions)
-def config_options(site: Site = Depends(current_site),
+def config_options(site: Site = Depends(current_site), db: Session = Depends(get_db),
                    portfolio: Portfolio = Depends(current_portfolio)) -> ConfigOptions:
+    def offered(asset: Asset, kind: str) -> bool:
+        holder = configs.market_asset(db, portfolio.id, kind) if kind in policy.MARKET else None
+        return holder is None or holder.id == asset.id
+
     return ConfigOptions(
         assets=[AssetOption(code=a.code, name=a.name, kind=a.kind, capacity_mw=a.capacity_mw,
-                            actions=list(configs.KINDS_FOR.get(a.kind, ())),
+                            actions=[k for k in configs.KINDS_FOR.get(a.kind, ()) if offered(a, k)],
                             watch_metric=configs.WATCH_METRICS.get(a.kind, (None, None))[0],
                             watch_label=configs.WATCH_METRICS.get(a.kind, (None, None))[1])
                 for a in site.assets],
+        limits={kind: list(keys) for kind, keys in configs.LIMITS_FOR.items()},
         protected=portfolio.protected,
     )
 

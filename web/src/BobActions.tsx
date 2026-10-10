@@ -1,4 +1,5 @@
 import { useState } from "react"
+import { Link } from "react-router"
 import { useQuery, useQueryClient } from "@tanstack/react-query"
 import { configApi, runApi, type ActionOut, type ConfigOut } from "./api/client"
 import { useProfile } from "./auth/user"
@@ -303,9 +304,9 @@ export default function BobActions({
                 </div>
                 <div className="flex flex-wrap items-center justify-between gap-3 border-t border-[#e0e0e0] pt-4">
                   <div className="flex flex-wrap gap-2 items-center">
-                    <button className={control} onClick={onAddAction}>
+                    <Link className={`${control} inline-flex items-center`} to={`/agentChat?asset=${c.asset}&kind=${c.kind}`}>
                       Edit Action
-                    </button>
+                    </Link>
                     <button
                       disabled={c.status !== "active" && c.status !== "paused"}
                       className={control}

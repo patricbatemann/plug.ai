@@ -1,10 +1,10 @@
 import { useState, useEffect, useRef, createContext, useContext } from 'react';
 import { useQuery } from '@tanstack/react-query';
-import { Link } from 'react-router';
-import { configApi, siteApi, type ConfigValues, type Preferences } from './api/client';
+import { Link, useLocation } from 'react-router';
+import { configApi, siteApi, type ConfigOptions, type ConfigValues, type Preferences } from './api/client';
 import { useBobChat, BobMessages, BobComposer, BobChatScrollArea, BobNewChat } from './BobChat';
 import { SITE } from './data';
-import { AUTONOMY, NOTIFY, OBJECTIVES, RECOVERY, limitsSummary, mwh } from './format';
+import { AUTONOMY, NOTIFY, OBJECTIVES, RECOVERY, configKindLabel, limitsSummary, mwh } from './format';
 import { useSite } from './site';
 
 const BobAskContext = createContext<(text: string) => void>(() => {});
@@ -20,13 +20,23 @@ const imgCheck1 = `${assetPathPrefix}/f6f5a.svg`;
 const imgFrame1 = `${assetPathPrefix}/10ff0.svg`;
 const imgBot = `${assetPathPrefix}/0d037.svg`;
 
-const STEPS = ['Objective', 'Battery selection', 'Trigger conditions', 'Safety limits', 'Automation & approvals', 'Recovery behavior', 'Notifications'];
+const STEPS = ['Objective', 'Asset and action', 'Trigger conditions', 'Safety limits', 'Automation & approvals', 'Recovery behavior', 'Notifications'];
 
 const option = <K extends string>(labels: Record<K, string>, recommended?: K) =>
   (Object.entries(labels) as Array<[K, string]>).map(([id, label]) => ({ id, label, recommended: id === recommended }));
 const PRIORITIES = option(OBJECTIVES, 'reliability');
 const RECOVERY_OPTIONS = option(RECOVERY, 'notify_and_hold');
 const NOTIFICATION_OPTIONS = option(NOTIFY);
+
+type Bounds = { rating: number; ceiling: number; floor: number; energy: number };
+const LIMIT_INPUTS: Record<string, { label: string; unit: string; step: number; min: (b: Bounds) => number; max: (b: Bounds) => number }> = {
+  auto_max_mw: { label: 'Automatic up to', unit: 'MW', step: 1, min: () => 0, max: (b) => b.ceiling },
+  max_mw: { label: 'Never more than', unit: 'MW', step: 1, min: () => 1, max: (b) => b.rating },
+  reserve_pct: { label: 'Stop at reserve SOC', unit: '%', step: 5, min: (b) => b.floor, max: () => 80 },
+  max_minutes: { label: 'Maximum continuous discharge', unit: 'min', step: 15, min: () => 15, max: () => 240 },
+  max_mwh: { label: 'Maximum energy in that time', unit: 'MWh', step: 0.5, min: () => 0.5, max: (b) => b.energy },
+  min_price_inr_mwh: { label: 'Sell only above', unit: '₹/MWh', step: 500, min: () => 0, max: () => 20000 },
+};
 
 type ConfigStep = 0 | 1 | 2 | 3 | 4 | 5 | 6;
 type ChatPhase = 'welcome' | 'configuring' | 'done';
@@ -120,12 +130,12 @@ function ConfirmBubble({ text }: { text: string }) {
 export default function AgentChat({ onClose, onComplete }: { onClose: () => void; onComplete: (configId: number) => void }) {
   const site = useSite();
   const options = useQuery({ queryKey: ['config-options', SITE.id], queryFn: () => configApi.options(SITE.id) }).data;
-  const batteries = options?.assets.filter((a) => a.kind === 'bess') ?? [];
+  const choices = options?.assets.flatMap((asset) => asset.actions.map((kind) => ({ asset, kind }))) ?? [];
   const [boundary, setBoundary] = useState('');
   const [phase, setPhase] = useState<ChatPhase>('welcome');
   const [activeStep, setActiveStep] = useState<ConfigStep>(0);
   const [confirmed, setConfirmed] = useState<Set<ConfigStep>>(new Set());
-  const [asset, setAsset] = useState('');
+  const [choice, setChoice] = useState<{ asset: string; kind: string } | null>(null);
   const [values, setValues] = useState<ConfigValues | null>(null);
   const [saving, setSaving] = useState(false);
   const [assistantOpen, setAssistantOpen] = useState(false);
@@ -145,25 +155,36 @@ export default function AgentChat({ onClose, onComplete }: { onClose: () => void
   }, []);
   const chat = useBobChat('configuration');
 
-  const current = (code: string) => site.configs.find((c) => c.asset === code && c.kind === 'battery_discharge');
-  // Start from the battery's current configuration; limits it does not set start at a suggestion, shown and saved alike.
-  const pick = (code: string) => {
-    const rating = batteries.find((b) => b.code === code)?.capacity_mw ?? 0;
-    const ceiling = Math.min(rating, options?.protected.approval_above_mw ?? rating);
-    const found = current(code);
-    setAsset(code);
+  const current = (code: string, kind: string) => site.configs.find((c) => c.asset === code && c.kind === kind);
+  // Start from the action's current configuration; limits it does not set start at a suggestion, shown and saved alike.
+  const pick = (code: string, kind: string) => {
+    const rating = options?.assets.find((a) => a.code === code)?.capacity_mw ?? 0;
+    const allowed = options?.limits[kind] ?? [];
+    const suggested: Limits = {
+      max_mw: rating, auto_max_mw: Math.min(rating, options?.protected.approval_above_mw ?? rating),
+      reserve_pct: Math.max(55, options?.protected.battery_soc_floor_pct ?? 0), max_minutes: 30, max_mwh: 3, min_price_inr_mwh: 0,
+    };
+    const found = current(code, kind);
+    setChoice({ asset: code, kind });
     setValues({
-      name: found?.name ?? 'Discharge battery to support demand',
+      name: found?.name ?? `${configKindLabel(kind)}: ${options?.assets.find((a) => a.code === code)?.name ?? code}`,
       autonomy: found?.autonomy ?? 'auto',
-      limits: { auto_max_mw: ceiling, max_mw: rating, reserve_pct: Math.max(55, options?.protected.battery_soc_floor_pct ?? 0), max_minutes: 30, max_mwh: 3, ...found?.limits },
+      limits: { ...Object.fromEntries(allowed.filter((k) => k in suggested).map((k) => [k, suggested[k]])), ...found?.limits },
       approval: { response_min: 10, ...found?.approval },
       watch: found?.watch ?? [],
       preferences: found?.preferences ?? { objective: 'reliability', recovery: 'notify_and_hold', notify: ['sms', 'email'] },
     });
   };
-  const start = () => { if (batteries[0] && !asset) pick(batteries[0].code); setPhase('configuring'); };
-  const battery = batteries.find((b) => b.code === asset);
-  const reading = site.live?.batteries.find((b) => b.code === asset);
+  const start = (code: string, kind: string) => { pick(code, kind); setPhase('configuring'); };
+  // Opened for one action (from the action library's Edit), start on it directly.
+  const wanted = new URLSearchParams(useLocation().search);
+  useEffect(() => {
+    const code = wanted.get('asset'), kind = wanted.get('kind');
+    if (options && code && kind && !choice && options.assets.some((a) => a.code === code && a.actions.includes(kind))) start(code, kind);
+  }, [options]);
+  const asset = options?.assets.find((a) => a.code === choice?.asset);
+  const kind = choice?.kind ?? '';
+  const reading = site.live?.batteries.find((b) => b.code === choice?.asset);
   const setLimits = (limits: Limits) => setValues((v) => v && { ...v, limits });
   const setPreferences = (p: Partial<Preferences>) => setValues((v) => v && { ...v, preferences: { ...v.preferences, ...p } });
 
@@ -175,10 +196,10 @@ export default function AgentChat({ onClose, onComplete }: { onClose: () => void
   const editFrom = (step: number) => { setPhase('configuring'); setActiveStep(step as ConfigStep); setConfirmed(previous => new Set([...previous].filter(s => s < step))); };
   const isConfirmed = (s: ConfigStep) => confirmed.has(s);
   const save = async () => {
-    if (!values || !battery) return;
+    if (!values || !choice) return;
     setSaving(true);
     try {
-      const saved = await configApi.save(SITE.id, { ...values, asset: battery.code, kind: 'battery_discharge' });
+      const saved = await configApi.save(SITE.id, { ...values, ...choice });
       onComplete(saved.id);
     } catch (failure) {
       setBoundary(failure instanceof Error ? failure.message : 'The configuration was not saved.');
@@ -193,8 +214,9 @@ export default function AgentChat({ onClose, onComplete }: { onClose: () => void
   const limits = values?.limits ?? {};
   const summary = (i: number) => !values ? '' : [
     OBJECTIVES[values.preferences.objective],
-    battery?.name ?? '',
-    limits.deficit_mw === undefined ? 'Whenever BOB’s plan calls for it' : `Portfolio short by >${limits.deficit_mw} MW${limits.deficit_minutes ? ` for ${limits.deficit_minutes} min` : ''}`,
+    `${configKindLabel(kind)} · ${asset?.name ?? ''}`,
+    [limits.deficit_mw === undefined ? 'Whenever BOB’s plan calls for it' : `Portfolio short by >${limits.deficit_mw} MW${limits.deficit_minutes ? ` for ${limits.deficit_minutes} min` : ''}`,
+      ...values.watch.map((w) => `re-plan when ${asset?.watch_label?.toLowerCase() ?? w.metric} ${w.value}`)].join('; '),
     limitsSummary(limits).slice(0, 2).join(' · '),
     `${AUTONOMY[values.autonomy].label} · answer within ${values.approval.response_min ?? 10} min`,
     RECOVERY[values.preferences.recovery],
@@ -202,7 +224,7 @@ export default function AgentChat({ onClose, onComplete }: { onClose: () => void
   ][i];
 
   const conversation = <>
-    {phase !== 'welcome' && <UserBubble text="Configure battery discharge to support demand." />}
+    {phase !== 'welcome' && <UserBubble text={`Configure ${configKindLabel(kind).toLowerCase()} on ${asset?.name ?? ''}.`} />}
     {values && STEPS.map((step, i) => isConfirmed(i as ConfigStep) && (
       <div key={step} className="flex flex-col gap-3">
         <UserBubble text={`${step}: ${summary(i)}.`} />
@@ -269,8 +291,8 @@ export default function AgentChat({ onClose, onComplete }: { onClose: () => void
       <div className="grid flex-1 min-h-0 min-w-0 w-full lg:grid-cols-[minmax(0,65fr)_minmax(0,35fr)]">
         <div className="flex flex-col min-w-0 min-h-0">
           <section aria-label="Configuration cards" className="flex-1 min-h-0 overflow-y-auto overscroll-contain p-4 md:p-6 lg:p-8"><div className="flex min-w-0 flex-col gap-6">
-            {phase === 'welcome' && <WelcomeCard onStart={start} ready={batteries.length > 0} />}
-            {phase !== 'welcome' && values && battery && (
+            {phase === 'welcome' && <WelcomeCard choices={choices} onStart={start} />}
+            {phase !== 'welcome' && values && asset && (
               <>
                 <ChecklistCard confirmedSet={confirmed} activeStep={activeStep} phase={phase} />
                 <StepCard title="What should this action prioritize?" hint="Recorded with the configuration for the people who review it; BOB’s operating mode decides the trade-offs in its plans." confirmed={isConfirmed(0)} onConfirm={() => confirmStep(0)}>
@@ -279,43 +301,53 @@ export default function AgentChat({ onClose, onComplete }: { onClose: () => void
                   </div>
                 </StepCard>
                 {isConfirmed(0) && (
-                  <StepCard title="Which battery should I use for this action?" confirmed={isConfirmed(1)} onConfirm={() => confirmStep(1)}>
-                    <div role="radiogroup" aria-label="Battery selection" className="flex flex-col gap-2">
-                      {batteries.map(b => {
-                        const live = site.live?.batteries.find((x) => x.code === b.code);
-                        return <RadioCard key={b.code} id={b.code} label={`${b.name} · ${b.capacity_mw} MW${live ? ` · ${live.soc_pct}% charged${live.available ? '' : ' · unavailable'}` : ''}`} selected={asset === b.code} onChange={() => pick(b.code)} />;
+                  <StepCard title="Which action should BOB take, on which asset?" confirmed={isConfirmed(1)} onConfirm={() => confirmStep(1)}>
+                    <div role="radiogroup" aria-label="Asset and action" className="flex flex-col gap-2">
+                      {choices.map(c => {
+                        const live = site.live?.batteries.find((x) => x.code === c.asset.code);
+                        return <RadioCard key={`${c.asset.code}:${c.kind}`} id={`${c.asset.code}:${c.kind}`} label={`${configKindLabel(c.kind)} · ${c.asset.name} · ${c.asset.capacity_mw} MW${live ? ` · ${live.soc_pct}% charged${live.available ? '' : ' · unavailable'}` : ''}`} selected={choice?.asset === c.asset.code && kind === c.kind} onChange={() => pick(c.asset.code, c.kind)} />;
                       })}
                     </div>
                   </StepCard>
                 )}
                 {isConfirmed(1) && (
-                  <StepCard title="When should this action start?" hint="BOB discharges only in blocks where the portfolio’s forecast load exceeds its renewable output by more than this, for this long. Time is counted in 15-minute blocks." confirmed={isConfirmed(2)} onConfirm={() => confirmStep(2)}>
-                    <div role="radiogroup" aria-label="Start condition" className="flex flex-col gap-2">
-                      <RadioCard id="plan" label="Whenever BOB’s plan calls for it" selected={limits.deficit_mw === undefined} onChange={() => { const { deficit_mw: _, deficit_minutes: __, ...rest } = limits; setLimits(rest); }} />
-                      <RadioCard id="deficit" label="Only while the portfolio is short of renewables" recommended selected={limits.deficit_mw !== undefined} onChange={() => setLimits({ ...limits, deficit_mw: limits.deficit_mw ?? 3, deficit_minutes: limits.deficit_minutes ?? 15 })} />
-                    </div>
-                    {limits.deficit_mw !== undefined && (
-                      <div className="flex flex-col gap-3 bg-[#f4f4f4] border border-[#e0e0e0] p-4 rounded-[2px]">
-                        <NumInput label="Portfolio short of renewables by more than" value={limits.deficit_mw} min={0} max={200} step={1} unit="MW" onChange={(v) => setLimits({ ...limits, deficit_mw: v })} />
-                        <div className="bg-[#e0e0e0] h-px w-full" />
-                        <NumInput label="Sustained for at least" value={limits.deficit_minutes ?? 0} min={0} max={60} step={15} unit="min" onChange={(v) => setLimits({ ...limits, deficit_minutes: v })} />
+                  <StepCard title="When should this action start?" hint="Time is counted in 15-minute blocks. A watch condition makes BOB re-plan as soon as it is crossed." confirmed={isConfirmed(2)} onConfirm={() => confirmStep(2)}>
+                    {kind === 'battery_discharge' && <>
+                      <div role="radiogroup" aria-label="Start condition" className="flex flex-col gap-2">
+                        <RadioCard id="plan" label="Whenever BOB’s plan calls for it" selected={limits.deficit_mw === undefined} onChange={() => { const { deficit_mw: _, deficit_minutes: __, ...rest } = limits; setLimits(rest); }} />
+                        <RadioCard id="deficit" label="Only while the portfolio is short of renewables" recommended selected={limits.deficit_mw !== undefined} onChange={() => setLimits({ ...limits, deficit_mw: limits.deficit_mw ?? 3, deficit_minutes: limits.deficit_minutes ?? 15 })} />
+                      </div>
+                      {limits.deficit_mw !== undefined && (
+                        <div className="flex flex-col gap-3 bg-[#f4f4f4] border border-[#e0e0e0] p-4 rounded-[2px]">
+                          <NumInput label="Portfolio short of renewables by more than" value={limits.deficit_mw} min={0} max={200} step={1} unit="MW" onChange={(v) => setLimits({ ...limits, deficit_mw: v })} />
+                          <div className="bg-[#e0e0e0] h-px w-full" />
+                          <NumInput label="Sustained for at least" value={limits.deficit_minutes ?? 0} min={0} max={60} step={15} unit="min" onChange={(v) => setLimits({ ...limits, deficit_minutes: v })} />
+                        </div>
+                      )}
+                    </>}
+                    {kind !== 'battery_discharge' && <p className="text-[13px] text-[#525252]">BOB takes this action whenever its plan calls for it, within the limits you set next.</p>}
+                    {asset.watch_metric && (
+                      <div role="radiogroup" aria-label="Watch condition" className="flex flex-col gap-2">
+                        <RadioCard id="no-watch" label="No watch condition" selected={!values.watch.length} onChange={() => setValues({ ...values, watch: [] })} />
+                        <RadioCard id="watch" label={`Re-plan when: ${asset.watch_label}`} selected={values.watch.length > 0} onChange={() => setValues({ ...values, watch: [{ metric: asset.watch_metric!, value: values.watch[0]?.value ?? (asset.watch_metric === 'soc_below_pct' ? 30 : 5) }] })} />
+                        {values.watch.length > 0 && (
+                          <div className="bg-[#f4f4f4] border border-[#e0e0e0] p-4 rounded-[2px]">
+                            <NumInput label={asset.watch_label ?? 'Threshold'} value={values.watch[0].value} min={0} max={asset.watch_metric === 'soc_below_pct' ? 100 : asset.capacity_mw} step={asset.watch_metric === 'soc_below_pct' ? 5 : 1} unit={asset.watch_metric === 'soc_below_pct' ? '%' : 'MW'} onChange={(v) => setValues({ ...values, watch: [{ ...values.watch[0], value: v }] })} />
+                          </div>
+                        )}
                       </div>
                     )}
                   </StepCard>
                 )}
                 {isConfirmed(2) && (
-                  <StepCard title="What are the discharge limits?" confirmed={isConfirmed(3)} onConfirm={() => confirmStep(3)}
-                    hint={`${battery.name} is rated ${battery.capacity_mw} MW${reading ? ` and ${mwh(reading.energy_mwh)}` : ''}.${options?.protected.battery_soc_floor_pct !== undefined ? ` The organisation’s ${options.protected.battery_soc_floor_pct}% floor is locked.` : ''}`}>
+                  <StepCard title="What are the limits?" confirmed={isConfirmed(3)} onConfirm={() => confirmStep(3)}
+                    hint={`${asset.name} is rated ${asset.capacity_mw} MW${reading ? ` and ${mwh(reading.energy_mwh)}` : ''}.${'reserve_pct' in limits && options?.protected.battery_soc_floor_pct !== undefined ? ` The organisation’s ${options.protected.battery_soc_floor_pct}% floor is locked.` : ''}${options?.protected.approval_above_mw !== undefined ? ` Above ${options.protected.approval_above_mw} MW a person always approves.` : ''}`}>
                     <div className="flex flex-col gap-3 bg-[#f4f4f4] border border-[#e0e0e0] p-4 rounded-[2px]">
-                      <NumInput label="Maximum automatic discharge" value={limits.auto_max_mw} min={1} max={Math.min(battery.capacity_mw, options?.protected.approval_above_mw ?? battery.capacity_mw)} step={1} unit="MW" onChange={(v) => setLimits({ ...limits, auto_max_mw: v })} />
-                      <div className="bg-[#e0e0e0] h-px w-full" />
-                      <NumInput label="Never more than" value={limits.max_mw} min={1} max={battery.capacity_mw} step={1} unit="MW" onChange={(v) => setLimits({ ...limits, max_mw: v })} />
-                      <div className="bg-[#e0e0e0] h-px w-full" />
-                      <NumInput label="Stop at reserve SOC" value={limits.reserve_pct} min={options?.protected.battery_soc_floor_pct ?? 0} max={80} step={5} unit="%" onChange={(v) => setLimits({ ...limits, reserve_pct: v })} />
-                      <div className="bg-[#e0e0e0] h-px w-full" />
-                      <NumInput label="Maximum continuous discharge" value={limits.max_minutes} min={15} max={240} step={15} unit="min" onChange={(v) => setLimits({ ...limits, max_minutes: v })} />
-                      <div className="bg-[#e0e0e0] h-px w-full" />
-                      <NumInput label="Maximum energy in that time" value={limits.max_mwh} min={0.5} max={reading?.energy_mwh ?? 20} step={0.5} unit="MWh" onChange={(v) => setLimits({ ...limits, max_mwh: v })} />
+                      {Object.keys(limits).filter((key) => key in LIMIT_INPUTS).map((key, i) => {
+                        const input = LIMIT_INPUTS[key];
+                        const bounds = { rating: asset.capacity_mw, ceiling: Math.min(asset.capacity_mw, options?.protected.approval_above_mw ?? asset.capacity_mw), floor: options?.protected.battery_soc_floor_pct ?? 0, energy: reading?.energy_mwh ?? 20 };
+                        return <div key={key} className="flex flex-col gap-3">{i > 0 && <div className="bg-[#e0e0e0] h-px w-full" />}<NumInput label={input.label} value={limits[key]} min={input.min(bounds)} max={input.max(bounds)} step={input.step} unit={input.unit} onChange={(v) => setLimits({ ...limits, [key]: v })} /></div>;
+                      })}
                     </div>
                   </StepCard>
                 )}
@@ -330,7 +362,7 @@ export default function AgentChat({ onClose, onComplete }: { onClose: () => void
                   </StepCard>
                 )}
                 {isConfirmed(4) && (
-                  <StepCard title={`What should happen if ${battery.name} becomes unavailable during discharge?`} hint="Recorded with the configuration for the operators; BOB re-plans without the battery either way." confirmed={isConfirmed(5)} onConfirm={() => confirmStep(5)}>
+                  <StepCard title={`What should happen if ${asset.name} becomes unavailable during the action?`} hint="Recorded with the configuration for the operators; BOB re-plans without the asset either way." confirmed={isConfirmed(5)} onConfirm={() => confirmStep(5)}>
                     <div role="radiogroup" aria-label="Recovery behavior" className="flex flex-col gap-2">
                       {RECOVERY_OPTIONS.map(opt => <RadioCard key={opt.id} id={opt.id} label={opt.label} recommended={opt.recommended} selected={values.preferences.recovery === opt.id} onChange={() => setPreferences({ recovery: opt.id })} />)}
                     </div>
@@ -379,10 +411,10 @@ export default function AgentChat({ onClose, onComplete }: { onClose: () => void
 
             <div className="bg-white border border-[#e0e0e0] flex flex-col w-full rounded-[2px] overflow-hidden">
               <div className="border-b border-[#e0e0e0] flex flex-wrap gap-3 items-center justify-between px-5 py-4 shrink-0">
-                <p className="font-sans font-semibold text-[#161616] text-[15px]">Discharge configuration{battery ? ` · ${battery.name}` : ''}</p>
+                <p className="font-sans font-semibold text-[#161616] text-[15px]">{asset ? `${configKindLabel(kind)} · ${asset.name}` : 'Action configuration'}</p>
                 <span className="bg-[#edf5ff] px-2 py-1 rounded-[2px] text-[11px] font-semibold text-[#0f62fe]">{status}</span>
               </div>
-              {phase === 'welcome' ? <div className="m-5 bg-[#f4f4f4] border border-[#e0e0e0] p-6"><h2 className="mb-3 text-[16px] font-semibold text-[#161616]">Not started</h2><p className="mb-5 text-[14px] leading-relaxed text-[#525252]">Start from the site’s current discharge configuration and change what BOB may do.</p><button disabled={!batteries.length} onClick={start} className="bg-[#0f62fe] px-4 py-3 text-[13px] font-semibold text-white hover:bg-[#0043ce] transition-colors rounded-[2px] cursor-pointer disabled:opacity-60">Configure battery discharge</button></div> : <div className="flex flex-col gap-5 p-5 overflow-y-auto flex-1">
+              {phase === 'welcome' ? <div className="m-5 bg-[#f4f4f4] border border-[#e0e0e0] p-6"><h2 className="mb-3 text-[16px] font-semibold text-[#161616]">Not started</h2><p className="text-[14px] leading-relaxed text-[#525252]">Choose an action, or describe it to BOB. Each starts from the action’s current configuration.</p></div> : <div className="flex flex-col gap-5 p-5 overflow-y-auto flex-1">
                 <div className="bg-[#e0e0e0] h-1.5 rounded-full w-full overflow-hidden">
                   <div className="bg-[#0f62fe] h-full rounded-full transition-all" style={{ width: `${(confirmed.size / STEPS.length) * 100}%` }} />
                 </div>
@@ -427,16 +459,12 @@ export default function AgentChat({ onClose, onComplete }: { onClose: () => void
 
 // ─── Sub-cards ────────────────────────────────────────────────────────────────
 
-function WelcomeCard({ onStart, ready }: { onStart: () => void; ready: boolean }) {
+function WelcomeCard({ choices, onStart }: { choices: Array<{ asset: ConfigOptions['assets'][number]; kind: string }>; onStart: (code: string, kind: string) => void }) {
   const ask = useContext(BobAskContext);
   const { live, configs, siteName } = useSite();
+  const [request, setRequest] = useState('');
   const sources = useQuery({ queryKey: ['data-sources', SITE.id], queryFn: () => siteApi.sources(SITE.id) }).data ?? [];
-  const cards = [
-    { icon: `${assetPathPrefix}/2951d.svg`, title: 'Discharge battery to support demand', recommended: true },
-    { icon: `${assetPathPrefix}/eee89.svg`, title: 'Charge battery using surplus solar', recommended: false },
-    { icon: `${assetPathPrefix}/8b4e5.svg`, title: 'Import energy when supply is low', recommended: false },
-    { icon: `${assetPathPrefix}/e087a.svg`, title: 'Create maintenance work order', recommended: false },
-  ];
+  const status = (code: string, kind: string) => configs.find((c) => c.asset === code && c.kind === kind)?.status;
   return (
     <div className="bg-white border border-[#e0e0e0] flex flex-col gap-5 p-5 rounded-[2px] w-full font-sans">
       <div className="flex flex-wrap gap-3 items-center">
@@ -446,7 +474,14 @@ function WelcomeCard({ onStart, ready }: { onStart: () => void; ready: boolean }
           <p className="font-sans font-normal text-[#8d8d8d] text-[12px]">AI energy assistant</p>
         </div>
       </div>
-      <p className="font-sans font-normal text-[#161616] text-[15px] leading-relaxed">Let's configure what I can do for {siteName}. I recommend starting with battery discharge.</p>
+      <p className="font-sans font-normal text-[#161616] text-[15px] leading-relaxed">Let's configure what I can do for {siteName}. Pick an action below, or tell me what you want and I'll draft it.</p>
+      <form onSubmit={(e) => { e.preventDefault(); if (request.trim()) { ask(request.trim()); setRequest(''); } }} className="flex flex-col gap-2 border border-[#a6c8ff] bg-[#edf5ff] p-4 rounded-[2px]">
+        <label htmlFor="describe-action" className="text-[13px] font-semibold text-[#161616]">Describe it to BOB</label>
+        <textarea id="describe-action" rows={2} value={request} onChange={(e) => setRequest(e.target.value)} placeholder="e.g. Let Battery 1 discharge at most 30 minutes at a time, only when the portfolio is short by more than 5 MW"
+          className="min-h-14 resize-y rounded-t-[2px] border-b border-[#8d8d8d] bg-white px-3 py-2 text-[14px] text-[#161616] focus:outline-2 focus:outline-[#0f62fe]" />
+        <button type="submit" disabled={!request.trim()} className="self-start bg-[#0f62fe] px-4 py-2.5 rounded-[2px] text-[13px] font-semibold text-white hover:bg-[#0043ce] disabled:opacity-60 cursor-pointer">Draft it with BOB</button>
+        <p className="text-[12px] text-[#525252]">BOB drafts and tests it; open its draft card to review and activate.</p>
+      </form>
       <div className="border border-[#e0e0e0] bg-[#f4f4f4] p-4 rounded-[2px]">
         <h2 className="mb-4 text-[14px] font-semibold text-[#161616]">Prerequisites</h2>
         <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-3">
@@ -454,20 +489,19 @@ function WelcomeCard({ onStart, ready }: { onStart: () => void; ready: boolean }
             ['Site', siteName, SITE.id],
             ['Telemetry', live?.connected ? 'Connected' : 'Not connected', live?.connected ? 'BOB acts on the live feed' : 'BOB only monitors until the feed is connected'],
             ['Data sources', `${sources.length} connected`, sources.map((s) => s.kind === 'api' ? 'Live API' : 'CSV').join(', ') || 'None yet'],
-            ['Batteries', `${live?.batteries.length ?? 0}`, live?.batteries.map((b) => `${b.name} ${b.soc_pct}%`).join(', ') || 'No battery at this site'],
             ['Configured actions', `${configs.length}`, `${configs.filter((c) => c.status === 'active').length} active`],
           ].map(([name, value, detail]) => <div key={name} className="border border-[#e0e0e0] bg-white p-3 rounded-[2px]"><p className="mb-1 text-[11px] text-[#8d8d8d]">{name}</p><p className="mb-1 text-[13px] font-semibold text-[#161616]">{value}</p><p className="text-[12px] leading-relaxed text-[#525252]">{detail}</p></div>)}
         </div>
       </div>
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-        {cards.map(card => (
-          <button key={card.title} disabled={card.recommended && !ready} onClick={card.recommended ? onStart : () => ask(`Explain the prerequisites and setup for: ${card.title}`)}
-            className={`flex flex-col gap-3 p-4 rounded-[2px] border text-left transition-all cursor-pointer disabled:opacity-60 ${card.recommended ? 'border-[#0f62fe] bg-[#edf5ff]/40 hover:shadow-sm' : 'border-[#e0e0e0] bg-white hover:border-[#0f62fe]'}`}>
-            <div className="bg-[#f4f4f4] flex items-center justify-center rounded-[2px] size-8 border border-[#e0e0e0]"><img alt="" className="size-[18px]" src={card.icon} /></div>
+        {choices.map(({ asset, kind }) => (
+          <button key={`${asset.code}:${kind}`} onClick={() => onStart(asset.code, kind)}
+            className="flex flex-col gap-2 p-4 rounded-[2px] border border-[#e0e0e0] bg-white text-left transition-all cursor-pointer hover:border-[#0f62fe]">
             <div className="flex items-start justify-between gap-2">
-              <p className="font-sans font-semibold text-[#161616] text-[13px] leading-normal flex-1">{card.title}</p>
-              {card.recommended && <div className="bg-[#defbe6] border border-[#198038]/40 px-1.5 py-0.5 rounded-[2px] shrink-0"><p className="font-sans font-semibold text-[#198038] text-[10px]">Recommended</p></div>}
+              <p className="font-sans font-semibold text-[#161616] text-[13px] leading-normal flex-1">{configKindLabel(kind)}</p>
+              <span className="bg-[#f4f4f4] border border-[#e0e0e0] px-1.5 py-0.5 rounded-[2px] text-[10px] font-semibold text-[#525252] capitalize">{status(asset.code, kind) ?? 'not set up'}</span>
             </div>
+            <p className="text-[12px] text-[#525252]">{asset.name} · {asset.capacity_mw} MW</p>
           </button>
         ))}
       </div>

@@ -229,8 +229,8 @@ function Screens({ onLogout }: { onLogout?: () => void }) {
   if (view === 'monitoring') return <ActiveMonitoring onBack={() => setView('siteDetail')} onApprovalReview={() => setView('approval')} />;
 
   if (view === 'activate') return <ActivateConfig id={configId} site={configSite} onDone={() => setView('monitoring')} onClose={() => setView('bob')} />;
-  if (view === 'test') return <TestConfig id={configId} site={configSite} onEdit={() => setView('agentChat')} onActivate={() => journey('activate')} onClose={() => setView('bob')} />;
-  if (view === 'review') return <ReviewConfig id={configId} site={configSite} onEdit={() => setView('agentChat')} onTest={() => journey('test')} onClose={() => setView('bob')} />;
+  if (view === 'test') return <TestConfig id={configId} site={configSite} onEdit={(c) => navigate(`/agentChat?asset=${c.asset}&kind=${c.kind}`)} onActivate={() => journey('activate')} onClose={() => setView('bob')} />;
+  if (view === 'review') return <ReviewConfig id={configId} site={configSite} onEdit={(c) => navigate(`/agentChat?asset=${c.asset}&kind=${c.kind}`)} onTest={() => journey('test')} onClose={() => setView('bob')} />;
 
   if (view === 'agentChat' || view === 'bobSetup' || view === 'bob/setup') {
     return <AgentChat onClose={() => setView('bob')} onComplete={(id) => navigate(`/review?config=${id}&site=${SITE.id}`)} />;

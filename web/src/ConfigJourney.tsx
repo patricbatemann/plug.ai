@@ -19,16 +19,18 @@ const LIMITS: Array<[string, string, string]> = [
   ['max_mwh', 'Energy in that time at most', 'MWh'],
   ['deficit_mw', 'Only while the portfolio is short by more than', 'MW'],
   ['deficit_minutes', 'Sustained for at least', 'min'],
+  ['min_price_inr_mwh', 'Sells only above', '₹/MWh'],
 ];
 
 /** What the configuration says, as label/value rows, so a draft can be compared with the version in force. */
-function describe(v: ConfigValues): Array<[string, string]> {
+function describe(v: ConfigValues, keys = Object.keys(v.limits)): Array<[string, string]> {
   return [
     ['Autonomy', AUTONOMY[v.autonomy].label],
-    ...LIMITS.map(([key, label, unit]): [string, string] => [label, v.limits[key] === undefined ? '—' : `${v.limits[key]} ${unit}`]),
+    ...LIMITS.filter(([key]) => keys.includes(key))
+      .map(([key, label, unit]): [string, string] => [label, v.limits[key] === undefined ? '—' : `${v.limits[key]} ${unit}`]),
     ['Approver answers within', `${v.approval.response_min ?? 10} min`],
     ['Objective', OBJECTIVES[v.preferences.objective]],
-    ['If the battery fails', RECOVERY[v.preferences.recovery]],
+    ['If the asset fails', RECOVERY[v.preferences.recovery]],
     ['Notify', v.preferences.notify.map((n) => NOTIFY[n]).join('; ') || 'Nobody'],
   ];
 }
@@ -84,10 +86,11 @@ function Missing({ site, onClose }: { site: string; onClose: () => void }) {
   return <Frame site={site} stage={1} status="Not found" onClose={onClose}><p className="text-[14px] text-[#525252]">This configuration is not a draft at this site any more. Start again from the BOB actions.</p></Frame>;
 }
 
-export function ReviewConfig({ id, site, onEdit, onTest, onClose }: { id: number; site: string; onEdit: () => void; onTest: () => void; onClose: () => void }) {
+export function ReviewConfig({ id, site, onEdit, onTest, onClose }: { id: number; site: string; onEdit: (config: ConfigOut) => void; onTest: () => void; onClose: () => void }) {
   const config = useConfig(id, site);
   if (!config) return <Missing site={site} onClose={onClose} />;
-  const before = config.active ? Object.fromEntries(describe(config.active)) : {};
+  const keys = [...new Set([...Object.keys(config.limits), ...Object.keys(config.active?.limits ?? {})])];
+  const before = config.active ? Object.fromEntries(describe(config.active, keys)) : {};
   return (
     <Frame site={site} stage={2} status="Ready to test" onClose={onClose}>
       <div>
@@ -95,7 +98,7 @@ export function ReviewConfig({ id, site, onEdit, onTest, onClose }: { id: number
         <p className="text-[#525252] text-[14px]">{config.name} · {config.asset_name} · draft version {config.version}. {config.active ? 'Changes from the version in force are highlighted.' : 'Nothing is in force for this action yet.'}</p>
       </div>
       <div className="bg-white border border-[#e0e0e0] rounded-[2px] px-5 py-4">
-        {describe(config).map(([label, value]) => {
+        {describe(config, keys).map(([label, value]) => {
           const changed = config.active && before[label] !== value;
           return (
             <div key={label} className="flex items-start justify-between gap-4 py-1.5 border-b border-[#f4f4f4] last:border-0">
@@ -109,13 +112,13 @@ export function ReviewConfig({ id, site, onEdit, onTest, onClose }: { id: number
       </div>
       <div className="flex flex-wrap gap-3">
         <Primary onClick={onTest}>Run the tests</Primary>
-        <Secondary onClick={onEdit}>Edit</Secondary>
+        <Secondary onClick={() => onEdit(config)}>Edit</Secondary>
       </div>
     </Frame>
   );
 }
 
-export function TestConfig({ id, site, onEdit, onActivate, onClose }: { id: number; site: string; onEdit: () => void; onActivate: () => void; onClose: () => void }) {
+export function TestConfig({ id, site, onEdit, onActivate, onClose }: { id: number; site: string; onEdit: (config: ConfigOut) => void; onActivate: () => void; onClose: () => void }) {
   const config = useConfig(id, site);
   const queryClient = useQueryClient();
   const [running, setRunning] = useState(false);
@@ -154,7 +157,7 @@ export function TestConfig({ id, site, onEdit, onActivate, onClose }: { id: numb
       )}
       <div className="flex flex-wrap gap-3">
         {passed ? <Primary onClick={onActivate}>Continue to activation</Primary> : <Primary onClick={() => void run()} disabled={running}>{running ? 'Running…' : tests.length ? 'Run again' : 'Run the tests'}</Primary>}
-        <Secondary onClick={onEdit}>Edit configuration</Secondary>
+        <Secondary onClick={() => onEdit(config)}>Edit configuration</Secondary>
       </div>
     </Frame>
   );
@@ -191,7 +194,7 @@ export function ActivateConfig({ id, site, onDone, onClose }: { id: number; site
       </div>
       {error && <p role="alert" className="border-l-4 border-[#da1e28] bg-[#fff1f1] p-4 text-[13px] text-[#161616]">{error}</p>}
       <div className="bg-white border border-[#e0e0e0] rounded-[2px] px-5 py-4">
-        {describe(config).filter(([, value]) => value !== '—').map(([label, value]) => (
+        {describe(config).map(([label, value]) => (
           <div key={label} className="flex items-start justify-between gap-4 py-1.5 border-b border-[#f4f4f4] last:border-0">
             <p className="text-[#525252] text-[13px]">{label}</p>
             <p className="font-medium text-[#161616] text-[13px] text-right">{value}</p>

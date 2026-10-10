@@ -159,6 +159,11 @@ def test_configure_test_activate_watch_and_pause(client: TestClient, db: Session
     blocked = client.post("/api/sites/KUP-SOLAR-001/configs", json=draft, headers=auth_headers)
     assert blocked.status_code == 422 and blocked.json()["detail"].startswith("Protected boundary")
 
+    market = {**draft, "asset": "IC-KUP", "kind": "grid_import", "limits": {"max_mw": 10}}
+    assert "configured once" in client.post("/api/sites/KUP-SOLAR-001/configs", json=market,
+                                            headers=auth_headers).json()["detail"]
+    offered = client.get("/api/sites/KUP-SOLAR-001/config-options", headers=auth_headers).json()
+    assert next(a for a in offered["assets"] if a["code"] == "IC-KUP")["actions"] == []
     draft["limits"].update(reserve_pct=50, max_mwh=3)
     assert "duration cap" in client.post("/api/sites/KUP-SOLAR-001/configs", json=draft, headers=auth_headers).json()["detail"]
     draft["limits"]["max_minutes"] = 30

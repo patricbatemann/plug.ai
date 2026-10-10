@@ -133,7 +133,7 @@ export default function OperationalPanels({ page }: { page: string }) {
                   <p>{c.asset_name} · version {c.version} · {c.status}{c.current ? '' : ' (draft)'}</p>
                   <p className="text-[#525252]">{limitsSummary(c.limits).join(' · ')}</p>
                 </div>
-                {c.kind === 'battery_discharge' && <Link to="/agentChat" className="text-[#0f62fe]">Edit</Link>}
+                <Link to={`/agentChat?asset=${c.asset}&kind=${c.kind}`} className="text-[#0f62fe]">Edit</Link>
               </div>
             ))}
             <Link to="/protected" className="inline-flex min-h-11 items-center text-sm text-[#0f62fe]">View protected boundary</Link>

@@ -94,8 +94,17 @@ def site_configs(db: Session, site: Site, run: Run | None) -> list[dict]:
     return [dict(config=c, asset=assets[c.asset_id], actions_today=counts.get(c.asset_id, 0)) for c in latest]
 
 
+def market_asset(db: Session, portfolio_id: int, kind: str) -> Asset | None:
+    """The asset that holds the portfolio's market trades of this kind: they are one decision, configured once."""
+    return db.scalar(select(Asset).join(ActionConfig, ActionConfig.asset_id == Asset.id)
+                     .where(Asset.portfolio_id == portfolio_id, ActionConfig.kind == kind).limit(1))
+
+
 def save_draft(db: Session, site: Site, asset: Asset, kind: str, values: dict[str, Any], protected: dict) -> ActionConfig:
     validate(asset, kind, values["limits"], protected)
+    holder = market_asset(db, asset.portfolio_id, kind) if kind in policy.MARKET else None
+    if holder is not None and holder.id != asset.id:
+        raise ValueError(f"Market trades are configured once for the portfolio, on {holder.name}")
     draft = db.scalar(select(ActionConfig).where(
         ActionConfig.asset_id == asset.id, ActionConfig.kind == kind, ActionConfig.status == "draft",
         ~ActionConfig.current))

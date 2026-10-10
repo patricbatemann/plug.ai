@@ -58,6 +58,7 @@ class AssetOption(BaseModel):
 
 class ConfigOptions(BaseModel):
     assets: list[AssetOption]
+    limits: dict[str, list[str]]  # the limits each kind of action takes
     protected: dict[str, Any]
 
 
