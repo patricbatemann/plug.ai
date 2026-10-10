@@ -174,7 +174,7 @@ export default function SiteDetail({ onBack, onLiveOverview, onBob, onConnectDat
         ))}
       </div>
 
-      <main className="flex flex-col gap-6 px-4 md:px-6 py-6 max-w-5xl">
+      <main className="flex flex-col gap-6 px-4 md:px-6 py-6 w-full">
         <ProfileCard title="Site details" onSave={saveProfile}
           rows={[
             ['Site name', siteName],
@@ -198,6 +198,7 @@ export default function SiteDetail({ onBack, onLiveOverview, onBob, onConnectDat
             <Field label="Description" value={d.description} onChange={(v) => set({ ...d, description: v })} />
           </>} />
 
+        <div className="grid gap-6 xl:grid-cols-2 items-start">
         <ProfileCard title="Primary contact" onSave={saveProfile}
           rows={[
             ['Name and role', profile && [profile.contact.name, profile.contact.role].filter(Boolean).join(' · ')],
@@ -225,6 +226,7 @@ export default function SiteDetail({ onBack, onLiveOverview, onBob, onConnectDat
             <Field label="Longitude" type="number" value={d.longitude?.toString() ?? ''} onChange={(v) => set({ ...d, longitude: number(v) })} />
             <Field label="Elevation (m)" type="number" value={d.elevation_m?.toString() ?? ''} onChange={(v) => set({ ...d, elevation_m: number(v) })} />
           </>} />
+        </div>
 
         <section className="bg-white border border-[#e0e0e0] flex flex-col gap-4 p-6 rounded-[2px]">
           <p {...ibm('SemiBold', 'text-[#161616] text-[20px]')}>Assets</p>
