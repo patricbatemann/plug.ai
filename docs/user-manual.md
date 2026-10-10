@@ -6,22 +6,6 @@
 
 PlugAI runs a simulated renewable energy portfolio in Andhra Pradesh (solar, wind, two batteries, an industrial cluster and a market connection) in 15-minute blocks. **BOB** is its AI operator. Every block it plans what each asset should do, acts within the limits you set, asks you when an action is above its authority, and explains every decision. Each run is also settled under **today's practice**: batteries on a fixed clock and a trading desk. That gives you a fair comparison on the same weather and prices.
 
-```text
- top bar: Portfolio · AI recommendations · Ask BOB
-   │
- Portfolio ──► Open site ──► Site details ◄──► Live overview (live data feed)
-   │                │                              │
-   │                ├─ Connect data ◄──────────────┘  (telemetry · forecast · prices)
-   │                └─ BOB tab: Configure BOB ──► Add / edit action ──► setup wizard
-   │                                                  Select → Configure → Test → Activate
-   │                                                                          │
-   │                                                       Live monitoring ◄──┘ ──► Approvals
-   ├─ AI recommendations (approve · decline · open site)
-   └─ Ask BOB (questions · what-if · draft an action)
-
- run clock, presets, events ──► API docs at http://localhost:8000/docs
-```
-
 Everything is simulated: weather, prices, plants, grid, market and maintenance systems. Nothing connects to a real asset.
 
 ## 1. Start the application
