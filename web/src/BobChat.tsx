@@ -11,7 +11,6 @@ import { Link } from "react-router"
 import { runApi, type ChatCard, type ChatItem } from "./api/client"
 import { configKindLabel, inr, limitsSummary, watchLabel } from "./format"
 import { useSite } from "./site"
-import { SITE } from "./data"
 
 export interface BobMessage {
   id: string
@@ -24,9 +23,11 @@ const toMessages = (items: ChatItem[]): BobMessage[] =>
   items.map((item) => ({ id: String(item.id), role: item.role, text: item.text, cards: item.cards }))
 const reason = (failure: unknown) => failure instanceof Error ? failure.message : "Unable to reach BOB. Please retry."
 
-export function useBobChat(scope: string) {
+/** `context` tells BOB what the operator is looking at; without `history` only this visit's exchange shows. */
+export function useBobChat(context: string, history = true) {
   const [runId, setRunId] = useState<number>()
   const [messages, setMessages] = useState<BobMessage[]>([])
+  const [since, setSince] = useState(0)
   const [reply, setReply] = useState("")
   const [pending, setPending] = useState(false)
   const [error, setError] = useState("")
@@ -36,7 +37,9 @@ export function useBobChat(scope: string) {
     setError("")
     try {
       const run = await runApi.current()
-      setMessages(toMessages(await runApi.chat(run.id)))
+      const kept = toMessages(await runApi.chat(run.id))
+      setMessages(kept)
+      if (!history) setSince(kept.length)
       setRunId(run.id)
     } catch (failure) {
       setError(reason(failure))
@@ -51,7 +54,7 @@ export function useBobChat(scope: string) {
     setPending(true)
     setError("")
     try {
-      await runApi.ask(runId, text, `${SITE.id}, ${scope} screen`, (event) => {
+      await runApi.ask(runId, text, context, (event) => {
         // A status means the text so far was a preamble to a tool call.
         if (event.event === "status") setReply("")
         else if (event.event === "delta") setReply((so) => so + event.data)
@@ -66,7 +69,7 @@ export function useBobChat(scope: string) {
   }
 
   return {
-    messages,
+    messages: messages.slice(since),
     reply,
     pending,
     error,
@@ -83,6 +86,7 @@ export function useBobChat(scope: string) {
       try {
         await runApi.clearChat(runId)
         setMessages([])
+        setSince(0)
         setError("")
       } catch (failure) {
         setError(reason(failure))

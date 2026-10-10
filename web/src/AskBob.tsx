@@ -9,7 +9,7 @@ export default function AskBob() {
   const { live, siteName } = useSite();
   const [draft, setDraft] = useState('');
   const input = useRef<HTMLTextAreaElement>(null);
-  const chat = useBobChat('monitoring');
+  const chat = useBobChat('the whole portfolio, Ask BOB screen');
   const systemStatus = live?.connected ? 'Live telemetry' : 'Telemetry not connected';
   const ask = (text: string) => {
     void chat.send(text);

@@ -44,7 +44,7 @@ function FlowBar({ sources, uses }: { sources: FlowItem[]; uses: FlowItem[] }) {
 export default function ActiveMonitoring({ onBack, onApprovalReview }: { onBack: () => void; onApprovalReview: () => void }) {
   const { run, live, approvals, activity, battery, reservePct, floorPct, bobActive, siteName } = useSite();
   const [askBobOpen, setAskBobOpen] = useState(false);
-  const chat = useBobChat('monitoring');
+  const chat = useBobChat(`${SITE.id}, monitoring screen`);
   const usable = battery && reservePct !== null ? Math.max(0, ((battery.soc_pct - reservePct) / 100) * battery.energy_mwh) : null;
 
   return (
