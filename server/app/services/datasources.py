@@ -5,7 +5,6 @@ of sites with a connected API."""
 
 import csv
 import io
-from collections import defaultdict
 from collections.abc import Iterator
 from datetime import datetime
 from urllib.parse import urlsplit
@@ -23,8 +22,8 @@ MAX_BYTES = 5_000_000
 PREVIEW_ROWS = 10
 FEED_BLOCKS = 12  # three hours
 MOCK_PATH = "/api/mock/sites/{}/telemetry"
-FEED = {"timestamp": "DateTime", "device_id": "String", "soc_percent": "Number", "battery_power_mw": "Number",
-        "solar_mw": "Number", "wind_mw": "Number", "irradiance_wm2": "Number", "wind_ms": "Number",
+FEED = {"timestamp": "DateTime", "device_id": "String", "device_type": "String", "power_mw": "Number",
+        "available_mw": "Number", "soc_percent": "Number", "irradiance_wm2": "Number", "wind_ms": "Number",
         "temperature_c": "Number", "frequency_hz": "Number"}
 
 
@@ -115,24 +114,19 @@ def test_api(db: Session, site: Site, endpoint: str) -> dict:
 
 
 def feed(db: Session, site: Site) -> dict:
-    """The site's telemetry API: a row per battery per block for the last three hours, with the site's
-    generation and weather. It moves on every settled block, and BOB plans on the same readings."""
+    """The site's telemetry API: a row per asset per block for the last three hours (output, what it could
+    give, a battery's charge) with the site's weather. It moves on every settled block, and BOB plans on
+    the same readings."""
     run = _live(db)
-    if not any(a.kind == "bess" for a in site.assets):
-        raise ValueError(f"{site.name} has no battery telemetry")
     truth = runs.RunContext.load(db, run).world()
     node = site.assets[0].node.code
-    blocks = defaultdict(dict)
-    for at, a, row in _telemetry(db, run, site, since=run.current_block - FEED_BLOCKS + 1):
-        blocks[row.block, at][a] = row
     rows = []
-    for (b, at), readings in blocks.items():
-        made = lambda kind: round(sum(r.actual_mw for a, r in readings.items() if a.kind == kind), 2)  # noqa: E731
-        shared = [made("solar"), made("wind"), round(float(truth.irradiance[node][b])),
-                   round(float(truth.wind_speed[node][b]), 1), round(float(truth.temperature[b]), 1),
-                   round(float(truth.frequency[b]), 2)]
-        rows += [[at.isoformat(), a.code, round(r.soc_mwh / a.params["energy_mwh"] * 100, 1), round(r.actual_mw, 2),
-                  *shared] for a, r in readings.items() if a.kind == "bess"]
+    for at, a, r in _telemetry(db, run, site, since=run.current_block - FEED_BLOCKS + 1):
+        soc = round(r.soc_mwh / a.params["energy_mwh"] * 100, 1) if r.soc_mwh is not None else ""
+        # `+ 0.0` turns -0.0 into 0.0 so an idle connection does not read "-0.0".
+        rows.append([at.isoformat(), a.code, a.kind, round(r.actual_mw, 2) + 0.0, round(r.available_mw, 2) + 0.0, soc,
+                     round(float(truth.irradiance[node][r.block])), round(float(truth.wind_speed[node][r.block]), 1),
+                     round(float(truth.temperature[r.block]), 1), round(float(truth.frequency[r.block]), 2)])
     return {"headers": list(FEED), "rows": rows}
 
 

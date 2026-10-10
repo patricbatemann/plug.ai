@@ -362,8 +362,10 @@ def test_storm_bulletin_moves_maintenance_and_brings_an_inspection(
 
     kup_api = "http://localhost:5173/api/mock/sites/KUP-SOLAR-001/telemetry"
     feed = client.get("/api/mock/sites/KUP-SOLAR-001/telemetry").json()  # open, like a vendor's sandbox
-    assert feed["headers"][:4] == ["timestamp", "device_id", "soc_percent", "battery_power_mw"]
-    assert {r[1] for r in feed["rows"]} == {"BESS-01"} and all(len(r) == len(feed["headers"]) for r in feed["rows"])
+    assert feed["headers"][:6] == ["timestamp", "device_id", "device_type", "power_mw", "available_mw", "soc_percent"]
+    assert {(r[1], r[2]) for r in feed["rows"]} == {("BESS-01", "bess"), ("SOL-KUP", "solar"), ("IC-KUP", "interconnection")}
+    assert all(len(r) == len(feed["headers"]) for r in feed["rows"])
+    assert all((r[5] == "") == (r[2] != "bess") for r in feed["rows"])  # only a battery reports its charge
     assert not client.get(f"{url}/sites/KUP-SOLAR-001/live", headers=auth_headers).json()["connected"]
     connect = lambda site, endpoint: client.post("/api/data-sources/connect", headers=auth_headers, json={  # noqa: E731
         "siteId": site, "endpoint": endpoint, "apiKey": "unused", "refreshIntervalMin": 5})
@@ -373,7 +375,7 @@ def test_storm_bulletin_moves_maintenance_and_brings_an_inspection(
     assert [s["name"] for s in client.get("/api/sites/KUP-SOLAR-001/data-sources", headers=auth_headers).json()
             if s["kind"] == "api"] == [kup_api]
     assert client.get(f"{url}/sites/KUP-SOLAR-001/live", headers=auth_headers).json()["connected"]
-    assert connect("TIR-WIND-003", tir_api).status_code == 422  # no battery
+    assert {r[1] for r in connect("TIR-WIND-003", tir_api).json()["rows"]} == {"WND-TIR"}  # a wind farm alone
 
 
 def test_what_if_and_replay_study_leave_the_live_run_alone(
