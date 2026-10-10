@@ -14,7 +14,8 @@ from sqlalchemy.orm import Session
 from app.agent.llm import Tool, Unavailable, turn
 from app.core.config import settings
 from app.models.portfolio import ActionConfig, Asset, Portfolio, Site
-from app.models.run import Action, AssetBlock, ChatMessage, Constraint, Cycle, Forecast, Run
+from app.models.run import Action, AssetBlock, ChatMessage, Constraint, Cycle, Forecast, Run, SystemBlock
+from app.optimize import baseline
 from app.services import configs, datasources, decisions, documents, policy, runs
 from app.services.dispatch import connected
 from app.services.deliberation import IST
@@ -24,7 +25,9 @@ from app.services.whatif import WhatIf, what_if
 HISTORY_ROWS = 40
 WORKING_ON = {"get_situation": "Reading the live situation", "get_cycle": "Reading the decision record",
               "get_asset": "Checking the asset", "explain_action": "Looking up the action",
-              "what_if": "Planning the what-if", "get_forecasts": "Reading the forecasts", "draft_action_config": "Drafting the setup",
+              "what_if": "Planning the what-if", "get_forecasts": "Reading the forecasts",
+              "get_policy": "Reading the policy", "compare_with_practice": "Comparing with today's practice",
+              "draft_action_config": "Drafting the setup",
               "test_action_config": "Testing the draft"}
 SYSTEM = """You are BOB, the AI orchestrator of an Indian renewable portfolio, answering a control-room \
 operator in PlugAI. Times are IST; money is ₹ (write lakh for 1,00,000); power in MW, energy in MWh.
@@ -32,7 +35,10 @@ operator in PlugAI. Times are IST; money is ₹ (write lakh for 1,00,000); power
 For forecasts of demand, renewables or market prices use get_forecasts. Answer from tool outputs only, \
 briefly, in GitHub-flavoured markdown: short paragraphs, a bullet list for several items, a small table \
 when comparing numbers, **bold** for the figures that matter. No headings above ###, no code blocks, no \
-HTML. When explaining a decision, cite the cycle time, the mode \
+HTML. For what BOB may do on its own, what needs approval and the protected limits use get_policy. \
+Today's practice is how the portfolio is run without BOB (batteries on a fixed clock, the trading desk \
+covering only gaps outside the deviation band); compare_with_practice shows both sets of decisions and \
+their cost for one block. When explaining a decision, cite the cycle time, the mode \
 and why, the option chosen and the criterion that decided it. You cannot execute actions, approve them \
 or activate configurations: say what the operator can do instead.
 
@@ -67,6 +73,17 @@ class GetForecasts(BaseModel):
     """The portfolio's outlook hour by hour: forecast demand, renewable availability and net demand (P50, MW),
     and the real-time market price (P10/P50/P90, ₹/MWh) with the day-ahead price. The same forecasts BOB plans on."""
     hours: int = Field(description="Hours ahead, 1 to 24")
+
+
+class GetPolicy(BaseModel):
+    """Every configured action: autonomy, MW limits, reserve, watch condition, status and version; the
+    organisation's protected limits; and today's practice, the fixed rules the portfolio runs on without BOB."""
+
+
+class CompareWithPractice(BaseModel):
+    """For one settled 15-minute block: BOB's decisions and today's practice's decisions, with the cost,
+    deviation, unserved energy and curtailment each produced."""
+    at: str  # "HH:MM" in IST, or "latest"
 
 
 class GetAsset(BaseModel):
@@ -208,16 +225,19 @@ def _tools(db: Session, run: Run, cards: list[dict]) -> dict[str, Tool]:
                         "telemetry_connected": a.code in linked} for a in assets.values()],
         }
 
+    def block_at(at: str, latest: int) -> int:
+        """The block holding an IST "HH:MM" within the last day, or `latest`."""
+        if at == "latest":
+            return latest
+        hh, mm = (int(x) for x in at.split(":"))
+        local = now.astimezone(IST)
+        target = datetime.combine(local.date(), time(hh, mm), IST)
+        if target > local:
+            target -= timedelta(days=1)
+        return int((target - run.sim_start_at) / runs.BLOCK)
+
     def cycle(a: GetCycle) -> dict:
-        if a.at == "latest":
-            block = run.current_block + 1
-        else:
-            hh, mm = (int(x) for x in a.at.split(":"))
-            local = now.astimezone(IST)
-            target = datetime.combine(local.date(), time(hh, mm), IST)
-            if target > local:
-                target -= timedelta(days=1)
-            block = int((target - run.sim_start_at) / runs.BLOCK)
+        block = block_at(a.at, run.current_block + 1)
         rows = list(db.scalars(select(Cycle).where(Cycle.run_id == run.id, Cycle.block <= block)
                                .order_by(Cycle.block.desc(), Cycle.seq).limit(4)))
         rows = [c for c in rows if c.block == rows[0].block] if rows else []
@@ -239,6 +259,42 @@ def _tools(db: Session, run: Run, cards: list[dict]) -> dict[str, Tool]:
                 "rtm_price_inr_mwh": {"p10": hourly(o["rtm"].p10), "p50": hourly(o["rtm"].p50),
                                       "p90": hourly(o["rtm"].p90)},
                 "dam_price_inr_mwh": hourly(o["dam"].p50)}
+
+    def policy_info(_: GetPolicy) -> dict:
+        rows = db.execute(select(ActionConfig, Asset).join(Asset, Asset.id == ActionConfig.asset_id)
+                          .where(Asset.portfolio_id == run.portfolio_id, ActionConfig.current)
+                          .order_by(Asset.code, ActionConfig.kind)).all()
+        return {
+            "actions": [{"asset": x.name, "kind": c.kind, "name": c.name, "status": c.status, "version": c.version,
+                         "autonomy": c.autonomy, "limits": c.limits, "watch": [
+                             {**w, "asset": w.get("asset") or x.code, "label": configs.watch_label(w)} for w in c.watch],
+                         "approver_answers_within_min": c.approval.get("response_min", 10)} for c, x in rows],
+            "autonomy_meaning": {"auto": "acts on its own within the limits", "approval": "waits for a person",
+                                 "recommend": "only suggests"},
+            "protected_limits": db.get(Portfolio, run.portfolio_id).protected,
+            "todays_practice": {"battery_charge_hours": baseline.CHARGE_HOURS,
+                                "battery_charge_share_of_rating": baseline.CHARGE_SHARE,
+                                "battery_discharge_hours": baseline.DISCHARGE_HOURS,
+                                "trading": "buys or sells the forecast gap only when it falls outside the deviation band"},
+        }
+
+    def compare(a: CompareWithPractice) -> dict:
+        block = block_at(a.at, run.current_block)
+        if not 0 <= block <= run.current_block:
+            raise ValueError("That block has not settled yet")
+
+        def side(name: str) -> dict:
+            acts = db.execute(select(Action, Asset.name).outerjoin(Asset, Asset.id == Action.asset_id).where(
+                Action.run_id == run.id, Action.policy == name, Action.block == block,
+                Action.status.in_(("acked", "verified")))).all()
+            sb = db.get(SystemBlock, (run.id, name, block))
+            return {"decisions": [{"kind": x.kind, "asset": asset_name, "mw": round(x.mw, 1)} for x, asset_name in acts],
+                    "cost_inr": round(sb.cost_inr), "market_inr": round(sb.market_inr), "deviation_inr": round(sb.dsm_inr),
+                    "deviation_mw": round(sb.deviation_mw, 1), "unserved_mwh": round(sb.unserved_mwh, 2),
+                    "curtailed_mwh": round(sb.curtailed_mwh, 2)}
+
+        start = (run.sim_start_at + block * runs.BLOCK).astimezone(IST)
+        return {"block": start.strftime("%H:%M"), "bob": side("bob"), "todays_practice": side("baseline")}
 
     def asset_info(a: GetAsset) -> dict:
         x = asset(a.code)
@@ -333,6 +389,7 @@ def _tools(db: Session, run: Run, cards: list[dict]) -> dict[str, Tool]:
 
     return {"get_situation": Tool(GetSituation, situation), "get_cycle": Tool(GetCycle, cycle),
             "get_asset": Tool(GetAsset, asset_info), "get_forecasts": Tool(GetForecasts, forecasts),
+            "get_policy": Tool(GetPolicy, policy_info), "compare_with_practice": Tool(CompareWithPractice, compare),
             "explain_action": Tool(ExplainAction, explain),
             "what_if": Tool(WhatIf, what_if_card), "draft_action_config": Tool(DraftActionConfig, draft),
             "test_action_config": Tool(TestActionConfig, test)}

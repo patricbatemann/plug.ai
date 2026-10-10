@@ -11,7 +11,7 @@ from openai.types.chat import ChatCompletionChunk
 from sqlalchemy import func, select, update
 from sqlalchemy.orm import Session
 
-from app.agent import extract, llm
+from app.agent import chat, extract, llm
 from app.core.config import settings
 from app.models.portfolio import ActionConfig, Asset
 from app.models.run import Action, AgentCall, AssetBlock, Cycle, Forecast, MaintenanceTask, Run
@@ -340,6 +340,16 @@ def test_storm_bulletin_moves_maintenance_and_brings_an_inspection(
     at_two = {r.policy: r.available_mw for r in db.scalars(select(AssetBlock).where(
         AssetBlock.asset_id == tir, AssetBlock.block == 34))}  # 14:00
     assert at_two["baseline"] == 0 and at_two["bob"] > 0
+
+    # BOB reads its policy and sets its decisions for a block beside today's practice.
+    live = db.get(Run, run["id"])
+    db.refresh(live)
+    tools = chat._tools(db, live, [])
+    rules = tools["get_policy"].run(chat.GetPolicy())
+    assert rules["protected_limits"]["battery_soc_floor_pct"] == 30 and rules["todays_practice"]["battery_discharge_hours"]
+    assert any(a["kind"] == "battery_discharge" and a["status"] == "active" for a in rules["actions"])
+    compared = tools["compare_with_practice"].run(chat.CompareWithPractice(at="latest"))
+    assert {"cost_inr", "decisions"} <= compared["bob"].keys() and {"cost_inr", "decisions"} <= compared["todays_practice"].keys()
 
     db.execute(update(Run).values(live_from_block=49))  # inspections are proposed only once someone can answer
     db.commit()
