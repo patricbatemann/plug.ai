@@ -79,7 +79,7 @@ class DataConnect(BaseModel):
     """The client's API data-source form. The key is neither stored nor used: the simulator answers."""
     site_id: str = Field(alias="siteId", max_length=40)
     endpoint: str = Field(max_length=300)
-    refresh_min: int | None = Field(default=None, alias="refreshIntervalMin", ge=1, le=60)
+    refresh_min: int = Field(default=1, alias="refreshIntervalMin", ge=1, le=60)
 
 
 class ChatItem(BaseModel):

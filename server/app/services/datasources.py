@@ -130,7 +130,7 @@ def feed(db: Session, site: Site) -> dict:
     return {"headers": list(FEED), "rows": rows}
 
 
-def connect(db: Session, site: Site, endpoint: str, user: str, refresh_min: int | None) -> dict:
+def connect(db: Session, site: Site, endpoint: str, user: str, refresh_min: int) -> dict:
     """Test the site's API and keep it as the site's one live source; BOB acts at the site from the next plan."""
     _check(site, endpoint)
     data = feed(db, site)

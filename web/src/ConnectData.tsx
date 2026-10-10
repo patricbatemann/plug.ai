@@ -17,6 +17,8 @@ interface Dataset {
   problems: string[]
 }
 
+const REFRESH_MIN = 1
+
 const reason = (failure: unknown, fallback: string) => (failure instanceof Error ? failure.message : fallback)
 const input =
   "min-h-11 w-full min-w-0 border border-[#e0e0e0] bg-white px-3 text-sm focus:outline-2 focus:outline-[#0f62fe]"
@@ -32,7 +34,6 @@ export default function ConnectData({ onBack }: ConnectDataProps) {
   const [endpoint, setEndpoint] = useState("")
   const [key, setKey] = useState("")
   const [showKey, setShowKey] = useState(false)
-  const [interval, setInterval] = useState("5")
   const [detected, setDetected] = useState(true)
   const [page, setPage] = useState(1)
   const fileInput = useRef<HTMLInputElement>(null)
@@ -61,7 +62,7 @@ export default function ConnectData({ onBack }: ConnectDataProps) {
   }, "Unable to read CSV.")
   // Testing the site's telemetry API also keeps it as the site's live source.
   const testAPI = () => run(async () => {
-    const feed = await siteApi.connectFeed(SITE.id, endpoint, key, Number(interval))
+    const feed = await siteApi.connectFeed(SITE.id, endpoint, key, REFRESH_MIN)
     setDataset({
       headers: feed.headers, types: [], rows: feed.rows.map((row) => row.map(String)), total: feed.rows.length,
       name: new URL(endpoint).hostname, kind: "API", problems: [],
@@ -253,19 +254,8 @@ export default function ConnectData({ onBack }: ConnectDataProps) {
                     </button>
                   </div>
                 </label>
-                <div className="flex flex-wrap items-end gap-4">
-                  <label className="min-w-0 flex-1 space-y-2 text-sm font-semibold">
-                    Refresh Interval
-                    <select
-                      value={interval}
-                      onChange={(event) => setInterval(event.target.value)}
-                      className={input}
-                    >
-                      <option value="1">Every minute</option>
-                      <option value="5">Every 5 minutes</option>
-                      <option value="15">Every 15 minutes</option>
-                    </select>
-                  </label>
+                <div className="flex flex-wrap items-center justify-between gap-4">
+                  <p className="text-sm">Refreshes every minute</p>
                   <button
                     disabled={busy || !endpoint}
                     onClick={() => void testAPI()}
@@ -280,8 +270,8 @@ export default function ConnectData({ onBack }: ConnectDataProps) {
                   </p>
                 )}
                 <p className="text-xs">
-                  Battery execution requires telemetry no older than 2 minutes;
-                  a 5-minute refresh is monitoring-only.
+                  Each refresh returns the readings of the last three hours, one
+                  row per asset for every settled 15-minute block.
                 </p>
               </section>
             </div>
