@@ -417,15 +417,15 @@ function Screens({ onLogout }: { onLogout?: () => void }) {
 
           <div className="overflow-x-auto" role="region" aria-label="Registered sites table" tabIndex={0}>
             {/* Column Headers */}
-            <div className="bg-[#f4f4f4] border-b border-[#e0e0e0] grid grid-cols-[240px_140px_160px_140px_130px_180px_160px_80px] min-w-[1278px] items-center [&>div]:w-auto [&>div]:min-w-0 [&>div:last-child]:justify-start px-6 py-3">
-              <div className="w-[240px] font-['IBM Plex Sans:SemiBold'] font-semibold text-[#666] text-[11px] uppercase leading-normal" style={{ fontVariationSettings: '"wdth" 100' }}>Site</div>
-              <div className="w-[140px] font-['IBM Plex Sans:SemiBold'] font-semibold text-[#666] text-[11px] uppercase leading-normal" style={{ fontVariationSettings: '"wdth" 100' }}>Live Output</div>
-              <div className="w-[160px] font-['IBM Plex Sans:SemiBold'] font-semibold text-[#666] text-[11px] uppercase leading-normal" style={{ fontVariationSettings: '"wdth" 100' }}>Performance</div>
-              <div className="w-[140px] font-['IBM Plex Sans:SemiBold'] font-semibold text-[#666] text-[11px] uppercase leading-normal" style={{ fontVariationSettings: '"wdth" 100' }}>Storage</div>
-              <div className="w-[130px] font-['IBM Plex Sans:SemiBold'] font-semibold text-[#666] text-[11px] uppercase leading-normal" style={{ fontVariationSettings: '"wdth" 100' }}>Grid Position</div>
-              <div className="w-[160px] font-['IBM Plex Sans:SemiBold'] font-semibold text-[#666] text-[11px] uppercase leading-normal" style={{ fontVariationSettings: '"wdth" 100' }}>Status</div>
-              <div className="w-[160px] font-['IBM Plex Sans:SemiBold'] font-semibold text-[#666] text-[11px] uppercase leading-normal" style={{ fontVariationSettings: '"wdth" 100' }}>AI Activity</div>
-              <div className="w-[80px] font-['IBM Plex Sans:SemiBold'] font-semibold text-[#666] text-[11px] uppercase leading-normal tracking-[0.5px]" style={{ fontVariationSettings: '"wdth" 100' }}>Action</div>
+            <div className="bg-[#f4f4f4] border-b border-[#e0e0e0] grid grid-cols-[minmax(0,1.7fr)_repeat(4,minmax(0,1fr))_repeat(2,minmax(0,1.2fr))_minmax(0,0.7fr)] gap-x-4 min-w-[880px] items-center [&>div]:min-w-0 px-6 py-3">
+              <div className="font-['IBM Plex Sans:SemiBold'] font-semibold text-[#666] text-[11px] uppercase leading-normal" style={{ fontVariationSettings: '"wdth" 100' }}>Site</div>
+              <div className="font-['IBM Plex Sans:SemiBold'] font-semibold text-[#666] text-[11px] uppercase leading-normal" style={{ fontVariationSettings: '"wdth" 100' }}>Live Output</div>
+              <div className="font-['IBM Plex Sans:SemiBold'] font-semibold text-[#666] text-[11px] uppercase leading-normal" style={{ fontVariationSettings: '"wdth" 100' }}>Performance</div>
+              <div className="font-['IBM Plex Sans:SemiBold'] font-semibold text-[#666] text-[11px] uppercase leading-normal" style={{ fontVariationSettings: '"wdth" 100' }}>Storage</div>
+              <div className="font-['IBM Plex Sans:SemiBold'] font-semibold text-[#666] text-[11px] uppercase leading-normal" style={{ fontVariationSettings: '"wdth" 100' }}>Grid Position</div>
+              <div className="font-['IBM Plex Sans:SemiBold'] font-semibold text-[#666] text-[11px] uppercase leading-normal" style={{ fontVariationSettings: '"wdth" 100' }}>Status</div>
+              <div className="font-['IBM Plex Sans:SemiBold'] font-semibold text-[#666] text-[11px] uppercase leading-normal" style={{ fontVariationSettings: '"wdth" 100' }}>AI Activity</div>
+              <div className="font-['IBM Plex Sans:SemiBold'] font-semibold text-[#666] text-[11px] uppercase leading-normal tracking-[0.5px]" style={{ fontVariationSettings: '"wdth" 100' }}>Action</div>
             </div>
 
             {/* Table Body */}
@@ -443,10 +443,10 @@ function Screens({ onLogout }: { onLogout?: () => void }) {
                 return (
                   <div
                     key={site.id}
-                    className={`bg-white border-b border-[#e0e0e0] grid grid-cols-[240px_140px_160px_140px_130px_180px_160px_80px] min-w-[1278px] items-center [&>div]:w-auto [&>div]:min-w-0 [&>div:last-child]:justify-start px-6 py-4`}
+                    className={`bg-white border-b border-[#e0e0e0] grid grid-cols-[minmax(0,1.7fr)_repeat(4,minmax(0,1fr))_repeat(2,minmax(0,1.2fr))_minmax(0,0.7fr)] gap-x-4 min-w-[880px] items-center [&>div]:min-w-0 px-6 py-4`}
                   >
                     {/* Site */}
-                    <div className="w-[240px] flex gap-3 items-center max-sm:flex-wrap">
+                    <div className="flex gap-3 items-center max-sm:flex-wrap">
                       <div className="bg-[#f4f4f4] p-2 rounded-[2px] shrink-0">
                         <div className="size-[18px] relative">
                           <img alt="" className="absolute inset-0 size-full" src={getSiteIcon(site.type)} />
@@ -454,22 +454,22 @@ function Screens({ onLogout }: { onLogout?: () => void }) {
                       </div>
                       <div className="flex flex-col gap-0.5 flex-1 min-w-0">
                         <div className="flex gap-2 items-center max-sm:flex-wrap">
-                          <p className="font-['IBM Plex Sans:SemiBold'] font-semibold text-[#1a1a1a] text-[14px] leading-normal truncate" style={{ fontVariationSettings: '"wdth" 100' }}>{site.name}</p>
+                          <p className="font-['IBM Plex Sans:SemiBold'] font-semibold text-[#1a1a1a] text-[14px] leading-normal truncate" title={site.name} style={{ fontVariationSettings: '"wdth" 100' }}>{site.name}</p>
                           {site.isLive && (
                             <div className="flex gap-1 items-center shrink-0 max-sm:flex-wrap">
                               <div className="size-1.5 relative"><img alt="" className="absolute inset-0 size-full" src={imgLiveDot} /></div>
-                              <p className="font-['IBM Plex Sans:Medium'] font-medium text-[#198038] text-[11px] leading-normal whitespace-nowrap max-sm:whitespace-normal" style={{ fontVariationSettings: '"wdth" 100' }}>Live</p>
+                              <p className="font-['IBM Plex Sans:Medium'] font-medium text-[#198038] text-[11px] leading-normal break-words" style={{ fontVariationSettings: '"wdth" 100' }}>Live</p>
                             </div>
                           )}
                         </div>
-                        <p className="font-['IBM Plex Sans:Regular'] font-normal text-[#525252] text-[12px] leading-normal whitespace-nowrap max-sm:whitespace-normal" style={{ fontVariationSettings: '"wdth" 100' }}>
+                        <p className="font-['IBM Plex Sans:Regular'] font-normal text-[#525252] text-[12px] leading-normal break-words" style={{ fontVariationSettings: '"wdth" 100' }}>
                           {site.location} · {site.type}
                         </p>
                       </div>
                     </div>
 
                     {/* Live Output */}
-                    <div className="w-[140px] flex flex-col gap-1.5">
+                    <div className="flex flex-col gap-1.5">
                       <div className="flex gap-1 items-baseline max-sm:flex-wrap">
                         <p className="font-mono font-bold text-[#161616] text-[14px] leading-normal">{mw(liveOutput)}</p>
                         <p className="font-['IBM Plex Sans:Regular'] font-normal text-[#525252] text-[11px] leading-normal" style={{ fontVariationSettings: '"wdth" 100' }}>active</p>
@@ -477,15 +477,15 @@ function Screens({ onLogout }: { onLogout?: () => void }) {
                       <div className="bg-[#f4f4f4] h-1 rounded-[2px] overflow-hidden w-20">
                         <div className="bg-[#198038] h-full" style={{ width: `${Math.min(100, livePercent)}%` }} />
                       </div>
-                      <p className="font-['IBM Plex Sans:Regular'] font-normal text-[#525252] text-[11px] leading-normal whitespace-nowrap max-sm:whitespace-normal" style={{ fontVariationSettings: '"wdth" 100' }}>of <span className="font-mono">{site.capacityMw} MW</span> capacity</p>
+                      <p className="font-['IBM Plex Sans:Regular'] font-normal text-[#525252] text-[11px] leading-normal break-words" style={{ fontVariationSettings: '"wdth" 100' }}>of <span className="font-mono">{site.capacityMw} MW</span> capacity</p>
                     </div>
 
                     {/* Performance */}
-                    <div className="w-[160px] flex flex-col gap-0.5">
+                    <div className="flex flex-col gap-0.5">
                       {site.performance ? (
                         <>
                           <p
-                            className="font-mono font-semibold text-[14px] leading-normal whitespace-nowrap max-sm:whitespace-normal"
+                            className="font-mono font-semibold text-[14px] leading-normal break-words"
                             style={{
                               color: site.performance.isBelow ? '#b26207' : '#198038',
                             }}
@@ -497,7 +497,7 @@ function Screens({ onLogout }: { onLogout?: () => void }) {
                               <img alt="" className="absolute inset-0 size-full" src={site.performance.isBelow ? imgArrowDown : imgArrowUp} />
                             </div>
                             <p
-                              className="font-['IBM Plex Sans:Regular'] font-normal text-[12px] leading-normal whitespace-nowrap max-sm:whitespace-normal"
+                              className="font-['IBM Plex Sans:Regular'] font-normal text-[12px] leading-normal break-words"
                               style={{
                                 color: site.performance.isBelow ? '#b26207' : '#198038',
                                 fontVariationSettings: '"wdth" 100'
@@ -508,12 +508,12 @@ function Screens({ onLogout }: { onLogout?: () => void }) {
                           </div>
                         </>
                       ) : (
-                        <p className="font-['IBM Plex Sans:Regular'] font-normal text-[#525252] text-[13px] leading-normal whitespace-nowrap max-sm:whitespace-normal" style={{ fontVariationSettings: '"wdth" 100' }}>Unavailable</p>
+                        <p className="font-['IBM Plex Sans:Regular'] font-normal text-[#525252] text-[13px] leading-normal break-words" style={{ fontVariationSettings: '"wdth" 100' }}>Unavailable</p>
                       )}
                     </div>
 
                     {/* Storage */}
-                    <div className="w-[140px] flex flex-col gap-0.5">
+                    <div className="flex flex-col gap-0.5">
                       {batterySoc !== null ? (
                         <>
                           <div className="flex gap-1.5 items-center max-sm:flex-wrap">
@@ -522,31 +522,31 @@ function Screens({ onLogout }: { onLogout?: () => void }) {
                             </div>
                             <p className="font-mono font-semibold text-[#161616] text-[14px] leading-normal">{batterySoc}%</p>
                           </div>
-                          <p className="font-['IBM Plex Sans:Regular'] font-normal text-[#525252] text-[12px] leading-normal whitespace-nowrap max-sm:whitespace-normal" style={{ fontVariationSettings: '"wdth" 100' }}>{batteryStatusText}</p>
+                          <p className="font-['IBM Plex Sans:Regular'] font-normal text-[#525252] text-[12px] leading-normal break-words" style={{ fontVariationSettings: '"wdth" 100' }}>{batteryStatusText}</p>
                         </>
                       ) : (
-                        <p className="font-['IBM Plex Sans:Regular'] font-normal text-[#525252] text-[13px] leading-normal whitespace-nowrap max-sm:whitespace-normal" style={{ fontVariationSettings: '"wdth" 100' }}>{batteryStatusText || 'No battery'}</p>
+                        <p className="font-['IBM Plex Sans:Regular'] font-normal text-[#525252] text-[13px] leading-normal break-words" style={{ fontVariationSettings: '"wdth" 100' }}>{batteryStatusText || 'No battery'}</p>
                       )}
                     </div>
 
                     {/* Grid Position */}
-                    <div className="w-[130px] flex flex-col gap-0.5">
+                    <div className="flex flex-col gap-0.5">
                       <div className="flex gap-1.5 items-center max-sm:flex-wrap">
                         <div className="size-3.5 relative">
                           <img alt="" className="absolute inset-0 size-full" src={getGridIcon(gridStatus)} />
                         </div>
-                        <p className="font-['IBM Plex Sans:Medium'] font-medium text-[#161616] text-[13px] leading-normal whitespace-nowrap max-sm:whitespace-normal" style={{ fontVariationSettings: '"wdth" 100' }}>{gridStatus}</p>
+                        <p className="font-['IBM Plex Sans:Medium'] font-medium text-[#161616] text-[13px] leading-normal break-words" style={{ fontVariationSettings: '"wdth" 100' }}>{gridStatus}</p>
                       </div>
-                      <p className="font-['IBM Plex Sans:Regular'] font-normal text-[#525252] text-[12px] leading-normal whitespace-nowrap max-sm:whitespace-normal" style={{ fontVariationSettings: '"wdth" 100' }}>{gridLoadText}</p>
+                      <p className="font-['IBM Plex Sans:Regular'] font-normal text-[#525252] text-[12px] leading-normal break-words" style={{ fontVariationSettings: '"wdth" 100' }}>{gridLoadText}</p>
                     </div>
 
                     {/* Status */}
-                    <div className="w-[160px]">
-                      <div className={`${badgeStyle.bg} flex gap-1.5 h-6 items-center px-2 py-1 rounded-[2px] w-fit max-sm:flex-wrap`}>
+                    <div>
+                      <div className={`${badgeStyle.bg} flex flex-wrap gap-1.5 min-h-6 items-center px-2 py-1 rounded-[2px] w-fit max-w-full`}>
                         <div className="size-1.5 relative">
                           <img alt="" className="absolute inset-0 size-full" src={badgeStyle.dot} />
                         </div>
-                        <p className={`font-['IBM Plex Sans:Medium'] font-medium ${badgeStyle.text} text-[12px] leading-normal whitespace-nowrap max-sm:whitespace-normal`} style={{ fontVariationSettings: '"wdth" 100' }}>{statusObj.label}</p>
+                        <p className={`font-['IBM Plex Sans:Medium'] font-medium ${badgeStyle.text} text-[12px] leading-normal break-words`} style={{ fontVariationSettings: '"wdth" 100' }}>{statusObj.label}</p>
                         {statusObj.badgeCount && (
                           <div className={`${badgeStyle.badgeBg} flex items-center justify-center rounded-full size-3.5 max-sm:flex-wrap`}>
                             <p className="font-['IBM Plex Sans:Bold'] font-bold text-white text-[9px] leading-normal" style={{ fontVariationSettings: '"wdth" 100' }}>{statusObj.badgeCount}</p>
@@ -556,13 +556,13 @@ function Screens({ onLogout }: { onLogout?: () => void }) {
                     </div>
 
                     {/* AI Activity */}
-                    <div className="w-[160px] flex gap-2 items-center max-sm:flex-wrap">
+                    <div className="flex gap-2 items-center max-sm:flex-wrap">
                       <div className="size-3.5 relative">
                         <img alt="" className="absolute inset-0 size-full" src={imgSparkles1} />
                       </div>
                       <div className="flex gap-1.5 items-center max-sm:flex-wrap">
                         <p
-                          className={`font-['IBM Plex Sans:Medium'] font-medium ${site.aiActivity.isPulsing ? 'text-[#0f62fe]' : 'text-[#525252]'} text-[13px] leading-normal whitespace-nowrap max-sm:whitespace-normal`}
+                          className={`font-['IBM Plex Sans:Medium'] font-medium ${site.aiActivity.isPulsing ? 'text-[#0f62fe]' : 'text-[#525252]'} text-[13px] leading-normal break-words`}
                           style={{ fontVariationSettings: '"wdth" 100' }}
                         >
                           {site.aiActivity.text}
@@ -576,9 +576,9 @@ function Screens({ onLogout }: { onLogout?: () => void }) {
                     </div>
 
                     {/* Action */}
-                    <div className="w-[80px] flex items-center justify-center max-sm:flex-wrap">
+                    <div className="flex items-center">
                       <p
-                        className="font-['IBM Plex Sans:Medium'] font-medium text-[#0f62fe] text-[13px] leading-normal cursor-pointer whitespace-nowrap max-sm:whitespace-normal hover:text-[#0043ce] hover:underline"
+                        className="font-['IBM Plex Sans:Medium'] font-medium text-[#0f62fe] text-[13px] leading-normal cursor-pointer break-words hover:text-[#0043ce] hover:underline"
                         onClick={() => setView('siteDetail')}
                         style={{ fontVariationSettings: '"wdth" 100' }}
                       >
