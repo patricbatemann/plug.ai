@@ -1,8 +1,8 @@
 # PlugAI user manual
 
-[![Watch the BOB demo (3½ minutes)](images/demo-video.png)](demo/bob-demo.mp4)
+[![Watch the BOB demo (3½ minutes)](images/demo-video.png)](https://github.com/user-attachments/assets/24b43eee-65d0-4478-bbab-091e6796e9a9)
 
-*Click the picture to play the demo video ([`docs/demo/bob-demo.mp4`](https://github.com/user-attachments/assets/24b43eee-65d0-4478-bbab-091e6796e9a9)), 3 min 26 s).*
+*Click the picture to play the demo video ([`docs/demo/bob-demo.mp4`](docc/demo/bolo-demo.mo4)), 3 min 26 s).*
 
 PlugAI runs a simulated renewable energy portfolio in Andhra Pradesh (solar, wind, two batteries, an industrial cluster and a market connection) in 15-minute blocks. **BOB** is its AI operator. Every block it plans what each asset should do, acts within the limits you set, asks you when an action is above its authority, and explains every decision. Each run is also settled under **today's practice**: batteries on a fixed clock and a trading desk. That gives you a fair comparison on the same weather and prices.
 
