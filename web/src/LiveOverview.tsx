@@ -6,7 +6,7 @@ import BobToggle from "./BobToggle";
 import LiveFeed from "./LiveFeed";
 import { siteApi, type FlowItem, type SiteLive } from "./api/client";
 import { SITE } from "./data";
-import { batteryState, kindLabel, mw, mwh, simDateTime } from "./format";
+import { batteryState, kindLabel, mw, mwh, simDateTime, SOURCE_KIND } from "./format";
 import { useSite } from "./site";
 
 const assetPathPrefix = '/assets';
@@ -245,7 +245,7 @@ export default function LiveOverview({ onBack, onTabChange, onBob, onConnectData
                 <p {...text('font-semibold text-[#161616] text-[13px]')}>Data sources</p>
                 {sources.length === 0 && <p {...text('text-[#525252] text-[12px]')}>No data source is connected.</p>}
                 {sources.map((s) => (
-                  <p key={s.id} {...text('text-[#525252] text-[12px] break-all')}>{s.kind === 'api' ? 'Live API' : 'CSV'} · {s.name}{s.rows !== null && <> · <span className="font-mono">{s.rows}</span> rows</>}</p>
+                  <p key={s.id} {...text('text-[#525252] text-[12px] break-all')}>{SOURCE_KIND[s.kind]} · {s.name}{s.rows !== null && <> · <span className="font-mono">{s.rows}</span> rows</>}</p>
                 ))}
                 <button onClick={onConnectData} {...text('font-semibold text-[#0f62fe] text-[12px] underline cursor-pointer self-start')}>Connect data</button>
               </div>

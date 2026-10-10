@@ -122,10 +122,10 @@ def mock_prices(db: Session = Depends(get_db)) -> dict:
 @router.post("/data-sources/connect")
 def connect_feed(payload: DataConnect, db: Session = Depends(get_db), portfolio: Portfolio = Depends(current_portfolio),
                  user: User = Depends(get_current_user)) -> dict:
-    """The client's API connection: tests the site's telemetry endpoint and keeps it as the site's source."""
+    """The client's API connection: tests one of the site's feeds and keeps it as the site's source."""
     try:
-        data = datasources.connect(db, current_site(payload.site_id, portfolio), payload.endpoint, user.email,
-                                   payload.refresh_min)
+        data = datasources.connect(db, current_site(payload.site_id, portfolio), payload.feed, payload.endpoint,
+                                   user.email, payload.refresh_min)
     except ValueError as error:
         raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=str(error)) from None
     db.commit()

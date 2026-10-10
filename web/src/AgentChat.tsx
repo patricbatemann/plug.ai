@@ -4,7 +4,7 @@ import { Link, useLocation } from 'react-router';
 import { configApi, siteApi, type ConfigOptions, type ConfigValues, type Preferences } from './api/client';
 import { useBobChat, BobMessages, type BobChatState } from './BobChat';
 import { SITE } from './data';
-import { AUTONOMY, NOTIFY, OBJECTIVES, RECOVERY, configKindLabel, limitsSummary, mwh, watchLabel } from './format';
+import { AUTONOMY, NOTIFY, OBJECTIVES, RECOVERY, configKindLabel, limitsSummary, mwh, SOURCE_KIND, watchLabel } from './format';
 import { useSite } from './site';
 
 const BoundaryContext = createContext<(rule: string) => void>(() => {});
@@ -436,7 +436,7 @@ function WelcomeCard({ choices, onStart, chat }: { choices: Array<{ asset: Confi
           {[
             ['Site', siteName, SITE.id],
             ['Telemetry', live?.connected ? 'Connected' : 'Not connected', live?.connected ? 'BOB acts on the live feed' : 'BOB only monitors until the feed is connected'],
-            ['Data sources', `${sources.length} connected`, sources.map((s) => s.kind === 'api' ? 'Live API' : 'CSV').join(', ') || 'None yet'],
+            ['Data sources', `${sources.length} connected`, sources.map((s) => SOURCE_KIND[s.kind]).join(', ') || 'None yet'],
             ['Configured actions', `${configs.length}`, `${configs.filter((c) => c.status === 'active').length} active`],
           ].map(([name, value, detail]) => <div key={name} className="border border-[#e0e0e0] bg-white p-3 rounded-[2px]"><p className="mb-1 text-[11px] text-[#8d8d8d]">{name}</p><p className="mb-1 text-[13px] font-semibold text-[#161616]">{value}</p><p className="text-[12px] leading-relaxed text-[#525252]">{detail}</p></div>)}
         </div>

@@ -1,4 +1,4 @@
-import type { ConfigValues, Preferences, SiteStatus } from './api/client'
+import type { ConfigValues, DataSource, Preferences, SiteStatus } from './api/client'
 
 const number = new Intl.NumberFormat('en-IN', { maximumFractionDigits: 1 })
 
@@ -135,4 +135,11 @@ export const NOTIFY: Record<Preferences['notify'][number], string> = {
   email: 'Email — Site managers',
   push: 'Push — Plug.ai mobile app',
   slack: 'Slack — operations channel',
+}
+
+export const SOURCE_KIND: Record<DataSource['kind'], string> = {
+  api: 'Telemetry API',
+  forecast: 'Forecast API',
+  prices: 'Market price API',
+  csv: 'CSV',
 }

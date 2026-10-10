@@ -388,8 +388,9 @@ def test_storm_bulletin_moves_maintenance_and_brings_an_inspection(
     assert all(len(r) == len(feed["headers"]) for r in feed["rows"])
     assert all((r[5] == "") == (r[2] != "bess") for r in feed["rows"])  # only a battery reports its charge
     assert not client.get(f"{url}/sites/KUP-SOLAR-001/live", headers=auth_headers).json()["connected"]
-    connect = lambda site, endpoint: client.post("/api/data-sources/connect", headers=auth_headers, json={  # noqa: E731
-        "siteId": site, "endpoint": endpoint, "apiKey": "unused", "refreshIntervalMin": 5})
+    connect = lambda site, endpoint, feed="telemetry": client.post(  # noqa: E731
+        "/api/data-sources/connect", headers=auth_headers,
+        json={"siteId": site, "feed": feed, "endpoint": endpoint, "apiKey": "unused", "refreshIntervalMin": 5})
     assert connect("KUP-SOLAR-001", "https://bms.example.invalid/v1").status_code == 422
     assert connect("KUP-SOLAR-001", kup_api).json() == feed
     connect("KUP-SOLAR-001", kup_api)  # connecting again keeps one source
@@ -397,6 +398,11 @@ def test_storm_bulletin_moves_maintenance_and_brings_an_inspection(
             if s["kind"] == "api"] == [kup_api]
     assert client.get(f"{url}/sites/KUP-SOLAR-001/live", headers=auth_headers).json()["connected"]
     assert {r[1] for r in connect("TIR-WIND-003", tir_api).json()["rows"]} == {"WND-TIR"}  # a wind farm alone
+    # The forecast feed is kept beside the telemetry, and only its own endpoint is accepted.
+    assert connect("KUP-SOLAR-001", kup_api, "forecast").status_code == 422
+    assert connect("KUP-SOLAR-001", "http://localhost:5173/api/mock/portfolio/forecast", "forecast").json() == outlook
+    assert sorted(s["kind"] for s in client.get("/api/sites/KUP-SOLAR-001/data-sources", headers=auth_headers).json()
+                  ) == ["api", "forecast"]
 
 
 def test_what_if_and_replay_study_leave_the_live_run_alone(

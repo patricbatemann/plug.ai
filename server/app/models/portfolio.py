@@ -135,10 +135,11 @@ class ActionConfig(Base):
 
 class DataSource(Base):
     """A site's connected data (a mock): an imported CSV of telemetry history, or a live API that
-    the simulator answers for. The demo stores imports but plans only on simulated telemetry."""
+    the simulator answers for: telemetry ('api'), the portfolio's forecast or the market's prices.
+    The demo stores them but plans only on simulated telemetry and forecasts."""
 
     __tablename__ = "data_source"
-    __table_args__ = (CheckConstraint("kind IN ('csv', 'api')", name="data_source_kind"),)
+    __table_args__ = (CheckConstraint("kind IN ('csv', 'api', 'forecast', 'prices')", name="data_source_kind"),)
 
     id: Mapped[int] = mapped_column(primary_key=True)
     site_id: Mapped[int] = mapped_column(ForeignKey("site.id", ondelete="CASCADE"), index=True)

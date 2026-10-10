@@ -24,6 +24,10 @@ MAX_BYTES = 5_000_000
 PREVIEW_ROWS = 10
 FEED_BLOCKS = 12  # three hours
 MOCK_PATH = "/api/mock/sites/{}/telemetry"
+# Each feed a site can connect: the data source kind it is kept as, its mock path and its name.
+FEEDS = {"telemetry": ("api", MOCK_PATH, "telemetry"),
+         "forecast": ("forecast", "/api/mock/portfolio/forecast", "forecast"),
+         "prices": ("prices", "/api/mock/market/prices", "market price")}
 FEED = {"timestamp": "DateTime", "device_id": "String", "device_type": "String", "power_mw": "Number",
         "available_mw": "Number", "soc_percent": "Number", "irradiance_wm2": "Number", "wind_ms": "Number",
         "temperature_c": "Number", "frequency_hz": "Number"}
@@ -101,16 +105,18 @@ def _live(db: Session) -> Run:
     return run
 
 
-def _check(site: Site, endpoint: str) -> None:
-    """Only the site's mock endpoint can be connected; nothing outside is ever called."""
+def _check(site: Site, name: str, endpoint: str) -> None:
+    """Only the feed's mock endpoint can be connected; nothing outside is ever called."""
+    _, path, label = FEEDS[name]
+    path = path.format(site.code)
     url = urlsplit(endpoint)
-    if url.scheme not in ("http", "https") or not url.netloc or url.path.rstrip("/") != MOCK_PATH.format(site.code):
-        raise ValueError(f"Enter {site.name}'s telemetry endpoint: http(s)://<host>{MOCK_PATH.format(site.code)}")
+    if url.scheme not in ("http", "https") or not url.netloc or url.path.rstrip("/") != path:
+        raise ValueError(f"Enter the {label} endpoint: http(s)://<host>{path}")
 
 
 def test_api(db: Session, site: Site, endpoint: str) -> dict:
     """What the connected system sends now: the last settled block, one row per asset."""
-    _check(site, endpoint)
+    _check(site, "telemetry", endpoint)
     lines = telemetry_csv(db, _live(db), site).strip().splitlines()
     return read_csv(site, "\n".join([lines[0], *lines[-len(site.assets):]]).encode())
 
@@ -168,14 +174,16 @@ def market_feed(db: Session) -> dict:
             "rows": rows}
 
 
-def connect(db: Session, site: Site, endpoint: str, user: str, refresh_min: int) -> dict:
-    """Test the site's API and keep it as the site's one live source; BOB acts at the site from the next plan."""
-    _check(site, endpoint)
-    data = feed(db, site)
-    db.execute(delete(DataSource).where(DataSource.site_id == site.id, DataSource.kind == "api"))
-    save(db, site, "api", endpoint, user, {"rows": len(data["rows"]),
-                                          "columns": [{"name": n, "type": t} for n, t in FEED.items()]},
-         refresh_min=refresh_min)
+def connect(db: Session, site: Site, name: str, endpoint: str, user: str, refresh_min: int) -> dict:
+    """Test one of the site's feeds and keep it as the site's source of that kind. A telemetry API lets
+    BOB act at the site from the next plan."""
+    _check(site, name, endpoint)
+    data = {"telemetry": lambda: feed(db, site), "forecast": lambda: forecast_feed(db),
+            "prices": lambda: market_feed(db)}[name]()
+    kind = FEEDS[name][0]
+    db.execute(delete(DataSource).where(DataSource.site_id == site.id, DataSource.kind == kind))
+    columns = [{"name": h, "type": FEED.get(h, "DateTime" if h == "timestamp" else "Number")} for h in data["headers"]]
+    save(db, site, kind, endpoint, user, {"rows": len(data["rows"]), "columns": columns}, refresh_min=refresh_min)
     return data
 
 

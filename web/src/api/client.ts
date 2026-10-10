@@ -375,7 +375,7 @@ export interface ActivityEntry {
 
 export interface DataSource {
   id: number
-  kind: 'csv' | 'api'
+  kind: 'csv' | 'api' | 'forecast' | 'prices'
   name: string
   rows: number | null
   columns: Array<{ name: string; type: string }>
@@ -393,9 +393,9 @@ export const siteApi = {
     return request<ActivityEntry[]>(`/api/runs/${runId}/sites/${encodeURIComponent(code)}/activity?${query}`)
   },
   sources: (code: string) => request<DataSource[]>(`${site(code)}/data-sources`),
-  /** Tests the site's telemetry API and keeps it as the site's live source; returns a sample of the feed. */
-  connectFeed: (code: string, endpoint: string, apiKey: string, refreshMin: number) =>
-    post<Feed>('/api/data-sources/connect', { siteId: code, endpoint, apiKey, refreshIntervalMin: refreshMin }),
+  /** Tests one of the site's feeds and keeps it as the site's source of that kind; returns what the feed sends. */
+  connectFeed: (code: string, feed: FeedName, endpoint: string, apiKey: string, refreshMin: number) =>
+    post<Feed>('/api/data-sources/connect', { siteId: code, feed, endpoint, apiKey, refreshIntervalMin: refreshMin }),
 }
 
 /** A mock vendor API's answer: column names and rows. */
@@ -404,9 +404,7 @@ export interface Feed {
   rows: Array<Array<string | number>>
 }
 
-/** The portfolio's forecast and market price APIs, open like a vendor's sandbox. */
-export const FEEDS = { forecast: '/api/mock/portfolio/forecast', prices: '/api/mock/market/prices' }
-export const feedApi = (path: string) => request<Feed>(path)
+export type FeedName = 'telemetry' | 'forecast' | 'prices'
 
 /** Kept with a configuration for people; dispatch does not act on them. */
 export interface Preferences {

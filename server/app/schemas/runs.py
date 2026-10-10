@@ -78,6 +78,7 @@ class ChatAsk(BaseModel):
 class DataConnect(BaseModel):
     """The client's API data-source form. The key is neither stored nor used: the simulator answers."""
     site_id: str = Field(alias="siteId", max_length=40)
+    feed: Literal["telemetry", "forecast", "prices"] = "telemetry"
     endpoint: str = Field(max_length=300)
     refresh_min: int = Field(default=1, alias="refreshIntervalMin", ge=1, le=60)
 
