@@ -8,12 +8,20 @@ class WatchCondition(BaseModel):
     value: float
 
 
+class Preferences(BaseModel):
+    """Kept with the configuration and shown to people; nothing in dispatch acts on them."""
+    objective: Literal["reliability", "cost", "peak", "renewable"] = "reliability"
+    recovery: Literal["notify_and_hold", "request_import"] = "notify_and_hold"
+    notify: list[Literal["sms", "email", "push", "slack"]] = []
+
+
 class ConfigValues(BaseModel):
     name: str = Field(min_length=1, max_length=120)
     autonomy: Literal["auto", "approval", "recommend"]
     limits: dict[str, float]
     approval: dict[str, Any]
     watch: list[WatchCondition] = []
+    preferences: Preferences = Preferences()
 
 
 class ConfigDraft(ConfigValues):

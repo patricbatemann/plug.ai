@@ -159,9 +159,13 @@ def test_configure_test_activate_watch_and_pause(client: TestClient, db: Session
     blocked = client.post("/api/sites/KUP-SOLAR-001/configs", json=draft, headers=auth_headers)
     assert blocked.status_code == 422 and blocked.json()["detail"].startswith("Protected boundary")
 
-    draft["limits"]["reserve_pct"] = 50
+    draft["limits"].update(reserve_pct=50, max_mwh=3)
+    assert "duration cap" in client.post("/api/sites/KUP-SOLAR-001/configs", json=draft, headers=auth_headers).json()["detail"]
+    draft["limits"]["max_minutes"] = 30
+    draft["preferences"] = {"recovery": "request_import", "notify": ["sms"]}
     saved = client.post("/api/sites/KUP-SOLAR-001/configs", json=draft, headers=auth_headers).json()
     assert saved["current"] is False and saved["active"]["autonomy"] == "auto"
+    assert saved["preferences"] == {"objective": "reliability", "recovery": "request_import", "notify": ["sms"]}
     assert client.post(f"/api/configs/{saved['id']}/activate", headers=auth_headers).status_code == 409
     tested = client.post(f"/api/configs/{saved['id']}/test", headers=auth_headers).json()
     assert len(tested["tests"]) == 3 and all(t["passed"] for t in tested["tests"].values())

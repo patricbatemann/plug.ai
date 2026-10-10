@@ -10,7 +10,7 @@ from sqlalchemy.orm import Session
 
 from app.models.portfolio import ActionConfig, Asset, Site
 from app.models.run import Action, AssetBlock, Cycle, Run
-from app.optimize.dispatch import Inputs, plan
+from app.optimize.dispatch import Inputs, discharge_history, plan
 from app.optimize.robust import scenarios
 from app.optimize.validator import check
 from app.services import policy
@@ -23,7 +23,9 @@ KINDS_FOR = {
     "interconnection": ("grid_import", "grid_export"),
 }
 LIMITS_FOR = {
-    "battery_charge": ("max_mw", "auto_max_mw"), "battery_discharge": ("max_mw", "auto_max_mw", "reserve_pct"),
+    "battery_charge": ("max_mw", "auto_max_mw"),
+    "battery_discharge": ("max_mw", "auto_max_mw", "reserve_pct", "max_minutes", "max_mwh", "deficit_mw",
+                          "deficit_minutes"),
     "curtail": ("auto_max_mw",), "demand_response": ("max_mw", "auto_max_mw"), "load_shift": ("max_mw",),
     "grid_import": ("max_mw", "auto_max_mw"), "grid_export": ("max_mw", "auto_max_mw", "min_price_inr_mwh"),
 }
@@ -58,6 +60,15 @@ def validate(asset: Asset, kind: str, limits: dict[str, Any], protected: dict[st
         raise ValueError(f"Maximum above {asset.name}'s {asset.capacity_mw:g} MW rating")
     if "max_mw" in limits and limits.get("auto_max_mw", 0) > limits["max_mw"]:
         raise ValueError("The automatic limit cannot exceed the maximum")
+    if not 15 <= limits.get("max_minutes", 15) <= 240:
+        raise ValueError("A discharge can be limited to between 15 and 240 minutes")
+    if "max_mwh" in limits and ("max_minutes" not in limits or not 0 < limits["max_mwh"] <= asset.params["energy_mwh"]):
+        raise ValueError(f"An energy cap needs a duration cap and must be within {asset.name}'s "
+                         f"{asset.params['energy_mwh']:g} MWh")
+    if limits.get("deficit_mw", 0) < 0 or not 0 <= limits.get("deficit_minutes", 0) <= 60:
+        raise ValueError("The deficit trigger needs a deficit of 0 MW or more lasting 0–60 minutes")
+    if "deficit_minutes" in limits and "deficit_mw" not in limits:
+        raise ValueError("A deficit duration needs a deficit threshold")
 
 
 def site_configs(db: Session, site: Site, run: Run | None) -> list[dict]:
@@ -96,6 +107,7 @@ def save_draft(db: Session, site: Site, asset: Asset, kind: str, values: dict[st
     draft.status, draft.tests = "draft", {}
     draft.name, draft.autonomy = values["name"], values["autonomy"]
     draft.limits, draft.approval, draft.watch = values["limits"], values["approval"], values["watch"]
+    draft.preferences = values["preferences"]
     db.flush()
     return draft
 
@@ -133,7 +145,7 @@ def test(draft: ActionConfig, asset: AssetSpec, inputs: Inputs, forecasts: dict)
             mw = float(p.battery[asset.code][0])
             kind = "bess_discharge" if mw > 0 else "bess_charge"
             reason = check(kind, abs(mw), asset, soc_mwh=inputs.soc_mwh[asset.code],
-                           available=bool(case.bess_available[asset.code][0]))
+                           available=bool(case.bess_available[asset.code][0]), **discharge_history(case, asset.code))
             if abs(mw) > 0.05 and reason:
                 problems.append(reason)
         results[name] = {"label": label, "passed": not problems,

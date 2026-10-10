@@ -116,12 +116,15 @@ class ActionConfig(Base):
     version: Mapped[int] = mapped_column(default=1)
     current: Mapped[bool] = mapped_column(default=True)
     autonomy: Mapped[str] = mapped_column(String(16))
-    # auto_max_mw, max_mw, reserve_pct, min_price_inr_mwh (each optional)
+    # auto_max_mw, max_mw, reserve_pct, min_price_inr_mwh; for a battery discharge also max_minutes,
+    # max_mwh, deficit_mw, deficit_minutes (each optional)
     limits: Mapped[dict[str, Any]] = mapped_column(JSONB)
     # approver, response_min
     approval: Mapped[dict[str, Any]] = mapped_column(JSONB)
     # [{metric, value}]: crossing one makes BOB re-plan and shows on the site's AI Actions tab
     watch: Mapped[list[dict[str, Any]]] = mapped_column(JSONB, server_default="[]")
+    # objective, recovery, notify: recorded for people, not used by dispatch
+    preferences: Mapped[dict[str, Any]] = mapped_column(JSONB, server_default="{}")
     # Last test results by scenario: {label, passed, detail}
     tests: Mapped[dict[str, Any]] = mapped_column(JSONB, server_default="{}")
     activated_by: Mapped[str | None] = mapped_column(String(320))

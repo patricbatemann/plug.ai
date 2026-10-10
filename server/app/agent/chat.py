@@ -236,9 +236,10 @@ def _tools(db: Session, run: Run, cards: list[dict]) -> dict[str, Tool]:
         latest = db.scalar(select(ActionConfig).where(ActionConfig.asset_id == x.id, ActionConfig.kind == a.kind)
                            .order_by(ActionConfig.version.desc()).limit(1))
         values = ({"name": latest.name, "autonomy": latest.autonomy, "limits": dict(latest.limits),
-                   "approval": dict(latest.approval), "watch": list(latest.watch)} if latest else
+                   "approval": dict(latest.approval), "watch": list(latest.watch),
+                   "preferences": dict(latest.preferences)} if latest else
                   {"name": f"{a.kind.replace('_', ' ').capitalize()}: {x.name}", "autonomy": "approval",
-                   "limits": {}, "approval": {"response_min": 10}, "watch": []})
+                   "limits": {}, "approval": {"response_min": 10}, "watch": [], "preferences": {}})
         given = {k: getattr(a, k) for k in ("max_mw", "auto_max_mw", "reserve_pct", "min_price_inr_mwh")
                  if getattr(a, k) is not None}
         values["limits"].update(given)

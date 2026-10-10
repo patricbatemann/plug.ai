@@ -5,10 +5,12 @@ profile's shadow prices while keeping stage A's reliability. Index 0 is the bloc
 to start; only its decisions (and bids/calls that become binding now) are executed.
 """
 
+import math
 from dataclasses import dataclass, field
 from typing import Any
 
 import numpy as np
+from numpy.lib.stride_tricks import sliding_window_view
 
 from app.optimize.model import Model
 from app.optimize.profiles import VALUE_OF_RESERVE, VOLL, VOLL_CRITICAL
@@ -41,6 +43,8 @@ class Inputs:
     discharged_today_mwh: dict[str, float]
     dr_called_today_mwh: dict[str, float]
     shifted_today_mwh: dict[str, float]  # net load moved out so far today (+ out, − back in)
+    recent_discharge_mw: dict[str, np.ndarray]  # each battery's measured discharge in the blocks before, oldest first
+    recent_deficit_mw: np.ndarray  # measured portfolio load minus renewable availability, oldest first
     market: dict[str, Any]
     profile: dict[str, Any]
     # Active action configs by "family:code" (market families use code "portfolio"), with their
@@ -116,6 +120,51 @@ def _cap(inp: Inputs, key: str, rating: float | np.ndarray) -> float | np.ndarra
     return np.minimum(rating, inp.allowed[key].get("max_mw", np.inf))
 
 
+def portfolio_deficit(inp: Inputs) -> np.ndarray:
+    """Forecast portfolio load minus renewable availability, MW per block."""
+    load = sum(inp.available[a.code] for a in inp.assets if a.kind == "consumer")
+    return load - sum(inp.available[a.code] for a in inp.assets if a.kind in ("solar", "wind"))
+
+
+def discharge_history(inp: Inputs, code: str) -> dict[str, Any]:
+    """What the validator needs to check a battery's discharge now against its configuration."""
+    return {"limits": inp.allowed.get(f"battery_discharge:{code}"), "recent_mw": inp.recent_discharge_mw[code],
+            "deficit_mw": [*inp.recent_deficit_mw, float(portfolio_deficit(inp)[0])]}
+
+
+def _deficit_gate(inp: Inputs, rules: dict[str, Any]) -> float | np.ndarray:
+    """1 where a configured battery may discharge: the portfolio's load exceeds its renewable output
+    by more than deficit_mw, in this block and the blocks before it that deficit_minutes spans."""
+    if "deficit_mw" not in rules:
+        return 1.0
+    span = max(1, math.ceil(rules.get("deficit_minutes", 0) / 15))
+    # Blocks before the run began do not count as a deficit.
+    before = np.concatenate([np.full(span - 1, -np.inf), inp.recent_deficit_mw])[len(inp.recent_deficit_mw):]
+    above = np.concatenate([before, portfolio_deficit(inp)]) > rules["deficit_mw"]
+    return sliding_window_view(above, span).all(axis=1).astype(float)
+
+
+def _discharge_caps(m: Model, dis: np.ndarray, rating: np.ndarray, rules: dict[str, Any], recent: np.ndarray) -> None:
+    """At most max_minutes of continuous discharge, and at most max_mwh in any max_minutes, counting
+    what the battery discharged in the blocks before this plan."""
+    if "max_minutes" not in rules:
+        return
+    H, D = len(dis), int(rules["max_minutes"] // 15)
+    on = m.var(H, binary=True, ub=1)
+    m.add([(dis, 1.0), (on, -rating)], ub=0.0)
+    running = next((i for i, mw in enumerate(recent[::-1]) if mw <= MIN_MW), len(recent))
+    m.add([(on[None, :min(max(D - running + 1, 1), H)], 1.0)], ub=max(D - running, 0))
+    if H > D:
+        m.add([(on[np.arange(H - D)[:, None] + np.arange(D + 1)], 1.0)], ub=D)
+    if "max_mwh" not in rules:
+        return
+    cap = rules["max_mwh"]
+    for j in range(1, D):  # windows that began j blocks before this plan
+        m.add([(dis[None, :min(D - j, H)], DT)], ub=max(cap - DT * recent[-j:].sum(), 0.0))
+    if H >= D:
+        m.add([(dis[np.arange(H - D + 1)[:, None] + np.arange(D)], DT)], ub=cap)
+
+
 def plan(inp: Inputs, fixed: HereAndNow | None = None, single_stage: bool = False,
          most: dict[str, float] | None = None) -> Plan:
     """Two-stage plan; or, for stress tests, one solve of reliability plus cost, optionally
@@ -138,7 +187,8 @@ def plan(inp: Inputs, fixed: HereAndNow | None = None, single_stage: bool = Fals
         p = a.capacity * inp.bess_available[a.code]
         e = a.params["energy_mwh"]
         ch[a.code] = m.var(H, 0, _cap(inp, f"battery_charge:{a.code}", p))
-        dis[a.code] = m.var(H, 0, _cap(inp, f"battery_discharge:{a.code}", p))
+        rules = inp.allowed.get(f"battery_discharge:{a.code}", {})
+        dis[a.code] = m.var(H, 0, _cap(inp, f"battery_discharge:{a.code}", p) * _deficit_gate(inp, rules))
         mode[a.code] = m.var(H, binary=True, ub=1)
         floor_pct = max(a.params["soc_min_pct"], inp.protected.get("battery_soc_floor_pct", 0),
                         inp.allowed.get(f"battery_discharge:{a.code}", {}).get("reserve_pct", 0))
@@ -211,6 +261,8 @@ def plan(inp: Inputs, fixed: HereAndNow | None = None, single_stage: bool = Fals
         m.add([(res[a.code], prof["reserve_hours"]), (soc[a.code], -eta_d)], ub=-eta_d * floor)
         m.add([(soc[a.code][-1:], 1.0)], lb=min(inp.soc_mwh[a.code], e * a.params["soc_max_pct"] / 100))
         _daily(m, dis[a.code], e * a.params["cycles_per_day"], inp.discharged_today_mwh[a.code], inp.blocks_left_today)
+        _discharge_caps(m, dis[a.code], p, inp.allowed.get(f"battery_discharge:{a.code}", {}),
+                        inp.recent_discharge_mw[a.code])
         reserve_terms.append((res[a.code], 1.0))
     requirement = prof["reserve_share"] * sum(a.capacity for a in batteries)
     m.add(reserve_terms + [(shortfall, 1.0)], lb=requirement)

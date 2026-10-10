@@ -522,12 +522,20 @@ export const siteApi = {
     request<void>(`${site(code)}/data-sources/${id}`, { method: 'DELETE' }),
 }
 
+/** Kept with a configuration for people; dispatch does not act on them. */
+export interface Preferences {
+  objective: 'reliability' | 'cost' | 'peak' | 'renewable'
+  recovery: 'notify_and_hold' | 'request_import'
+  notify: Array<'sms' | 'email' | 'push' | 'slack'>
+}
+
 export interface ConfigValues {
   name: string
   autonomy: 'auto' | 'approval' | 'recommend'
   limits: Record<string, number>
   approval: { response_min?: number; approver?: string }
   watch: Array<{ metric: string; value: number }>
+  preferences: Preferences
 }
 
 export interface ConfigOut extends ConfigValues {

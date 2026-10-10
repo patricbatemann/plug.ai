@@ -93,6 +93,10 @@ export function limitsSummary(limits: Record<string, number>): string[] {
   if (limits.max_mw !== undefined) out.push(`Never more than ${limits.max_mw} MW`)
   if (limits.reserve_pct !== undefined) out.push(`Keeps ${limits.reserve_pct} % charge in reserve`)
   if (limits.min_price_inr_mwh) out.push(`Sells only above ₹${limits.min_price_inr_mwh}/MWh`)
+  if (limits.max_minutes !== undefined)
+    out.push(`Discharges for at most ${limits.max_minutes} min${limits.max_mwh !== undefined ? ` and ${limits.max_mwh} MWh` : ''} at a time`)
+  if (limits.deficit_mw !== undefined)
+    out.push(`Discharges only while portfolio load exceeds renewables by more than ${limits.deficit_mw} MW${limits.deficit_minutes ? ` for ${limits.deficit_minutes} min` : ''}`)
   return out
 }
 

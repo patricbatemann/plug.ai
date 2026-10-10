@@ -28,7 +28,8 @@ def _config(config_id: int, db: Session = Depends(get_db)) -> ActionConfig:
 
 
 def _values(c: ActionConfig) -> ConfigValues:
-    return ConfigValues(name=c.name, autonomy=c.autonomy, limits=c.limits, approval=c.approval, watch=c.watch)
+    return ConfigValues(name=c.name, autonomy=c.autonomy, limits=c.limits, approval=c.approval, watch=c.watch,
+                        preferences=c.preferences)
 
 
 def _out(db: Session, c: ActionConfig, asset: Asset, actions_today: int = 0) -> ConfigOut:

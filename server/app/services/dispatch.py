@@ -14,7 +14,7 @@ from app.agent import cycle as agent_cycle, llm
 from app.models.portfolio import Asset, DataSource
 from app.models.run import Action, AssetBlock, Constraint, Cycle, Forecast, LineBlock, Plan, Run, SystemBlock
 from app.optimize import baseline
-from app.optimize.dispatch import MIN_MW, Inputs, here_and_now, plan
+from app.optimize.dispatch import MIN_MW, Inputs, discharge_history, here_and_now, plan
 from app.optimize.profiles import BALANCED
 from app.optimize.situation import assess, choose_mode, to_json
 from app.optimize.validator import check
@@ -82,6 +82,31 @@ def _discharged_today(db: Session, ctx, run: Run, t0: int) -> dict[str, float]:
     for asset_id, mw in rows:
         used[code_of[asset_id]] += mw * DT
     return used
+
+
+RECENT_BLOCKS = 16  # the longest discharge a configuration may allow: 240 minutes
+
+
+def _recent(db: Session, ctx, run: Run, t0: int) -> tuple[dict[str, np.ndarray], np.ndarray]:
+    """Each battery's measured discharge, and the portfolio's measured load minus renewable
+    availability, in the blocks before t0, oldest first."""
+    start = max(t0 - RECENT_BLOCKS, 0)
+    kind = {a.code: a.kind for a in ctx.assets}
+    code_of = {i: c for c, i in ctx.asset_ids.items()}
+    discharge = {a.code: np.zeros(t0 - start) for a in ctx.assets if a.kind == "bess"}
+    deficit = np.zeros(t0 - start)
+    for block, asset_id, available, actual in db.execute(
+            select(AssetBlock.block, AssetBlock.asset_id, AssetBlock.available_mw, AssetBlock.actual_mw).where(
+                AssetBlock.run_id == run.id, AssetBlock.policy == "bob", AssetBlock.block >= start,
+                AssetBlock.block < t0)):
+        code, i = code_of[asset_id], block - start
+        if kind[code] == "bess":
+            discharge[code][i] = max(actual, 0.0)
+        elif kind[code] == "consumer":
+            deficit[i] += available
+        elif kind[code] in ("solar", "wind"):
+            deficit[i] -= available
+    return discharge, deficit
 
 
 def _actions(db: Session, run: Run, policy: str, blocks: tuple[int, int], kinds: tuple[str, ...]) -> list[Action]:
@@ -187,6 +212,7 @@ def bob_inputs(db: Session, ctx, truth: World, run: Run, t0: int, forecasts: dic
         elif k.kind == "line_derate" and begin <= 0:  # one limit per line: the one in force now
             for code in k.targets:
                 line_limit[code] = k.value
+    recent_discharge, recent_deficit = _recent(db, ctx, run, t0)
     return Inputs(
         assets=ctx.assets, lines=ctx.lines, line_limit=line_limit, available=available,
         bess_available=bess_available,
@@ -201,6 +227,8 @@ def bob_inputs(db: Session, ctx, truth: World, run: Run, t0: int, forecasts: dic
                              if x.asset_id == ctx.asset_ids[a.code])
             for a in of_kind("consumer")
         },
+        recent_discharge_mw=recent_discharge,
+        recent_deficit_mw=recent_deficit,
         shifted_today_mwh={
             a.code: DT * sum(x.delivered_mw for x in _actions(db, run, "bob", (t0 - t0 % 96, t0), ("load_shift",))
                              if x.asset_id == ctx.asset_ids[a.code])
@@ -289,7 +317,8 @@ def _items(h, inputs: Inputs, ctx, t0: int) -> list[dict]:
     for code, mw in h.battery.items():
         kind = "bess_discharge" if mw > 0 else "bess_charge"
         out.append(dict(kind=kind, code=code, block=t0, mw=abs(mw), size=abs(mw), safety=check(
-            kind, abs(mw), assets[code], soc_mwh=inputs.soc_mwh[code], available=bool(inputs.bess_available[code][0]))))
+            kind, abs(mw), assets[code], soc_mwh=inputs.soc_mwh[code], available=bool(inputs.bess_available[code][0]),
+            **discharge_history(inputs, code))))
     for code, cap in h.output_cap.items():
         out.append(dict(kind="curtail", code=code, block=t0, mw=cap, size=float(inputs.available[code][0]) - cap,
                         safety=check("curtail", cap, assets[code])))

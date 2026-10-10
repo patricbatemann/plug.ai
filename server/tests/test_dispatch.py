@@ -53,6 +53,14 @@ def test_validator_rejects_unsafe_actions(db: Session) -> None:
     assert "State of charge" in check("bess_discharge", 6, battery, soc_mwh=3)
     assert "unavailable" in check("bess_charge", 5, battery, soc_mwh=14, available=False)
     assert "notice" in check("dr_call", 5, steel, lead_blocks=1)
+    # A configured discharge: 30 minutes and 3 MWh at most, only after 20 minutes of portfolio deficit above 3 MW.
+    caps = {"max_minutes": 30, "max_mwh": 3, "deficit_mw": 3, "deficit_minutes": 20}
+    assert check("bess_discharge", 4, battery, soc_mwh=14, limits=caps, recent_mw=[0, 6], deficit_mw=[5, 5]) is None
+    assert "longer than" in check("bess_discharge", 4, battery, soc_mwh=14, limits=caps, recent_mw=[6, 6],
+                                  deficit_mw=[5, 5])
+    assert "more than 3 MWh" in check("bess_discharge", 8, battery, soc_mwh=14, limits=caps, recent_mw=[0, 6],
+                                      deficit_mw=[5, 5])
+    assert "deficit" in check("bess_discharge", 4, battery, soc_mwh=14, limits=caps, deficit_mw=[2, 5])
 
 
 def test_mode_precedence_floors_and_option_choice() -> None:
@@ -108,6 +116,18 @@ def test_unconnected_or_unconfigured_actions_are_never_planned_and_fallbacks_kee
     assert here_and_now(plan(inputs), inputs).battery["BESS-01"] > 2
     capped = here_and_now(plan(inputs, most={"battery_discharge:BESS-01": 2}), inputs).battery["BESS-01"]
     assert 0 < capped <= 2 + 1e-6
+    # Capped at 30 minutes and 2 MWh: never three discharging blocks in a row, never 2 MWh in two.
+    inputs.allowed["battery_discharge:BESS-01"].update(max_minutes=30, max_mwh=2)
+    discharge = np.maximum(plan(inputs).battery["BESS-01"], 0)
+    assert discharge.max() > 0
+    assert not np.any(np.convolve(discharge > 1e-3, np.ones(3), "valid") == 3)
+    assert np.all(np.convolve(discharge, np.ones(2), "valid") * DT <= 2 + 1e-6)
+    # Two blocks already discharged: the cap allows no more now.
+    inputs.recent_discharge_mw["BESS-01"] = np.array([6.0, 6.0])
+    assert plan(inputs).battery["BESS-01"][0] <= 1e-6
+    # Only above a portfolio deficit no block reaches: no discharge at all.
+    inputs.allowed["battery_discharge:BESS-01"]["deficit_mw"] = 1e6
+    assert plan(inputs).battery["BESS-01"].max() <= 1e-6
     del inputs.allowed["battery_discharge:BESS-01"]
     assert plan(inputs).battery["BESS-01"].max() <= 1e-6
 
