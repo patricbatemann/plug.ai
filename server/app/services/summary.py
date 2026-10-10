@@ -6,7 +6,7 @@ from sqlalchemy.orm import Session
 from app.models.portfolio import Asset, Site
 from app.models.run import Action, Run, SystemBlock
 from app.schemas.runs import ActionOut, PolicyTotals, RunSummary
-from app.services.policy import WORK_ORDERS
+from app.services.policy import FAMILY, WORK_ORDERS
 from app.services.runs import BLOCK
 
 SUMMED = ("cost_inr", "market_inr", "dsm_inr", "dr_inr", "wear_inr", "curtail_inr", "curtailed_mwh", "carbon_t",
@@ -58,7 +58,7 @@ def recent_actions(db: Session, run: Run, limit: int, status: list[str] | None =
     rows = db.execute(query.order_by(Action.block.desc(), Action.id.desc()).limit(limit)).all()
     return [
         ActionOut(id=a.id, block=a.block, time=run.sim_start_at + a.block * BLOCK, cycle_id=a.cycle_id, tier=a.tier,
-                  deadline_at=a.deadline_at, decided_by=a.decided_by, kind=a.kind, site=site_name, asset=asset,
+                  deadline_at=a.deadline_at, decided_by=a.decided_by, kind=a.kind, family=FAMILY.get(a.kind), site=site_name, asset=asset,
                   mw=a.mw, delivered_mw=a.delivered_mw, actual_mw=a.actual_mw, status=a.status, reason=a.reason)
         for a, asset, site_name in rows
     ]

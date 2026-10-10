@@ -153,6 +153,7 @@ export interface ActionOut {
   deadline_at: string | null
   decided_by: string | null
   kind: string
+  family: string | null
   site: string | null
   asset: string | null
   mw: number

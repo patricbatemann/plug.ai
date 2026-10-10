@@ -228,7 +228,7 @@ function Screens({ onLogout }: { onLogout?: () => void }) {
   const setActionConfig = (config: ActionConfig) => operations.setState(current => ({ ...current, config }));
 
   if (view === 'askBob') return <AskBob />;
-  if (['protected', 'workOrder', 'actionDetails', 'actionTemplate', 'transaction'].includes(view)) return <OperationalPanels page={view} />;
+  if (['protected', 'workOrder', 'actionDetails', 'transaction'].includes(view)) return <OperationalPanels page={view} />;
 
   if (['review', 'test', 'activate'].includes(view) && state.confirmed.length !== 7) return <AgentChat onClose={() => setView('bob')} onComplete={(config) => { setActionConfig(config); setView('review'); }} />;
 

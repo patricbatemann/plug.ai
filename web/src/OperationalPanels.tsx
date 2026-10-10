@@ -1,9 +1,12 @@
 import { Link, useLocation, useSearchParams } from "react-router"
-import { BOB_ACTION_TEMPLATES } from "./BobActions"
 import { useTransactions } from "./portfolio"
 import { useOperations } from "./Operations"
 import { useProfile } from "./auth/user"
-import { CONFIG_STEPS } from "./data"
+import { CONFIG_STEPS, SITE } from "./data"
+import { useQuery } from "@tanstack/react-query"
+import { documentApi } from "./api/client"
+import { simDateTime } from "./format"
+import { useCurrentRun } from "./runs/useCurrentRun"
 
 export function JourneyNavigation() {
   const location = useLocation()
@@ -42,9 +45,6 @@ export default function OperationalPanels({ page }: { page: string }) {
   const { state, flow, edit, addAudit, setState } = useOperations()
   const profile = useProfile()
   const [params] = useSearchParams()
-  const template = BOB_ACTION_TEMPLATES.find(
-    (action) => action.id === params.get("template"),
-  )
   const transaction = useTransactions().find(
     (row) => row.id === params.get("id"),
   )
@@ -58,49 +58,16 @@ export default function OperationalPanels({ page }: { page: string }) {
           ← Back to {state.activated ? "active monitoring" : "BOB actions"}
         </Link>
         <h1 className="text-2xl font-semibold">
-          {page === "actionTemplate"
-            ? `Action template · ${template?.title ?? "Not found"}`
-            : page === "askBob"
+          {page === "askBob"
               ? "Ask BOB · Activity summary"
               : page === "protected"
                 ? "Protected boundary"
                 : page === "workOrder"
-                  ? "Work order WO-4521"
+                  ? `Maintenance · ${SITE.name}`
                   : page === "actionDetails"
                     ? "Action details"
                     : "Operational details"}
         </h1>
-        {page === "actionTemplate" && template && (
-          <section className="space-y-4 border border-[#e0e0e0] bg-white p-6">
-            <p className="text-sm">
-              Draft template — not activated. {template.description}
-            </p>
-            <h2 className="font-semibold">Trigger conditions</h2>
-            <ul className="space-y-2 text-sm">
-              {template.triggers.map((rule) => (
-                <li key={rule}>{rule}</li>
-              ))}
-            </ul>
-            <h2 className="font-semibold">Effective safety rules</h2>
-            <ul className="space-y-2 text-sm">
-              {template.rules.map((rule) => (
-                <li key={rule}>{rule}</li>
-              ))}
-            </ul>
-            <p className="text-sm">
-              This template cannot execute without its own configuration,
-              permission verification, simulation evidence, and activation. The
-              current supported configuration journey is Battery 1 demand
-              support.
-            </p>
-            <div className="flex flex-wrap gap-4 text-sm text-[#0f62fe]">
-              <Link to="/protected">Inspect protected rule</Link>
-              <Link to="/workOrder">Open work order</Link>
-              <Link to="/askBob">Ask BOB about this template</Link>
-              <Link to="/bob">Return to View AI Actions</Link>
-            </div>
-          </section>
-        )}
         {page === "transaction" && (
           <section className="space-y-4 border border-[#e0e0e0] bg-white p-6">
             <h2 className="font-semibold">
@@ -232,24 +199,7 @@ export default function OperationalPanels({ page }: { page: string }) {
             </div>
           </section>
         )}
-        {page === "workOrder" && (
-          <section className="space-y-4 border border-[#e0e0e0] bg-white p-6">
-            <p className="text-sm">
-              Kuppam Solar · Inverter 01 · Panel cleaning
-            </p>
-            <p className="text-sm">
-              Historical preview record · 1 October 2026, 12:50 IST · Status:
-              Open · Assigned to maintenance team.
-            </p>
-            <p className="text-sm">
-              No shutdown or remote-control authorization is implied by this
-              work order.
-            </p>
-            <Link to="/siteDetail" className="text-sm text-[#0f62fe]">
-              Return to site details
-            </Link>
-          </section>
-        )}
+        {page === "workOrder" && <WorkOrders />}
 
         <section className="space-y-3 border border-[#e0e0e0] bg-white p-4">
           <label className="flex flex-wrap items-center gap-3 text-xs">
@@ -309,5 +259,32 @@ export default function OperationalPanels({ page }: { page: string }) {
         </section>
       </div>
     </main>
+  )
+}
+
+function WorkOrders() {
+  const run = useCurrentRun().data
+  const tasks = useQuery({
+    queryKey: ["maintenance", run?.id, run?.block, SITE.id],
+    queryFn: () => documentApi.maintenance(run!.id, SITE.id),
+    enabled: !!run,
+  }).data?.tasks
+  return (
+    <section className="space-y-3 border border-[#e0e0e0] bg-white p-5">
+      {tasks?.length === 0 && <p className="text-sm">No maintenance is scheduled at this site.</p>}
+      {tasks?.map((task) => (
+        <div key={task.id} className="border-b border-[#e0e0e0] pb-3 text-sm last:border-0">
+          <p className="font-semibold text-[#161616]">{task.asset} · {task.kind}</p>
+          <p>
+            {simDateTime(task.scheduled_at)} IST · {task.hours} h · {task.status}
+            {task.safety_critical ? " · Safety critical" : ""}
+          </p>
+        </div>
+      ))}
+      <p className="text-sm">No shutdown or remote-control authorization is implied by a work order.</p>
+      <Link to="/siteDetail" className="inline-flex min-h-11 items-center text-[#0f62fe] underline">
+        Return to site details
+      </Link>
+    </section>
   )
 }

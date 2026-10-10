@@ -1,6 +1,9 @@
+import { useState } from "react";
 import { useNavigate } from "react-router";
-import { useOperations } from "./Operations";
-import { getAttentionRecommendations, getOtherRecommendations } from "./services/recommendationService";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { runApi, type ActionOut } from "./api/client";
+import { actionLabel, mw, simTime } from "./format";
+import { useCurrentRun } from "./runs/useCurrentRun";
 
 
 interface AIRecommendationsProps {
@@ -26,32 +29,35 @@ function Fact({ label, value, valueColor }: FactProps) {
   );
 }
 
-interface PrimaryCardProps {
-  dot: string;
-  siteName: string;
-  siteSubtitle: string;
-  tags: { label: string; bg: string; text: string }[];
-  title: string;
-  rationale: string;
-  facts: FactProps[];
-  primaryBtnLabel: string;
-  primaryBtnBg: string;
-  onOpenSite?: () => void;
-}
+const AWAITING = { label: "Awaiting approval", bg: "bg-[#fff8e1]", text: "text-[#8e6a00]" };
+const AI = { label: "AI-generated", bg: "bg-[#f6f2ff]", text: "text-[#6929c4]" };
 
-function PrimaryCard({ dot, siteName, siteSubtitle, tags, title, rationale, facts, primaryBtnLabel, primaryBtnBg, onOpenSite }: PrimaryCardProps) {
+const title = (a: ActionOut) => `${actionLabel(a.kind, a.mw)}${a.mw ? ` · ${mw(Math.abs(a.mw))}` : ""}${a.asset ? ` on ${a.asset}` : ""}`;
+const rationaleOf = (a: ActionOut) => a.reason || "BOB's plan for this block calls for this action.";
+
+function PrimaryCard({ action: a, runId, onOpenSite }: { action: ActionOut; runId: number; onOpenSite?: () => void }) {
   const navigate = useNavigate();
-  const operations = useOperations();
+  const queryClient = useQueryClient();
+  const [error, setError] = useState("");
   const openSite = () => { if (onOpenSite) onOpenSite(); else navigate("/siteDetail"); };
-  const handlePrimary = () => {
-    if (primaryBtnLabel.toLowerCase().includes("approval")) {
-      operations.requestImport();
-      navigate("/approval");
-    } else {
-      operations.edit(0);
-      navigate("/agentChat");
+  const decide = async (approve: boolean) => {
+    setError("");
+    try {
+      await (approve ? runApi.approve : runApi.decline)(runId, a.id);
+      await queryClient.invalidateQueries();
+    } catch (failure) {
+      setError(failure instanceof Error ? failure.message : "The decision was not recorded.");
     }
   };
+  const dot = "/assets/c2bde.svg";
+  const siteName = a.site ?? "Portfolio";
+  const siteSubtitle = `Proposed for ${simTime(a.time)} IST`;
+  const tags = [AI, AWAITING];
+  const facts = [
+    { label: "SUGGESTED ACTION", value: actionLabel(a.kind, a.mw), valueColor: "text-[#0f62fe]" },
+    { label: "SIZE", value: a.mw ? mw(Math.abs(a.mw)) : "—", valueColor: "text-[#161616]" },
+    { label: "ANSWER BY", value: a.deadline_at ? `${simTime(a.deadline_at)} IST` : "—", valueColor: "text-[#da1e28]" },
+  ];
   return (
     <div className="bg-white border border-[#e0e0e0] flex flex-col gap-4 items-start p-[22px] rounded-[2px] w-full">
       {/* Card header */}
@@ -71,12 +77,12 @@ function PrimaryCard({ dot, siteName, siteSubtitle, tags, title, rationale, fact
       </div>
 
       {/* Title */}
-      <p className="font-['IBM Plex Sans:SemiBold'] font-semibold leading-[1.35] text-[#161616] text-[19px] w-full" style={{ fontVariationSettings: '"wdth" 100' }}>{title}</p>
+      <p className="font-['IBM Plex Sans:SemiBold'] font-semibold leading-[1.35] text-[#161616] text-[19px] w-full" style={{ fontVariationSettings: '"wdth" 100' }}>{title(a)}</p>
 
       {/* Why BOB */}
       <div className="bg-[#edf5ff] flex flex-col gap-[5px] items-start px-[14px] py-[12px] rounded-[2px] w-full">
         <p className="font-['IBM Plex Sans:SemiBold'] font-semibold text-[#0f62fe] text-[12px] whitespace-nowrap max-sm:whitespace-normal" style={{ fontVariationSettings: '"wdth" 100' }}>Why BOB recommends this</p>
-        <p className="font-['IBM Plex Sans:Regular'] font-normal leading-[1.35] text-[#525252] text-[13px] w-full" style={{ fontVariationSettings: '"wdth" 100' }}>{rationale}</p>
+        <p className="font-['IBM Plex Sans:Regular'] font-normal leading-[1.35] text-[#525252] text-[13px] w-full" style={{ fontVariationSettings: '"wdth" 100' }}>{rationaleOf(a)}</p>
       </div>
 
       {/* Decision facts */}
@@ -87,13 +93,17 @@ function PrimaryCard({ dot, siteName, siteSubtitle, tags, title, rationale, fact
       {/* Card actions */}
       <div className="flex flex-wrap gap-3 items-center justify-between w-full">
         <div className="flex gap-[18px] items-start max-sm:flex-wrap">
+          {error && <p role="alert" className="text-[13px] text-[#da1e28]">{error}</p>}
         </div>
         <div className="flex gap-2 items-start max-sm:flex-wrap">
           <button onClick={openSite} className="bg-white border border-[#0f62fe] flex items-center px-4 py-2.5 rounded-[2px] hover:bg-[#edf5ff] transition-colors cursor-pointer max-sm:flex-wrap">
             <p className="font-['IBM Plex Sans:Medium'] font-medium leading-[1.35] text-[#0f62fe] text-[14px] whitespace-nowrap max-sm:whitespace-normal" style={{ fontVariationSettings: '"wdth" 100' }}>Open site</p>
           </button>
-          <button onClick={handlePrimary} className={`${primaryBtnBg} flex items-center px-4 py-2.5 rounded-[2px] hover:opacity-90 transition-opacity cursor-pointer`}>
-            <p className="font-['IBM Plex Sans:Medium'] font-medium leading-[1.35] text-white text-[14px] whitespace-nowrap max-sm:whitespace-normal" style={{ fontVariationSettings: '"wdth" 100' }}>{primaryBtnLabel}</p>
+          <button onClick={() => decide(false)} className="bg-white border border-[#da1e28] flex items-center px-4 py-2.5 rounded-[2px] hover:bg-[#fff1f1] transition-colors cursor-pointer">
+            <p className="font-['IBM Plex Sans:Medium'] font-medium leading-[1.35] text-[#da1e28] text-[14px] whitespace-nowrap max-sm:whitespace-normal" style={{ fontVariationSettings: '"wdth" 100' }}>Decline</p>
+          </button>
+          <button onClick={() => decide(true)} className="bg-[#0f62fe] flex items-center px-4 py-2.5 rounded-[2px] hover:opacity-90 transition-opacity cursor-pointer">
+            <p className="font-['IBM Plex Sans:Medium'] font-medium leading-[1.35] text-white text-[14px] whitespace-nowrap max-sm:whitespace-normal" style={{ fontVariationSettings: '"wdth" 100' }}>Approve</p>
           </button>
         </div>
       </div>
@@ -103,7 +113,14 @@ function PrimaryCard({ dot, siteName, siteSubtitle, tags, title, rationale, fact
 
 export default function AIRecommendations({ onBack, onOpenSite }: AIRecommendationsProps) {
   const navigate = useNavigate();
-  const operations = useOperations();
+  const run = useCurrentRun().data;
+  const actions = useQuery({
+    queryKey: ["actions", run?.id, run?.block, "open"],
+    queryFn: () => runApi.actions(run!.id, { status: ["awaiting_approval", "recommended"], limit: 50 }),
+    enabled: !!run,
+  }).data ?? [];
+  const attention = actions.filter((a) => a.status === "awaiting_approval");
+  const others = actions.filter((a) => a.status === "recommended");
   return (
     <div className="bg-[#f4f4f4] min-h-screen w-full">
       {/* Content */}
@@ -124,7 +141,7 @@ export default function AIRecommendations({ onBack, onOpenSite }: AIRecommendati
         <div className="flex flex-wrap gap-3 items-center justify-between w-full">
           <div className="flex flex-col gap-1 items-start">
             <p className="font-['IBM Plex Sans:SemiBold'] font-semibold leading-[1.35] text-[#161616] text-[20px]" style={{ fontVariationSettings: '"wdth" 100' }}>Recommendations requiring attention</p>
-            <p className="font-['IBM Plex Sans:Regular'] font-normal leading-[1.35] text-[#525252] text-[13px]" style={{ fontVariationSettings: '"wdth" 100' }}>3 highest-priority recommendations shown first</p>
+            <p className="font-['IBM Plex Sans:Regular'] font-normal leading-[1.35] text-[#525252] text-[13px]" style={{ fontVariationSettings: '"wdth" 100' }}>{attention.length ? `${attention.length} waiting for a decision, soonest deadline first` : "Nothing is waiting for a decision"}</p>
           </div>
           <div className="bg-white border border-[#e0e0e0] flex items-center px-[9px] py-[5px] rounded-[2px] max-sm:flex-wrap">
             <p className="font-['IBM Plex Sans:Medium'] font-medium leading-[1.35] text-[#161616] text-[12px] whitespace-nowrap max-sm:whitespace-normal" style={{ fontVariationSettings: '"wdth" 100' }}>Sorted by priority</p>
@@ -133,45 +150,34 @@ export default function AIRecommendations({ onBack, onOpenSite }: AIRecommendati
 
         {/* Primary recommendation cards */}
         <div className="flex flex-col gap-3.5 items-start w-full">
-          {getAttentionRecommendations().map((card) => (
-            <PrimaryCard
-              key={card.id}
-              dot={card.dot}
-              siteName={card.siteName}
-              siteSubtitle={card.siteSubtitle}
-              tags={card.tags}
-              title={card.title}
-              rationale={card.rationale}
-              facts={card.facts}
-              primaryBtnLabel={card.primaryBtnLabel}
-              primaryBtnBg={card.primaryBtnBg}
-              onOpenSite={onOpenSite}
-            />
+          {[...attention].sort((x, y) => (x.deadline_at ?? "").localeCompare(y.deadline_at ?? "")).map((a) => (
+            <PrimaryCard key={a.id} action={a} runId={run!.id} onOpenSite={onOpenSite} />
           ))}
         </div>
 
         {/* Other recommendations heading */}
         <div className="flex flex-wrap gap-3 items-center justify-between w-full">
           <p className="font-['IBM Plex Sans:SemiBold'] font-semibold leading-[1.35] text-[#161616] text-[20px]" style={{ fontVariationSettings: '"wdth" 100' }}>Other recommendations</p>
-          <button disabled className="font-['IBM Plex Sans:Medium'] font-medium text-[#525252] text-[14px] whitespace-nowrap max-sm:whitespace-normal" style={{ fontVariationSettings: '"wdth" 100' }}>3 other preview recommendations</button>
+          <button disabled className="font-['IBM Plex Sans:Medium'] font-medium text-[#525252] text-[14px] whitespace-nowrap max-sm:whitespace-normal" style={{ fontVariationSettings: '"wdth" 100' }}>{others.length} recommended by BOB</button>
         </div>
 
         {/* Compact cards */}
         <div className="flex gap-4 items-start w-full flex-wrap">
-          {getOtherRecommendations().map((card) => (
-            <div key={card.id || card.site} className="bg-white border border-[#e0e0e0] flex flex-col gap-2.5 items-start p-[18px] rounded-[2px] flex-1 min-w-0 basis-full sm:basis-[260px]">
+          {others.length === 0 && <p className="text-[13px] text-[#525252]">BOB has no other recommendations right now.</p>}
+          {others.map((a) => (
+            <div key={a.id} className="bg-white border border-[#e0e0e0] flex flex-col gap-2.5 items-start p-[18px] rounded-[2px] flex-1 min-w-0 basis-full sm:basis-[260px]">
               <div className="flex gap-2 items-start max-sm:flex-wrap">
-                <p className="font-['IBM Plex Sans:SemiBold'] font-semibold leading-[1.35] text-[#161616] text-[14px] whitespace-nowrap max-sm:whitespace-normal" style={{ fontVariationSettings: '"wdth" 100' }}>{card.site}</p>
-                <div className={`${card.tagBg} flex items-center px-[9px] py-[5px] rounded-[2px] shrink-0`}>
-                  <p className={`font-['IBM Plex Sans:Medium'] font-medium leading-[1.35] text-[12px] whitespace-nowrap max-sm:whitespace-normal ${card.tagText}`} style={{ fontVariationSettings: '"wdth" 100' }}>{card.tagLabel}</p>
+                <p className="font-['IBM Plex Sans:SemiBold'] font-semibold leading-[1.35] text-[#161616] text-[14px] whitespace-nowrap max-sm:whitespace-normal" style={{ fontVariationSettings: '"wdth" 100' }}>{a.site ?? "Portfolio"}</p>
+                <div className="bg-[#f6f2ff] flex items-center px-[9px] py-[5px] rounded-[2px] shrink-0">
+                  <p className="font-['IBM Plex Sans:Medium'] font-medium leading-[1.35] text-[12px] whitespace-nowrap max-sm:whitespace-normal text-[#6929c4]" style={{ fontVariationSettings: '"wdth" 100' }}>Recommended</p>
                 </div>
               </div>
-              <p className="font-['IBM Plex Sans:SemiBold'] font-semibold leading-[1.35] text-[#161616] text-[16px] w-full" style={{ fontVariationSettings: '"wdth" 100' }}>{card.title}</p>
-              <p className="font-['IBM Plex Sans:Regular'] font-normal leading-[1.35] text-[#525252] text-[13px] w-full" style={{ fontVariationSettings: '"wdth" 100' }}>{card.subtitle}</p>
+              <p className="font-['IBM Plex Sans:SemiBold'] font-semibold leading-[1.35] text-[#161616] text-[16px] w-full" style={{ fontVariationSettings: '"wdth" 100' }}>{title(a)}</p>
+              <p className="font-['IBM Plex Sans:Regular'] font-normal leading-[1.35] text-[#525252] text-[13px] w-full" style={{ fontVariationSettings: '"wdth" 100' }}>{rationaleOf(a)}</p>
               <div className="flex gap-3 items-center flex-wrap pt-1">
                 <button onClick={() => navigate('/askBob')} className="font-['IBM Plex Sans:Medium'] font-medium text-[#0f62fe] text-[13px] hover:underline cursor-pointer whitespace-nowrap max-sm:whitespace-normal" style={{ fontVariationSettings: '"wdth" 100' }}>Ask BOB</button>
                 <button onClick={() => onOpenSite ? onOpenSite() : navigate('/siteDetail')} className="font-['IBM Plex Sans:Medium'] font-medium text-[#0f62fe] text-[13px] hover:underline cursor-pointer whitespace-nowrap max-sm:whitespace-normal" style={{ fontVariationSettings: '"wdth" 100' }}>Open site</button>
-                <button onClick={() => { operations.edit(0); navigate('/agentChat'); }} className="font-['IBM Plex Sans:Medium'] font-medium text-[#0f62fe] text-[13px] hover:underline cursor-pointer whitespace-nowrap max-sm:whitespace-normal" style={{ fontVariationSettings: '"wdth" 100' }}>Set up action →</button>
+                <button onClick={() => navigate('/agentChat')} className="font-['IBM Plex Sans:Medium'] font-medium text-[#0f62fe] text-[13px] hover:underline cursor-pointer whitespace-nowrap max-sm:whitespace-normal" style={{ fontVariationSettings: '"wdth" 100' }}>Set up action →</button>
               </div>
             </div>
           ))}
@@ -179,8 +185,7 @@ export default function AIRecommendations({ onBack, onOpenSite }: AIRecommendati
 
         {/* Results footer */}
         <div className="flex flex-wrap gap-3 items-center justify-between w-full">
-          <p className="font-['IBM Plex Sans:Regular'] font-normal leading-[1.35] text-[#525252] text-[13px] whitespace-nowrap max-sm:whitespace-normal" style={{ fontVariationSettings: '"wdth" 100' }}>Showing all 6 available preview recommendations</p>
-          <p className="text-xs text-[#6f6f6f]">Additional records require a connected recommendations API.</p>
+          <p className="font-['IBM Plex Sans:Regular'] font-normal leading-[1.35] text-[#525252] text-[13px] whitespace-nowrap max-sm:whitespace-normal" style={{ fontVariationSettings: '"wdth" 100' }}>Showing {actions.length} open recommendations from the live run</p>
         </div>
       </div>
     </div>

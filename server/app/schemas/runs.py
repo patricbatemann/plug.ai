@@ -266,6 +266,7 @@ class ActionOut(BaseModel):
     deadline_at: datetime | None
     decided_by: str | None
     kind: str
+    family: str | None  # the configuration kind that governs it
     site: str | None
     asset: str | None
     mw: float
