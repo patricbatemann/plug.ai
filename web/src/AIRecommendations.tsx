@@ -2,8 +2,56 @@ import { useNavigate } from "react-router";
 import { useQuery } from "@tanstack/react-query";
 import { runApi } from "./api/client";
 import ApprovalCard, { actionTitle, rationaleOf } from "./ApprovalCard";
+import { simTime } from "./format";
 import { useCurrentRun } from "./runs/useCurrentRun";
 
+
+/** What BOB is waiting on a person for across every site: approvals first, soonest deadline first, then suggestions. */
+function useOpenRecommendations() {
+  const run = useCurrentRun().data;
+  const actions = useQuery({
+    queryKey: ["actions", run?.id, run?.block, "open"],
+    queryFn: () => runApi.actions(run!.id, { status: ["awaiting_approval", "recommended"], limit: 50 }),
+    enabled: !!run,
+  }).data ?? [];
+  return { run, actions };
+}
+
+/** The portfolio page's card: the open recommendations, or a plain statement that there are none. */
+export function TopRecommendations({ onReview, onAsk }: { onReview: () => void; onAsk: () => void }) {
+  const { actions } = useOpenRecommendations();
+  const open = [...actions].sort((x, y) =>
+    Number(y.status === "awaiting_approval") - Number(x.status === "awaiting_approval") ||
+    (x.deadline_at ?? "").localeCompare(y.deadline_at ?? ""));
+  return (
+    <div className="bg-white border border-[#e0e0e0] flex flex-col gap-4 p-6 rounded-[2px]">
+      {open.length ? (
+        <ul className="flex flex-col divide-y divide-[#e0e0e0]">
+          {open.slice(0, 3).map((a) => (
+            <li key={a.id} className="flex flex-wrap items-start justify-between gap-3 py-3 first:pt-0">
+              <div className="flex min-w-0 flex-1 flex-col gap-1">
+                <p className="text-[12px] text-[#525252]">
+                  <span className="font-semibold text-[#161616]">{a.site ?? "Portfolio"}</span> · {a.status === "awaiting_approval"
+                    ? <>Approval needed{a.deadline_at && <> · answer by <span className="font-mono">{simTime(a.deadline_at)}</span> IST</>}</>
+                    : "Recommended"}
+                </p>
+                <p className="text-[15px] font-semibold text-[#161616]">{actionTitle(a)}</p>
+                <p className="text-[13px] text-[#525252]">{rationaleOf(a)}</p>
+              </div>
+              <button onClick={onReview} className="min-h-11 border border-[#0f62fe] px-4 text-[14px] font-semibold text-[#0f62fe] hover:bg-[#edf5ff] cursor-pointer">Review</button>
+            </li>
+          ))}
+        </ul>
+      ) : (
+        <p className="text-[14px] text-[#525252]">No recommendation right now; BOB is acting within its limits.</p>
+      )}
+      <div className="flex flex-wrap items-center gap-3">
+        {open.length > 3 && <p className="text-[13px] text-[#525252]">{open.length - 3} more open</p>}
+        <button onClick={onAsk} className="min-h-11 border border-[#0f62fe] bg-white px-4 text-[14px] font-semibold text-[#0f62fe] hover:bg-[#edf5ff] cursor-pointer">Ask BOB</button>
+      </div>
+    </div>
+  );
+}
 
 interface AIRecommendationsProps {
   onBack: () => void;
@@ -12,12 +60,7 @@ interface AIRecommendationsProps {
 
 export default function AIRecommendations({ onBack, onOpenSite }: AIRecommendationsProps) {
   const navigate = useNavigate();
-  const run = useCurrentRun().data;
-  const actions = useQuery({
-    queryKey: ["actions", run?.id, run?.block, "open"],
-    queryFn: () => runApi.actions(run!.id, { status: ["awaiting_approval", "recommended"], limit: 50 }),
-    enabled: !!run,
-  }).data ?? [];
+  const { run, actions } = useOpenRecommendations();
   const attention = actions.filter((a) => a.status === "awaiting_approval");
   const others = actions.filter((a) => a.status === "recommended");
   return (

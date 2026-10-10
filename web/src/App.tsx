@@ -1,11 +1,10 @@
 import { useState } from 'react';
-import { batteryState, mw, mwh } from './format';
-import { useSite } from './site';
+import { mw } from './format';
 import { SITE } from './data';
 import SiteDetail from './SiteDetail';
 import BobActions from './BobActions';
 import LiveOverview from './LiveOverview';
-import AIRecommendations from './AIRecommendations';
+import AIRecommendations, { TopRecommendations } from './AIRecommendations';
 import ConnectData from './ConnectData';
 import AgentChat from './AgentChat';
 import { ActivateConfig, ReviewConfig, TestConfig } from './ConfigJourney';
@@ -26,10 +25,6 @@ const imgWind = `${assetPathPrefix}/8311b.svg`;
 const imgBattery = `${assetPathPrefix}/559eb.svg`;
 const imgChartBar = `${assetPathPrefix}/d1974.svg`;
 const imgArrowRight = `${assetPathPrefix}/814f7.svg`;
-const imgStatusDot = `${assetPathPrefix}/572df.svg`;
-const imgInfo = `${assetPathPrefix}/edf92.svg`;
-const imgBot = `${assetPathPrefix}/06b09.svg`;
-const imgSparkles = `${assetPathPrefix}/c9a9e.svg`;
 const imgSearch = `${assetPathPrefix}/3177f.svg`;
 const imgChevronDown = `${assetPathPrefix}/40ce4.svg`;
 const imgSortDesc = `${assetPathPrefix}/9fcb8.svg`;
@@ -188,8 +183,6 @@ function Screens({ onLogout }: { onLogout?: () => void }) {
   const [siteSearch, setSiteSearch] = useState('');
   const [statusFilter, setStatusFilter] = useState('all');
   const [sortOrder, setSortOrder] = useState<'attention' | 'name' | 'output'>('attention');
-  const site = useSite();
-  const { live, battery } = site;
   const { simTime, categories: portfolioCategories, stats: portfolioStats, sites: registeredSites, transactions: transactionRows } = usePortfolio();
 
   const filteredSites = registeredSites
@@ -355,70 +348,7 @@ function Screens({ onLogout }: { onLogout?: () => void }) {
               </div>
             </div>
           </div>
-          <div className="bg-white border border-[#e0e0e0] drop-shadow-[0px_4px_8px_rgba(0,0,0,0.03)] flex flex-col gap-5 p-7 rounded-[2px]">
-            {/* Card Header */}
-            <div className="flex flex-wrap gap-3 items-center justify-between">
-              <div className="flex gap-4 items-center max-sm:flex-wrap">
-                <div className="flex gap-2 items-center max-sm:flex-wrap">
-                  <div className="bg-[#0f62fe] flex items-center justify-center rounded-[2px] size-8 shrink-0 max-sm:flex-wrap">
-                    <p className="font-['IBM Plex Sans:Bold'] font-bold text-white text-[12px] leading-normal" style={{ fontVariationSettings: '"wdth" 100' }}>BOB</p>
-                  </div>
-                  <div className="flex flex-col gap-px">
-                    <p className="font-['IBM Plex Sans:Bold'] font-bold text-[#161616] text-[14px] leading-normal whitespace-nowrap max-sm:whitespace-normal" style={{ fontVariationSettings: '"wdth" 100' }}>BOB</p>
-                    <p className="font-['IBM Plex Sans:Regular'] font-normal text-[#8d8d8d] text-[12px] leading-normal whitespace-nowrap max-sm:whitespace-normal" style={{ fontVariationSettings: '"wdth" 100' }}>AI Energy Operations</p>
-                  </div>
-                </div>
-                <div className="bg-[#fef3c7] border border-[#f1c21b] flex gap-1.5 items-center px-2 py-1 rounded-[2px] max-sm:flex-wrap">
-                  <div className="size-1.5 relative shrink-0">
-                    <img alt="" className="absolute inset-0 size-full" src={imgStatusDot} />
-                  </div>
-                  <p className="font-['IBM Plex Sans:SemiBold'] font-semibold text-[#161616] text-[12px] leading-normal whitespace-nowrap max-sm:whitespace-normal" style={{ fontVariationSettings: '"wdth" 100' }}>{site.approvals.length ? `${site.approvals.length} approval${site.approvals.length > 1 ? 's' : ''} waiting` : 'Operational summary'}</p>
-                </div>
-              </div>
-              <p className="font-['IBM Plex Sans:Regular'] font-normal text-[#8d8d8d] text-[13px] leading-normal whitespace-nowrap max-sm:whitespace-normal" style={{ fontVariationSettings: '"wdth" 100' }}>Latest analysis · <span className="font-mono">{simTime}</span></p>
-            </div>
-            {/* Briefing Content */}
-            <div className="flex flex-col gap-4">
-              <p className="font-['IBM Plex Sans:Bold'] font-bold text-[#161616] text-[22px] leading-normal" style={{ fontVariationSettings: '"wdth" 100' }}>{site.approvals.length ? `Approval waiting at ${site.siteName}` : `${site.siteName} operational summary`}</p>
-              <p className="font-['IBM Plex Sans:Regular'] font-normal text-[#525252] text-[14px] leading-[1.5]" style={{ fontVariationSettings: '"wdth" 100' }}>
-                {site.siteName} is generating <span className="font-mono font-medium text-[#161616]">{mw(live?.generation?.actual_mw ?? 0)}</span>{live?.generation?.forecast_mw != null && <> against a <span className="font-mono font-medium text-[#161616]">{mw(live.generation.forecast_mw)}</span> forecast</>}. {battery ? <>{battery.name} is {batteryState(battery.mw, battery.available).toLowerCase()} and grid import is <span className="font-mono font-medium text-[#161616]">{mw(Math.max(live?.grid_mw ?? 0, 0))}</span>.</> : null}
-              </p>
-              <div className="bg-[#f4f4f4] flex flex-col gap-2 p-4 rounded-[2px]">
-                <div className="flex gap-1.5 items-center max-sm:flex-wrap">
-                  <div className="size-4 relative shrink-0">
-                    <img alt="" className="absolute inset-0 size-full" src={imgInfo} />
-                  </div>
-                  <p className="font-['IBM Plex Sans:Bold'] font-bold text-[#161616] text-[13px] leading-normal whitespace-nowrap max-sm:whitespace-normal" style={{ fontVariationSettings: '"wdth" 100' }}>Operational impact</p>
-                </div>
-                <p className="font-['IBM Plex Sans:Regular'] font-normal text-[#525252] text-[14px] leading-[1.4]" style={{ fontVariationSettings: '"wdth" 100' }}>
-                  {battery ? <>{battery.name} is at <span className="font-mono font-medium text-[#161616]">{battery.soc_pct}%</span>{site.reservePct !== null && <>, with <span className="font-mono font-medium text-[#161616]">{mwh(Math.max(0, ((battery.soc_pct - site.reservePct) / 100) * battery.energy_mwh))}</span> usable above the <span className="font-mono">{site.reservePct}%</span> reserve</>}.{site.floorPct !== null && <> The locked floor is <span className="font-mono">{site.floorPct}%</span>.</>}</> : 'This site has no battery.'}
-                </p>
-              </div>
-              <div className="border-l-[3px] border-[#0f62fe] flex flex-col gap-2 pl-4 pr-3 py-3">
-                <div className="flex gap-1.5 items-center max-sm:flex-wrap">
-                  <div className="size-4 relative shrink-0">
-                    <img alt="" className="absolute inset-0 size-full" src={imgBot} />
-                  </div>
-                  <p className="font-['IBM Plex Sans:Bold'] font-bold text-[#161616] text-[13px] leading-normal whitespace-nowrap max-sm:whitespace-normal" style={{ fontVariationSettings: '"wdth" 100' }}>Current response</p>
-                </div>
-                <p className="font-['IBM Plex Sans:Regular'] font-normal text-[#525252] text-[14px] leading-[1.4]" style={{ fontVariationSettings: '"wdth" 100' }}>
-                  {live?.bob_now.length ? live.bob_now.join('; ') : 'BOB is not acting at this site in this block.'} {!live?.connected ? 'The site’s telemetry is not connected, so BOB only monitors it.' : site.bobActive ? 'BOB’s actions here are active.' : 'BOB’s actions here are paused.'}
-                </p>
-              </div>
-            </div>
-            {/* Actions */}
-            <div className="flex gap-3 items-center pt-2 max-sm:flex-wrap">
-              <button onClick={() => setView("approval")} className="bg-[#0f62fe] flex items-center justify-center px-[18px] py-2.5 rounded-[2px] cursor-pointer hover:bg-[#0043ce] transition-colors max-sm:flex-wrap">
-                <p className="font-['IBM Plex Sans:SemiBold'] font-semibold text-white text-[14px] leading-normal whitespace-nowrap max-sm:whitespace-normal" style={{ fontVariationSettings: '"wdth" 100' }}>Review approvals</p>
-              </button>
-              <button onClick={() => setView("askBob")} className="bg-white border border-[#0f62fe] flex gap-2 items-center justify-center px-[18px] min-h-11 rounded-[2px] cursor-pointer hover:bg-[#edf5ff] transition-colors max-sm:flex-wrap">
-                <div className="size-3.5 relative shrink-0">
-                  <img alt="" className="absolute inset-0 size-full" src={imgSparkles} />
-                </div>
-                <span className="font-['IBM Plex Sans:SemiBold'] font-semibold text-[#0f62fe] text-[14px]" style={{ fontVariationSettings: '"wdth" 100' }}>Ask BOB</span>
-              </button>
-            </div>
-          </div>
+          <TopRecommendations onReview={() => setView('aiRec')} onAsk={() => setView('askBob')} />
         </div>
 
         {/* Registered Sites Table */}
