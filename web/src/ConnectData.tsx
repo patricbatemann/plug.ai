@@ -1,37 +1,29 @@
-import { useEffect, useRef, useState } from "react"
-import { useOperations } from "./Operations"
-import { parseCSV, validateMapping } from "./ConnectionData"
-import { SAMPLE_HEADERS, SAMPLE_ROWS } from "./ConnectionSample"
+import { useRef, useState } from "react"
+import { fileUpload, siteApi } from "./api/client"
+import { SITE } from "./data"
 
 interface ConnectDataProps {
   onBack: () => void
 }
-const fields = [
-  ["timestamp", "Timestamp (IST)"],
-  ["deviceId", "Device ID"],
-  ["soc", "SOC (%)"],
-  ["batteryPower", "Battery Power (MW)"],
-]
+interface Dataset {
+  headers: string[]
+  types: string[]
+  rows: string[][]
+  total: number
+  name: string
+  kind: "CSV" | "API"
+  upload?: { filename: string; data: string }
+  problems: string[]
+}
+
+const reason = (failure: unknown, fallback: string) => (failure instanceof Error ? failure.message : fallback)
 const input =
   "min-h-11 w-full min-w-0 border border-[#e0e0e0] bg-white px-3 text-sm focus:outline-2 focus:outline-[#0f62fe]"
 const button =
   "min-h-11 border border-[#e0e0e0] px-4 text-sm font-semibold hover:bg-[#f4f4f4] disabled:cursor-not-allowed disabled:opacity-50"
 
 export default function ConnectData({ onBack }: ConnectDataProps) {
-  const { setState, addAudit } = useOperations()
-  const [dataset, setDataset] = useState<{
-    headers: string[]
-    rows: string[][]
-    name: string
-    kind: "CSV" | "API"
-    historical: boolean
-  } | null>({
-    headers: SAMPLE_HEADERS,
-    rows: SAMPLE_ROWS,
-    name: "kuppam_battery_data.csv",
-    kind: "CSV",
-    historical: true,
-  })
+  const [dataset, setDataset] = useState<Dataset | null>(null)
   const [phase, setPhase] = useState<"source" | "success">("source")
   const [error, setError] = useState("")
   const [busy, setBusy] = useState(false)
@@ -41,155 +33,44 @@ export default function ConnectData({ onBack }: ConnectDataProps) {
   const [interval, setInterval] = useState("5")
   const [detected, setDetected] = useState(true)
   const [page, setPage] = useState(1)
-  const [timezone] = useState("Asia/Kolkata")
   const fileInput = useRef<HTMLInputElement>(null)
-  const apiRequest = useRef<AbortController | null>(null)
-  useEffect(() => () => apiRequest.current?.abort(), [])
-  const load = async (file?: File) => {
-    if (!file) return
+  const run = async (step: () => Promise<void>, fallback: string) => {
     setError("")
     setBusy(true)
     try {
-      if (!file.name.toLowerCase().endsWith(".csv"))
-        throw new Error("Choose a CSV file.")
-      if (file.size > 5_000_000)
-        throw new Error("CSV files must be 5 MB or smaller.")
-      const parsed = parseCSV(await file.text())
-      setDataset({ ...parsed, name: file.name, kind: "CSV", historical: true })
-      setPage(1)
-      setPhase("source")
-    } catch (reason) {
-      setError(reason instanceof Error ? reason.message : "Unable to read CSV.")
-    } finally {
-      setBusy(false)
-      if (fileInput.current) fileInput.current.value = ""
-    }
-  }
-  const testAPI = async () => {
-    setError("")
-    setBusy(true)
-    const controller = new AbortController()
-    apiRequest.current = controller
-    try {
-      const url = new URL(endpoint)
-      if (url.protocol !== "https:" && !(url.protocol === "http:" && ["localhost", "127.0.0.1"].includes(url.hostname)))
-        throw new Error("Use an HTTPS API endpoint.")
-      const adapter = import.meta.env.VITE_DATA_CONNECT_ENDPOINT
-      if (
-        !adapter ||
-        new URL(adapter, location.origin).origin !== location.origin
-      )
-        throw new Error(
-          "A same-origin data-connection adapter is required. Configure VITE_DATA_CONNECT_ENDPOINT; no connection has been made.",
-        )
-      const response = await fetch(adapter, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          siteId: "KUP-SOLAR-001",
-          endpoint,
-          apiKey: key,
-          refreshIntervalMin: Number(interval),
-        }),
-        signal: AbortSignal.any([controller.signal, AbortSignal.timeout(30_000)]),
-        redirect: 'error',
-      })
-      if (!response.ok)
-        throw new Error(`Connection validation failed (${response.status}).`)
-      const data = await response.json()
-      if (controller.signal.aborted) return
-      if (
-        !Array.isArray(data.headers) ||
-        !data.headers.every(
-          (header: unknown) => typeof header === "string" && header,
-        ) ||
-        new Set(data.headers).size !== data.headers.length ||
-        !Array.isArray(data.rows) ||
-        !data.rows.length ||
-        !data.rows.every(
-          (row: unknown) =>
-            Array.isArray(row) &&
-            row.length === data.headers.length &&
-            row.every(
-              (value) => typeof value === "string" || typeof value === "number",
-            ),
-        )
-      )
-        throw new Error(
-          "API adapter must return unique headers and non-empty, matching data rows.",
-        )
-      setDataset({
-        headers: data.headers,
-        rows: data.rows.map((row: unknown[]) => row.map(String)),
-        name: url.hostname,
-        kind: "API",
-        historical: false,
-      })
-      setPage(1)
-      setKey("")
-      if (data.permissions?.gridRemoteAvailable === true)
-        setState((current) => ({
-          ...current,
-          gridRemoteAvailable: true,
-          gridTelemetryAgeSeconds:
-            typeof data.telemetryAgeSeconds === "number" &&
-            data.telemetryAgeSeconds >= 0
-              ? data.telemetryAgeSeconds
-              : null,
-          gridSafetyVerified: data.safetyChecksPassed === true,
-          gridVerifiedAt: Date.now(),
-        }))
-    } catch (reason) {
-      setError(
-        reason instanceof Error ? reason.message : "API connection failed.",
-      )
+      await step()
+    } catch (failure) {
+      setError(reason(failure, fallback))
     } finally {
       setBusy(false)
     }
   }
-  const handleImport = () => {
-    if (!dataset) return
-    setError("")
-    const matched: Record<string, string> = {}
-    const aliases: Record<string, string[]> = {
-      timestamp: ["timestamp", "time", "datetime"],
-      deviceId: ["deviceid", "device", "assetid"],
-      soc: ["soc", "socpercent"],
-      batteryPower: ["batterypowermw", "batterypower", "powermw"],
-    }
-    for (const [field] of fields)
-      matched[field] =
-        dataset.headers.find((header) =>
-          aliases[field].includes(header.toLowerCase().replace(/[^a-z]/g, "")),
-        ) ?? ""
-
-    try {
-      validateMapping(dataset.headers, dataset.rows, matched)
-      setState((current) => ({
-        ...current,
-        connections: [
-          ...current.connections.filter(
-            (source) => source.name !== dataset.name,
-          ),
-          {
-            name: dataset.name,
-            fields: { ...matched, timezone },
-            kind: dataset.kind,
-          },
-        ],
-      }))
-      addAudit(
-        "Data source validated",
-        `${dataset.name}: ${dataset.rows.length} rows, ${dataset.headers.length} columns; ${dataset.kind}; timezone ${timezone}; read-only mapping verified. Historical imports are not live telemetry. BOB control permissions unchanged.`,
-      )
-      setError("")
-      setPhase("success")
-    } catch (reason) {
-      setError(
-        reason instanceof Error ? reason.message : "Data import validation failed.",
-      )
-    }
-  }
+  // The server reads the file; nothing is imported until Import Data.
+  const load = (file?: File) => file && run(async () => {
+    if (fileInput.current) fileInput.current.value = ""
+    const upload = await fileUpload(file)
+    const check = await siteApi.checkCsv(SITE.id, upload)
+    setDataset({
+      headers: check.columns.map((c) => c.name), types: check.columns.map((c) => c.type), rows: check.preview,
+      total: check.rows, name: file.name, kind: "CSV", upload, problems: check.problems,
+    })
+    setPage(1)
+    if (check.problems.length) setError(check.problems.join("; "))
+  }, "Unable to read CSV.")
+  // Testing the site's telemetry API also keeps it as the site's live source.
+  const testAPI = () => run(async () => {
+    const feed = await siteApi.connectFeed(SITE.id, endpoint, key, Number(interval))
+    setDataset({
+      headers: feed.headers, types: [], rows: feed.rows.map((row) => row.map(String)), total: feed.rows.length,
+      name: new URL(endpoint).hostname, kind: "API", problems: [],
+    })
+    setPage(1)
+    setKey("")
+  }, "API connection failed.")
+  const handleImport = () => run(async () => {
+    if (dataset?.upload) await siteApi.importCsv(SITE.id, dataset.upload)
+    setPhase("success")
+  }, "Data import validation failed.")
 
   return (
     <div className="flex min-h-screen min-w-0 flex-col bg-[#f4f4f6] text-[#525252] font-['IBM Plex Sans:Regular'] [&_button]:focus-visible:outline-2 [&_button]:focus-visible:outline-offset-2 [&_button]:focus-visible:outline-[#0f62fe]">
@@ -200,7 +81,7 @@ export default function ConnectData({ onBack }: ConnectDataProps) {
           </button>
           <span>/</span>
           <button onClick={onBack} className="text-[#0f62fe]">
-            Kuppam Solar Site
+            {SITE.name}
           </button>
           <span>/</span>
           <span>Connect data</span>
@@ -233,7 +114,7 @@ export default function ConnectData({ onBack }: ConnectDataProps) {
               Data source connected
             </h2>
             <p className="text-sm">
-              {dataset?.name} · {dataset?.rows.length} rows validated · Required
+              {dataset?.name} · {dataset?.total} rows validated · Required
               fields mapped.
             </p>
             <p className="text-sm">
@@ -302,7 +183,7 @@ export default function ConnectData({ onBack }: ConnectDataProps) {
                         {dataset.name}
                       </p>
                       <p className="text-xs text-[#6f6f6f]">
-                        {dataset.rows.length} rows · {dataset.headers.length}{" "}
+                        {dataset.total} rows · {dataset.headers.length}{" "}
                         columns · Historical/imported data
                       </p>
                     </div>
@@ -345,7 +226,7 @@ export default function ConnectData({ onBack }: ConnectDataProps) {
                   <input
                     value={endpoint}
                     onChange={(event) => setEndpoint(event.target.value)}
-                    placeholder={`${location.origin}/api/mock/sites/KUP-SOLAR-001/telemetry`}
+                    placeholder={`${location.origin}/api/mock/sites/${SITE.id}/telemetry`}
                     type="url"
                     className={input}
                   />
@@ -410,11 +291,11 @@ export default function ConnectData({ onBack }: ConnectDataProps) {
                       Data Preview
                     </h2>
                     <p className="text-xs text-[#6f6f6f]">
-                      {dataset.rows.length} rows · {dataset.headers.length}{" "}
+                      {dataset.total} rows · {dataset.headers.length}{" "}
                       columns detected ·{" "}
-                      {dataset.historical
-                        ? "Historical/imported data, not live"
-                        : "API validation sample"}
+                      {dataset.kind === "CSV"
+                        ? `Historical/imported data, not live · first ${dataset.rows.length} shown`
+                        : "Live feed sample"}
                     </p>
                   </div>
                   <label className="flex min-h-11 items-center gap-3 text-xs">
@@ -441,17 +322,9 @@ export default function ConnectData({ onBack }: ConnectDataProps) {
                             className="min-w-28 whitespace-nowrap border-b border-[#e0e0e0] px-5 py-3"
                           >
                             <p>{header}</p>
-                            {detected && (
+                            {detected && dataset.types[index] && (
                               <span className="mt-1 inline-block rounded bg-[#defbe6] px-1.5 py-0.5 text-[10px] text-[#198038]">
-                                {dataset.rows.every(
-                                  (row) =>
-                                    row[index] !== "" &&
-                                    Number.isFinite(Number(row[index])),
-                                )
-                                  ? "Number"
-                                  : header.toLowerCase().includes("time")
-                                    ? "DateTime"
-                                    : "String"}
+                                {dataset.types[index]}
                               </span>
                             )}
                           </th>
@@ -521,8 +394,8 @@ export default function ConnectData({ onBack }: ConnectDataProps) {
             Cancel
           </button>
           <button
-            disabled={!dataset || busy}
-            onClick={handleImport}
+            disabled={!dataset || busy || dataset.problems.length > 0}
+            onClick={() => void handleImport()}
             className={`${button} border-[#0f62fe] bg-[#0f62fe] text-white hover:bg-[#0043ce]`}
           >
             Import Data

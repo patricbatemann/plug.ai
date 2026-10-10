@@ -214,15 +214,9 @@ export const tokenStore = {
 
 const apiUrl = (import.meta.env.VITE_API_URL || 'http://localhost:8000').replace(/\/$/, '')
 
-/** Forget the session (token, sign-in flag and server cookie) and return to sign-in. */
+/** Forget the token and return to sign-in. */
 export function signOut() {
   tokenStore.clear()
-  try {
-    sessionStorage.removeItem('plug_auth')
-  } catch {
-    // Storage can be unavailable; the token is already gone.
-  }
-  void fetch(`${apiUrl}/api/auth/logout`, { method: 'POST', keepalive: true }).catch(() => undefined)
   window.location.assign('/login')
 }
 
@@ -514,6 +508,11 @@ export const siteApi = {
     post<CsvCheck>(`${site(code)}/data-sources/api/test`, api),
   connectApi: (code: string, api: { endpoint: string; refresh_min: number }) =>
     post<DataSource>(`${site(code)}/data-sources/api`, api),
+  /** Tests the site's telemetry API and keeps it as the site's live source; returns a sample of the feed. */
+  connectFeed: (code: string, endpoint: string, apiKey: string, refreshMin: number) =>
+    post<{ headers: string[]; rows: Array<Array<string | number>> }>('/api/data-sources/connect', {
+      siteId: code, endpoint, apiKey, refreshIntervalMin: refreshMin,
+    }),
   removeSource: (code: string, id: number) =>
     request<void>(`${site(code)}/data-sources/${id}`, { method: 'DELETE' }),
 }

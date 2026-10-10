@@ -6,8 +6,8 @@ interface LoginScreenProps {
 }
 
 export default function LoginScreen({ onLoginSuccess }: LoginScreenProps) {
-  const [email, setEmail] = useState("operator@plugin.ai");
-  const [password, setPassword] = useState("password123");
+  const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
   const [showPassword, setShowPassword] = useState(false);
   const [rememberMe, setRememberMe] = useState(true);
   const [isLoading, setIsLoading] = useState(false);
@@ -21,24 +21,15 @@ export default function LoginScreen({ onLoginSuccess }: LoginScreenProps) {
       // First attempt to login
       const res = await authApi.login(email, password);
       tokenStore.set(res.access_token);
-      try { sessionStorage.setItem("plug_auth", "true"); } catch {}
       onLoginSuccess?.();
     } catch (err: unknown) {
       // If user is not yet registered in local DB, attempt automatic register
       try {
         const reg = await authApi.register(email, password);
         tokenStore.set(reg.access_token);
-        try { sessionStorage.setItem("plug_auth", "true"); } catch {}
         onLoginSuccess?.();
       } catch {
-        const message = err instanceof Error ? err.message : "Authentication failed";
-        // If server is unreachable, allow offline demo mode
-        if (message.includes("Failed to fetch") || message.includes("NetworkError")) {
-          try { sessionStorage.setItem("plug_auth", "true"); } catch {}
-          onLoginSuccess?.();
-        } else {
-          setErrorMsg(message);
-        }
+        setErrorMsg(err instanceof Error ? err.message : "Authentication failed");
       }
     } finally {
       setIsLoading(false);

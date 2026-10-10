@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState } from 'react';
 import { mw } from './format';
 import SiteDetail from './SiteDetail';
 import BobActions from './BobActions';
@@ -147,17 +147,9 @@ function getStatIcon(icon: string) {
 }
 
 function OperationalRoute() {
-  const [isAuthenticated, setIsAuthenticated] = useState<boolean>(() => {
-    return Boolean(tokenStore.get() || (typeof sessionStorage !== 'undefined' && sessionStorage.getItem('plug_auth')));
-  });
+  const [isAuthenticated, setIsAuthenticated] = useState(() => Boolean(tokenStore.get()));
   const location = useLocation();
   const navigate = useNavigate();
-
-  useEffect(() => {
-    if (tokenStore.get() || (typeof sessionStorage !== 'undefined' && sessionStorage.getItem('plug_auth'))) {
-      setIsAuthenticated(true);
-    }
-  }, []);
 
   const handleLogin = () => {
     setIsAuthenticated(true);

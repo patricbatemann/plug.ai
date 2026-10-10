@@ -1,9 +1,8 @@
-from fastapi import APIRouter, Depends, HTTPException, Response, status
+from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
-from app.api.dependencies import SESSION_COOKIE, get_current_user
-from app.core.config import settings
+from app.api.dependencies import get_current_user
 from app.core.database import get_db
 from app.core.security import create_access_token
 from app.models.user import User
@@ -13,16 +12,12 @@ from app.services.auth import authenticate_user, get_user_by_email, register_use
 router = APIRouter()
 
 
-def _issue(response: Response, user: User) -> TokenResponse:
-    """The bearer token, and the same token as a cookie for the client's same-origin chat and data calls."""
-    token = create_access_token(user.email)
-    response.set_cookie(SESSION_COOKIE, token, max_age=settings.access_token_expire_minutes * 60, httponly=True,
-                        samesite="lax", secure=settings.env != "local")
-    return TokenResponse(access_token=token, user=user)
+def _issue(user: User) -> TokenResponse:
+    return TokenResponse(access_token=create_access_token(user.email), user=user)
 
 
 @router.post("/register", response_model=TokenResponse, status_code=status.HTTP_201_CREATED)
-def register(payload: UserCreate, response: Response, db: Session = Depends(get_db)) -> TokenResponse:
+def register(payload: UserCreate, db: Session = Depends(get_db)) -> TokenResponse:
     email = str(payload.email).strip().lower()
     if get_user_by_email(db, email) is not None:
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Email is already registered")
@@ -35,21 +30,15 @@ def register(payload: UserCreate, response: Response, db: Session = Depends(get_
             status_code=status.HTTP_409_CONFLICT,
             detail="Email is already registered",
         ) from None
-    return _issue(response, user)
+    return _issue(user)
 
 
 @router.post("/login", response_model=TokenResponse)
-def login(payload: UserLogin, response: Response, db: Session = Depends(get_db)) -> TokenResponse:
+def login(payload: UserLogin, db: Session = Depends(get_db)) -> TokenResponse:
     user = authenticate_user(db, str(payload.email), payload.password)
     if user is None:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid email or password")
-    return _issue(response, user)
-
-
-@router.post("/logout", status_code=status.HTTP_204_NO_CONTENT)
-def logout(response: Response) -> None:
-    """Ends the cookie session. The bearer token is the client's to forget."""
-    response.delete_cookie(SESSION_COOKIE, httponly=True, samesite="lax", secure=settings.env != "local")
+    return _issue(user)
 
 
 @router.get("/me", response_model=UserResponse)

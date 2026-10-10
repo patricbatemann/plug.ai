@@ -56,5 +56,4 @@ def auth_headers(client: TestClient) -> dict[str, str]:
     response = client.post(
         "/api/auth/register", json={"email": "operator@example.com", "password": "safe-password"}
     )
-    client.cookies.clear()  # requests authenticate by bearer token unless a test sends the cookie
     return {"Authorization": f"Bearer {response.json()['access_token']}"}

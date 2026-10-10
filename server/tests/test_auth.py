@@ -26,11 +26,6 @@ def test_register_login_and_current_user(client: TestClient) -> None:
     me = client.get("/api/auth/me", headers={"Authorization": f"Bearer {token}"})
     assert me.status_code == 200
     assert me.json()["email"] == "starter@example.com"
-
-    # The same session as an HttpOnly cookie, for the client's same-origin chat and data calls.
-    assert "httponly" in login.headers["set-cookie"].lower()
-    assert client.get("/api/auth/me").json()["email"] == "starter@example.com"
-    assert client.post("/api/auth/logout").status_code == 204
     assert client.get("/api/auth/me").status_code == 401
 
 

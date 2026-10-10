@@ -90,7 +90,7 @@ Tests: `cd server; .venv\Scripts\python -m pytest`, and `cd web; npm run check:c
 - `server/.env.example` documents API settings. With `ENV=local` and no `SECRET_KEY`, the API generates a signing key per process, so tokens stop working after a restart. Any other `ENV` requires a stable `SECRET_KEY` of at least 32 characters.
 - `DATABASE_URL` is a SQLAlchemy URL for PostgreSQL (`postgresql+psycopg://…`). Tests use `TEST_DATABASE_URL`, defaulting to the `bob_test` database.
 - `CORS_ORIGINS` is a comma-separated list of browser origins, defaulting to `http://localhost:5173`.
-- `web/.env.example` points the client at `/api` on its own origin, which Vite proxies to `http://localhost:8000`, plus the data-source endpoint (`VITE_DATA_CONNECT_ENDPOINT`). That call carries no bearer token: it authenticates with the HttpOnly `bob_session` cookie that login sets.
+- `web/.env.example` points the client at `/api` on its own origin, which Vite proxies to `http://localhost:8000`, and every call carries the bearer token.
 
 ## API
 
