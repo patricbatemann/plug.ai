@@ -1,4 +1,4 @@
-"""Reading a document into typed constraints (docs/spec/02, D3). The document is untrusted data:
+"""Reading a document into typed constraints. The document is untrusted data:
 the model only fills a schema whose targets must be the portfolio's own codes, and the validator in
 services/documents.py decides what, if anything, applies."""
 

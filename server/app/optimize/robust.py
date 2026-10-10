@@ -1,4 +1,4 @@
-"""Options under uncertainty (docs/spec/01 §7, §9): build stress scenarios, test each option's
+"""Options under uncertainty: build stress scenarios, test each option's
 here-and-now decisions against them, and choose by least worst-case regret."""
 
 import multiprocessing

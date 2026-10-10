@@ -1,4 +1,4 @@
-"""Documents to constraints (docs/spec/02, D3): read, extract, validate, and apply only what is
+"""Documents to constraints: read, extract, validate, and apply only what is
 safe without a person. A constraint applies automatically when it tightens a limit, the model is
 confident and its quote is found in the document; anything else waits for Apply or Reject."""
 

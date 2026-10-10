@@ -1,4 +1,4 @@
-"""Portfolio dispatch over a rolling horizon (docs/spec/01-decision-model.md §2–5).
+"""Portfolio dispatch over a rolling horizon.
 
 Stage A minimises unserved load and reserve shortfall; stage B minimises cost plus the
 profile's shadow prices while keeping stage A's reliability. Index 0 is the block about

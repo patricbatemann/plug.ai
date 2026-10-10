@@ -1,4 +1,4 @@
-"""BOB's turn in a decision cycle (docs/spec/02): it reads the situation, may change the mode
+"""BOB's turn in a decision cycle: it reads the situation, may change the mode
 (guard floors still apply), may add stress scenarios, and picks an option within 10 % of the
 least worst-case regret. Whatever it leaves undecided, the rules decide."""
 

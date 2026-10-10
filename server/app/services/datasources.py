@@ -1,4 +1,4 @@
-"""Connect data source (a mock, docs/spec/05). A CSV of telemetry history is checked against fixed
+"""Connect data source (a mock). A CSV of telemetry history is checked against fixed
 known columns, typed and previewed, then stored for the site. A site's live API is the mock telemetry
 endpoint, answered by the simulator: no external system is ever called. BOB commands only the assets
 of sites with a connected API."""

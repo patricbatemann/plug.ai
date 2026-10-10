@@ -1,4 +1,4 @@
-"""Maintenance (docs/spec/01 §11). BOB proposes moving its own jobs out of storm windows (crews
+"""Maintenance. BOB proposes moving its own jobs out of storm windows (crews
 cannot work in them) or to hours where the lost output is worth ₹1 lakh less; a person approves.
 Today's practice keeps the calendar. Inspections are proposed after storms and battery trips."""
 

@@ -1,4 +1,4 @@
-"""Policy tiers and approvals (docs/spec/01 §10): each action is automatic, needs approval, or is a
+"""Policy tiers and approvals: each action is automatic, needs approval, or is a
 recommendation, from its asset's active config and the organisation's protected limits."""
 
 from datetime import datetime

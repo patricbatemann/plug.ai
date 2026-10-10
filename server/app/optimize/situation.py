@@ -1,4 +1,4 @@
-"""Situation signals and the rule that picks the operating mode (docs/spec/01 §6, §8).
+"""Situation signals and the rule that picks the operating mode.
 Rules also set guard floors that apply whoever chooses the mode."""
 
 from dataclasses import asdict, dataclass
