@@ -264,11 +264,13 @@ def test_bob_decides_within_bounds_falls_back_to_rules_and_chat_never_breaches_l
     assert [c.outcome for c in db.scalars(select(AgentCall).order_by(AgentCall.id))] == ["ok", "fallback"]
 
     drafts = db.scalar(select(func.count()).select_from(ActionConfig))
-    monkeypatch.setattr(llm, "_client", lambda: FakeModel(lambda messages: "Blocked by a protected limit." if
-                        messages[-1]["role"] == "tool" else ("draft_action_config", {
-                            "asset": "BESS-01", "kind": "battery_discharge", "name": None, "autonomy": None,
-                            "max_mw": None, "auto_max_mw": None, "reserve_pct": 0, "min_price_inr_mwh": None,
-                            "response_min": None, "watch_threshold": None, "remove_watch": False})))
+    unchanged = dict.fromkeys(("name", "autonomy", "max_mw", "auto_max_mw", "reserve_pct", "min_price_inr_mwh",
+                               "max_minutes", "max_mwh", "deficit_mw", "deficit_minutes", "remove_limits",
+                               "objective", "recovery", "notify", "response_min", "watch_threshold"))
+    asks = lambda text, **change: lambda messages: text if messages[-1]["role"] == "tool" else (  # noqa: E731
+        "draft_action_config", {**unchanged, "asset": "BESS-01", "kind": "battery_discharge", "remove_watch": False,
+                                **change})
+    monkeypatch.setattr(llm, "_client", lambda: FakeModel(asks("Blocked by a protected limit.", reserve_pct=0)))
     stream = client.post(f"{url}/chat", json={"message": "Remove the minimum battery reserve"}, headers=auth_headers)
     events = [(frame.split("\n")[0].removeprefix("event: "), json.loads(frame.split("\n")[1].removeprefix("data: ")))
               for frame in stream.text.strip().split("\n\n")]
@@ -281,6 +283,17 @@ def test_bob_decides_within_bounds_falls_back_to_rules_and_chat_never_breaches_l
     assert [m["role"] for m in client.get(f"{url}/chat", headers=auth_headers).json()] == ["user", "assistant"]
     assert client.delete(f"{url}/chat", headers=auth_headers).status_code == 204
     assert client.get(f"{url}/chat", headers=auth_headers).json() == []
+
+    # Asked for caps and a start condition, BOB drafts them; the draft waits for a person.
+    monkeypatch.setattr(llm, "_client", lambda: FakeModel(asks("Drafted.", max_minutes=30, max_mwh=3, deficit_mw=5,
+                                                               deficit_minutes=15, recovery="request_import")))
+    stream = client.post(f"{url}/chat", json={"message": "Cap discharge at 30 minutes"}, headers=auth_headers)
+    *_, reply = json.loads(stream.text.strip().split("\n\n")[-1].split("\n")[1].removeprefix("data: "))
+    draft = reply["cards"][0]
+    assert draft["type"] == "draft" and draft["preferences"]["recovery"] == "request_import"
+    assert {k: draft["limits"][k] for k in ("max_minutes", "max_mwh", "deficit_mw", "deficit_minutes")} == {
+        "max_minutes": 30, "max_mwh": 3, "deficit_mw": 5, "deficit_minutes": 15}
+    assert not db.get(ActionConfig, draft["config_id"]).current
 
 
 def test_storm_bulletin_moves_maintenance_and_brings_an_inspection(

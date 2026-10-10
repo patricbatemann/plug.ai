@@ -1,9 +1,7 @@
 import { useState, type ReactNode } from 'react';
-import { useQueryClient } from '@tanstack/react-query';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { configApi, type ConfigOut, type ConfigValues } from './api/client';
-import { SITE } from './data';
 import { AUTONOMY, NOTIFY, OBJECTIVES, RECOVERY } from './format';
-import { useSite } from './site';
 
 const assetPathPrefix = '/assets';
 const imgBrainCog = `${assetPathPrefix}/71557.svg`;
@@ -35,18 +33,18 @@ function describe(v: ConfigValues): Array<[string, string]> {
   ];
 }
 
-function useConfig(id: number): ConfigOut | undefined {
-  return useSite().configs.find((c) => c.id === id);
+function useConfig(id: number, site: string): ConfigOut | undefined {
+  return useQuery({ queryKey: ['configs', site], queryFn: () => configApi.list(site) }).data?.find((c) => c.id === id);
 }
 
-function Frame({ stage, status, onClose, children }: { stage: number; status: string; onClose: () => void; children: ReactNode }) {
+function Frame({ site, stage, status, onClose, children }: { site: string; stage: number; status: string; onClose: () => void; children: ReactNode }) {
   return (
     <div className="bg-[#f4f4f4] flex flex-col min-h-screen w-full font-sans">
       <div className="bg-white border-b border-[#e0e0e0] flex min-h-14 flex-wrap gap-3 items-center justify-between py-3 px-6 shrink-0">
         <div className="flex flex-wrap gap-4 items-center">
           <div className="bg-[#0f62fe] flex items-center justify-center rounded-[2px] size-8"><img alt="" className="size-5" src={imgBrainCog} /></div>
           <p className="font-semibold text-[#161616] text-[16px]">BOB Agent Setup</p>
-          <span className="border border-[#e0e0e0] px-2.5 py-1.5 rounded-[2px] font-mono text-[13px] text-[#161616]">{SITE.id}</span>
+          <span className="border border-[#e0e0e0] px-2.5 py-1.5 rounded-[2px] font-mono text-[13px] text-[#161616]">{site}</span>
           <span className="bg-[#fef3c7] border border-[#fde68a] px-2 py-0.5 rounded-[2px] text-[11px] font-semibold text-[#b26207]">{status}</span>
         </div>
         <button onClick={onClose} aria-label="Exit setup" className="border border-[#e0e0e0] bg-white flex items-center justify-center rounded-[2px] size-8 hover:bg-[#f4f4f4] cursor-pointer">
@@ -82,16 +80,16 @@ function Secondary({ onClick, children }: { onClick: () => void; children: React
   return <button onClick={onClick} className="border border-[#e0e0e0] bg-white px-5 py-2.5 rounded-[2px] hover:bg-[#f4f4f4] cursor-pointer text-[14px] font-medium text-[#161616]">{children}</button>;
 }
 
-function Missing({ onClose }: { onClose: () => void }) {
-  return <Frame stage={1} status="Not found" onClose={onClose}><p className="text-[14px] text-[#525252]">This configuration is not a draft at this site any more. Start again from the BOB actions.</p></Frame>;
+function Missing({ site, onClose }: { site: string; onClose: () => void }) {
+  return <Frame site={site} stage={1} status="Not found" onClose={onClose}><p className="text-[14px] text-[#525252]">This configuration is not a draft at this site any more. Start again from the BOB actions.</p></Frame>;
 }
 
-export function ReviewConfig({ id, onEdit, onTest, onClose }: { id: number; onEdit: () => void; onTest: () => void; onClose: () => void }) {
-  const config = useConfig(id);
-  if (!config) return <Missing onClose={onClose} />;
+export function ReviewConfig({ id, site, onEdit, onTest, onClose }: { id: number; site: string; onEdit: () => void; onTest: () => void; onClose: () => void }) {
+  const config = useConfig(id, site);
+  if (!config) return <Missing site={site} onClose={onClose} />;
   const before = config.active ? Object.fromEntries(describe(config.active)) : {};
   return (
-    <Frame stage={2} status="Ready to test" onClose={onClose}>
+    <Frame site={site} stage={2} status="Ready to test" onClose={onClose}>
       <div>
         <h1 className="font-bold text-[#1f2937] text-[22px] mb-1">Review configuration</h1>
         <p className="text-[#525252] text-[14px]">{config.name} · {config.asset_name} · draft version {config.version}. {config.active ? 'Changes from the version in force are highlighted.' : 'Nothing is in force for this action yet.'}</p>
@@ -117,12 +115,12 @@ export function ReviewConfig({ id, onEdit, onTest, onClose }: { id: number; onEd
   );
 }
 
-export function TestConfig({ id, onEdit, onActivate, onClose }: { id: number; onEdit: () => void; onActivate: () => void; onClose: () => void }) {
-  const config = useConfig(id);
+export function TestConfig({ id, site, onEdit, onActivate, onClose }: { id: number; site: string; onEdit: () => void; onActivate: () => void; onClose: () => void }) {
+  const config = useConfig(id, site);
   const queryClient = useQueryClient();
   const [running, setRunning] = useState(false);
   const [error, setError] = useState('');
-  if (!config) return <Missing onClose={onClose} />;
+  if (!config) return <Missing site={site} onClose={onClose} />;
   const tests = Object.values(config.tests);
   const passed = tests.length > 0 && tests.every((t) => t.passed);
   const run = async () => {
@@ -130,7 +128,7 @@ export function TestConfig({ id, onEdit, onActivate, onClose }: { id: number; on
     setError('');
     try {
       await configApi.test(id);
-      await queryClient.invalidateQueries({ queryKey: ['configs', SITE.id] });
+      await queryClient.invalidateQueries({ queryKey: ['configs', site] });
     } catch (failure) {
       setError(failure instanceof Error ? failure.message : 'The tests did not run.');
     } finally {
@@ -138,7 +136,7 @@ export function TestConfig({ id, onEdit, onActivate, onClose }: { id: number; on
     }
   };
   return (
-    <Frame stage={2} status={tests.length ? (passed ? 'Tested' : 'Tests failed') : 'Ready to test'} onClose={onClose}>
+    <Frame site={site} stage={2} status={tests.length ? (passed ? 'Tested' : 'Tests failed') : 'Ready to test'} onClose={onClose}>
       <div>
         <h1 className="font-bold text-[#1f2937] text-[22px] mb-1">Test against live conditions</h1>
         <p className="text-[#525252] text-[14px]">BOB plans the block in progress with this draft in force under three scenarios. Each plan must serve all load, and {config.asset_name}’s action must pass the safety checks. Nothing is sent to any asset.</p>
@@ -162,19 +160,19 @@ export function TestConfig({ id, onEdit, onActivate, onClose }: { id: number; on
   );
 }
 
-export function ActivateConfig({ id, onDone, onClose }: { id: number; onDone: () => void; onClose: () => void }) {
-  const config = useConfig(id);
+export function ActivateConfig({ id, site, onDone, onClose }: { id: number; site: string; onDone: () => void; onClose: () => void }) {
+  const config = useConfig(id, site);
   const queryClient = useQueryClient();
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
-  if (!config) return <Missing onClose={onClose} />;
+  if (!config) return <Missing site={site} onClose={onClose} />;
   const active = config.current && config.status === 'active';
   const activate = async () => {
     setBusy(true);
     setError('');
     try {
       await configApi.activate(id);
-      await queryClient.invalidateQueries({ queryKey: ['configs', SITE.id] });
+      await queryClient.invalidateQueries({ queryKey: ['configs', site] });
     } catch (failure) {
       setError(failure instanceof Error ? failure.message : 'Activation failed.');
     } finally {
@@ -182,7 +180,7 @@ export function ActivateConfig({ id, onDone, onClose }: { id: number; onDone: ()
     }
   };
   return (
-    <Frame stage={active ? 4 : 3} status={active ? 'Active' : 'Ready to activate'} onClose={onClose}>
+    <Frame site={site} stage={active ? 4 : 3} status={active ? 'Active' : 'Ready to activate'} onClose={onClose}>
       <div>
         <h1 className="font-bold text-[#1f2937] text-[22px] mb-1">{active ? 'Configuration active' : 'Confirm activation'}</h1>
         <p className="text-[#525252] text-[14px]">

@@ -7,18 +7,20 @@ import {
 } from "react"
 import ReactMarkdown from "react-markdown"
 import remarkGfm from "remark-gfm"
-import { runApi, type ChatItem } from "./api/client"
+import { Link } from "react-router"
+import { runApi, type ChatCard, type ChatItem } from "./api/client"
+import { configKindLabel, inr, limitsSummary } from "./format"
 import { SITE } from "./data"
 
 export interface BobMessage {
   id: string
   role: "user" | "assistant"
   text: string
+  cards: ChatCard[]
 }
 
-// The new UI shows text only; a reply that is only a card would be an empty bubble.
 const toMessages = (items: ChatItem[]): BobMessage[] =>
-  items.filter((item) => item.text).map((item) => ({ id: String(item.id), role: item.role, text: item.text }))
+  items.map((item) => ({ id: String(item.id), role: item.role, text: item.text, cards: item.cards }))
 const reason = (failure: unknown) => failure instanceof Error ? failure.message : "Unable to reach BOB. Please retry."
 
 export function useBobChat(scope: string) {
@@ -70,7 +72,7 @@ export function useBobChat(scope: string) {
     ready: runId !== undefined,
     send: async (text: string) => {
       if (!text.trim() || pending || error || !runId) return
-      setMessages((so) => [...so, { id: `new-${so.length}`, role: "user", text: text.trim() }])
+      setMessages((so) => [...so, { id: `new-${so.length}`, role: "user", text: text.trim(), cards: [] }])
       await ask(text.trim())
     },
     retry: () => (runId ? ask(last.current) : load()),
@@ -89,6 +91,43 @@ export function useBobChat(scope: string) {
 }
 
 export type BobChatState = ReturnType<typeof useBobChat>
+
+/** What a tool produced alongside BOB's answer: a draft to review, its tests, a refusal, a what-if. */
+function BobCard({ card }: { card: ChatCard }) {
+  const box = "mt-3 rounded-[2px] border p-3 text-[13px]"
+  const journey = (step: string, id: number, site: string) => `/${step}?config=${id}&site=${site}`
+  switch (card.type) {
+    case "draft":
+      return (
+        <div className={`${box} border-[#a6c8ff] bg-[#edf5ff]`}>
+          <p className="font-semibold text-[#161616]">Draft · {configKindLabel(card.kind)} · {card.asset_name} · version {card.version}</p>
+          <ul className="mt-1 list-disc pl-5 text-[#525252]">{limitsSummary(card.limits).map((line) => <li key={line}>{line}</li>)}</ul>
+          <Link to={journey("review", card.config_id, card.site)} className="mt-2 inline-flex min-h-9 items-center bg-[#0f62fe] px-3 font-semibold text-white hover:bg-[#0043ce]">Review and activate</Link>
+        </div>
+      )
+    case "tests": {
+      const results = Object.values(card.tests)
+      const passed = results.every((t) => t.passed)
+      return (
+        <div className={`${box} ${passed ? "border-[#a7f0ba] bg-[#defbe6]" : "border-[#ffb3b8] bg-[#fff1f1]"}`}>
+          <p className="font-semibold text-[#161616]">Tests · {configKindLabel(card.kind)} · {card.asset_name}: {passed ? "all passed" : "failed"}</p>
+          <ul className="mt-1 pl-1 text-[#525252]">{results.map((t) => <li key={t.label}>{t.passed ? "✓" : "✕"} {t.label}: {t.detail}</li>)}</ul>
+          <Link to={journey(passed ? "activate" : "review", card.config_id, card.site)} className="mt-2 inline-flex min-h-9 items-center bg-[#0f62fe] px-3 font-semibold text-white hover:bg-[#0043ce]">{passed ? "Activate" : "Review the draft"}</Link>
+        </div>
+      )
+    }
+    case "blocked":
+      return <p className={`${box} border-[#ffb3b8] bg-[#fff1f1] text-[#161616]`}>Not drafted · {card.asset_name}: {card.text}</p>
+    case "what_if":
+      return (
+        <p className={`${box} border-[#e0e0e0] bg-[#f4f4f4] text-[#161616]`}>
+          What-if: {card.what_if.feasible ? `net cost ${inr(card.what_if.net_cost_inr ?? 0)} against ${inr(card.current.net_cost_inr ?? 0)} now` : "no feasible plan"}
+        </p>
+      )
+    case "constraint":
+      return <p className={`${box} border-[#e0e0e0] bg-[#f4f4f4] text-[#161616]`}>From {card.filename ?? "a document"}: {card.label} · {card.status}</p>
+  }
+}
 
 /** BOB's reply as GitHub-flavoured markdown; raw HTML in it is shown as text, never rendered. */
 export function Markdown({ text }: { text: string }) {
@@ -175,7 +214,7 @@ export function BobMessages({ chat, variant = "default" }: { chat: BobChatState;
             <p className="mb-1 text-[11px] font-semibold text-[#525252]">
               {message.role === "user" ? "You" : "BOB"}
             </p>
-            {message.role === "assistant" ? <Markdown text={message.text} /> : (
+            {message.role === "assistant" ? <><Markdown text={message.text} />{message.cards.map((card, i) => <BobCard key={i} card={card} />)}</> : (
               <p className="whitespace-pre-wrap break-words text-[14px] leading-relaxed text-[#161616] [overflow-wrap:anywhere]">
                 {message.text}
               </p>

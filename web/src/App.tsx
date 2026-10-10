@@ -215,8 +215,10 @@ function Screens({ onLogout }: { onLogout?: () => void }) {
     });
 
   const visibleTransactions = transactionRows.filter(row => (activeFilter === 'all' || (activeFilter === 'bob') === row.initIsBot) && `${row.id} ${row.type} ${row.initiator}`.toLowerCase().includes(transactionSearch.toLowerCase()));
-  const configId = Number(new URLSearchParams(location.search).get('config'));
-  const journey = (next: string) => navigate(`/${next}?config=${configId}`);
+  const query = new URLSearchParams(location.search);
+  const configId = Number(query.get('config'));
+  const configSite = query.get('site') ?? SITE.id;
+  const journey = (next: string) => navigate(`/${next}?config=${configId}&site=${configSite}`);
 
   if (view === 'askBob') return <AskBob />;
   if (['protected', 'workOrder', 'actionDetails', 'transaction'].includes(view)) return <OperationalPanels page={view} />;
@@ -226,12 +228,12 @@ function Screens({ onLogout }: { onLogout?: () => void }) {
 
   if (view === 'monitoring') return <ActiveMonitoring onBack={() => setView('siteDetail')} onApprovalReview={() => setView('approval')} />;
 
-  if (view === 'activate') return <ActivateConfig id={configId} onDone={() => setView('monitoring')} onClose={() => setView('bob')} />;
-  if (view === 'test') return <TestConfig id={configId} onEdit={() => setView('agentChat')} onActivate={() => journey('activate')} onClose={() => setView('bob')} />;
-  if (view === 'review') return <ReviewConfig id={configId} onEdit={() => setView('agentChat')} onTest={() => journey('test')} onClose={() => setView('bob')} />;
+  if (view === 'activate') return <ActivateConfig id={configId} site={configSite} onDone={() => setView('monitoring')} onClose={() => setView('bob')} />;
+  if (view === 'test') return <TestConfig id={configId} site={configSite} onEdit={() => setView('agentChat')} onActivate={() => journey('activate')} onClose={() => setView('bob')} />;
+  if (view === 'review') return <ReviewConfig id={configId} site={configSite} onEdit={() => setView('agentChat')} onTest={() => journey('test')} onClose={() => setView('bob')} />;
 
   if (view === 'agentChat' || view === 'bobSetup' || view === 'bob/setup') {
-    return <AgentChat onClose={() => setView('bob')} onComplete={(id) => navigate(`/review?config=${id}`)} />;
+    return <AgentChat onClose={() => setView('bob')} onComplete={(id) => navigate(`/review?config=${id}&site=${SITE.id}`)} />;
   }
 
   if (view === 'login') {

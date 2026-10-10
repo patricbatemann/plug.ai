@@ -16,6 +16,7 @@ from app.core.config import settings
 from app.models.portfolio import ActionConfig, Asset, Portfolio, Site
 from app.models.run import Action, AssetBlock, ChatMessage, Constraint, Cycle, Forecast, Run
 from app.services import configs, decisions, documents, policy, runs
+from app.services.dispatch import connected
 from app.services.deliberation import IST
 from app.services.summary import recent_actions, summary
 from app.services.whatif import WhatIf, what_if
@@ -34,10 +35,17 @@ headings above ###, no code blocks, no HTML. When explaining a decision, cite th
 and why, the option chosen and the criterion that decided it. You cannot execute actions, approve them \
 or activate configurations: say what the operator can do instead.
 
-Setting up an action: use draft_action_config with only the fields the operator asked to change, then \
-test_action_config on the draft, then tell the operator to review and activate it in the setup wizard. \
-If a setting is blocked by a protected limit, say so, quote the allowed range, and do not try to work \
-around it."""
+Setting up an action: an action is one kind of decision on one asset (find codes with get_situation), \
+kept as a configuration: autonomy, MW limits, the approver's response time, an optional watch condition \
+and preferences. A battery discharge can also keep a reserve, cap continuous discharge (max_minutes) and \
+the energy within it (max_mwh), and start only while the whole portfolio's load exceeds its renewable \
+output by deficit_mw for deficit_minutes. Durations count in 15-minute blocks. The objective, recovery and \
+notify preferences are recorded for people; they do not change dispatch. When the operator asks for an \
+action, call draft_action_config with only the fields they asked for, then always test_action_config on \
+the draft, then say what the draft does and that they activate it from the draft card. You never activate. \
+BOB acts only at sites whose telemetry is connected: if the asset's site is not, say the action will wait \
+for it. If a setting is blocked by a protected limit, say so, quote the allowed range, and do not try to \
+work around it."""
 
 
 class GetSituation(BaseModel):
@@ -74,6 +82,18 @@ class DraftActionConfig(BaseModel):
     auto_max_mw: float | None = Field(description="With autonomy auto, actions above this need approval")
     reserve_pct: float | None = Field(description="Battery charge kept in reserve, %")
     min_price_inr_mwh: float | None = Field(description="Sell only above this price")
+    max_minutes: float | None = Field(description="Battery discharge: longest continuous discharge, 15–240 minutes")
+    max_mwh: float | None = Field(description="Battery discharge: most energy within max_minutes, MWh; needs max_minutes")
+    deficit_mw: float | None = Field(description=(
+        "Battery discharge: discharge only while portfolio load exceeds renewable output by more than this, MW"))
+    deficit_minutes: float | None = Field(description="With deficit_mw: the shortfall has lasted this long, 0–60 minutes")
+    remove_limits: list[Literal["max_mw", "auto_max_mw", "reserve_pct", "min_price_inr_mwh", "max_minutes", "max_mwh",
+                                "deficit_mw", "deficit_minutes"]] | None = Field(description=(
+        "Limits to drop, e.g. deficit_mw and deficit_minutes to remove the start condition"))
+    objective: Literal["reliability", "cost", "peak", "renewable"] | None = Field(description="Recorded for people")
+    recovery: Literal["notify_and_hold", "request_import"] | None = Field(description=(
+        "What operators should do if the asset fails mid-action; recorded for people"))
+    notify: list[Literal["sms", "email", "push", "slack"]] | None = Field(description="Channels; recorded for people")
     response_min: int | None = Field(description="Minutes an approver has to respond")
     watch_threshold: float | None = Field(description="Re-plan and flag when the asset's watch metric crosses this")
     remove_watch: bool
@@ -159,6 +179,7 @@ def _tools(db: Session, run: Run, cards: list[dict]) -> dict[str, Tool]:
         return assets[code]
 
     def situation(_: GetSituation) -> dict:
+        linked = connected(db, run)
         latest = decisions.latest(db, run)
         cycle = db.get(Cycle, latest.id) if latest else None
         return {
@@ -169,8 +190,8 @@ def _tools(db: Session, run: Run, cards: list[dict]) -> dict[str, Tool]:
             "pending_approvals": [a.model_dump(mode="json") for a in recent_actions(
                 db, run, 10, status=["awaiting_approval"])],
             "today_vs_todays_practice": summary(db, run).model_dump(),
-            "assets": [{"code": a.code, "name": a.name, "kind": a.kind, "site": sites[a.site_id].name}
-                       for a in assets.values()],
+            "assets": [{"code": a.code, "name": a.name, "kind": a.kind, "site": sites[a.site_id].name,
+                        "telemetry_connected": a.code in linked} for a in assets.values()],
         }
 
     def cycle(a: GetCycle) -> dict:
@@ -241,9 +262,13 @@ def _tools(db: Session, run: Run, cards: list[dict]) -> dict[str, Tool]:
                    "preferences": dict(latest.preferences)} if latest else
                   {"name": f"{a.kind.replace('_', ' ').capitalize()}: {x.name}", "autonomy": "approval",
                    "limits": {}, "approval": {"response_min": 10}, "watch": [], "preferences": {}})
-        given = {k: getattr(a, k) for k in ("max_mw", "auto_max_mw", "reserve_pct", "min_price_inr_mwh")
-                 if getattr(a, k) is not None}
+        given = {k: getattr(a, k) for k in ("max_mw", "auto_max_mw", "reserve_pct", "min_price_inr_mwh", "max_minutes",
+                                            "max_mwh", "deficit_mw", "deficit_minutes") if getattr(a, k) is not None}
         values["limits"].update(given)
+        for k in a.remove_limits or []:
+            values["limits"].pop(k, None)
+        values["preferences"].update({k: getattr(a, k) for k in ("objective", "recovery", "notify")
+                                      if getattr(a, k) is not None})
         values["name"] = a.name or values["name"]
         values["autonomy"] = a.autonomy or values["autonomy"]
         if a.response_min is not None:
@@ -263,7 +288,7 @@ def _tools(db: Session, run: Run, cards: list[dict]) -> dict[str, Tool]:
             return {"blocked": str(error)}
         cards.append({"type": "draft", "config_id": saved.id, "site": site.code, "asset": x.code,
                       "asset_name": x.name, "kind": a.kind, "version": saved.version, "autonomy": saved.autonomy,
-                      "limits": saved.limits, "watch": saved.watch})
+                      "limits": saved.limits, "watch": saved.watch, "preferences": saved.preferences})
         return {"draft_id": saved.id, "version": saved.version, "values": values}
 
     def test(a: TestActionConfig) -> dict:
