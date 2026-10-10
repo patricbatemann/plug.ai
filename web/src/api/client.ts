@@ -420,7 +420,7 @@ export interface ConfigValues {
   autonomy: 'auto' | 'approval' | 'recommend'
   limits: Record<string, number>
   approval: { response_min?: number; approver?: string }
-  watch: Array<{ metric: string; value: number }>
+  watch: Array<{ metric: string; value: number; asset?: string | null }>
   preferences: Preferences
 }
 

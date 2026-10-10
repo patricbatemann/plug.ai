@@ -4,7 +4,7 @@ import { Link, useLocation } from 'react-router';
 import { configApi, siteApi, type ConfigOptions, type ConfigValues, type Preferences } from './api/client';
 import { useBobChat, BobMessages, BobComposer, BobChatScrollArea, BobNewChat } from './BobChat';
 import { SITE } from './data';
-import { AUTONOMY, NOTIFY, OBJECTIVES, RECOVERY, configKindLabel, limitsSummary, mwh } from './format';
+import { AUTONOMY, NOTIFY, OBJECTIVES, RECOVERY, configKindLabel, limitsSummary, mwh, watchLabel } from './format';
 import { useSite } from './site';
 
 const BobAskContext = createContext<(text: string) => void>(() => {});
@@ -212,11 +212,15 @@ export default function AgentChat({ onClose, onComplete }: { onClose: () => void
   const itemStatus = (i: number): 'done' | 'inProgress' | 'missing' =>
     confirmed.has(i as ConfigStep) ? 'done' : i === activeStep && phase === 'configuring' ? 'inProgress' : 'missing';
   const limits = values?.limits ?? {};
+  const watchable = options?.assets.filter((a) => a.watch_metric) ?? [];
+  const names = Object.fromEntries(watchable.map((a) => [a.code, a.name]));
+  const watch = values?.watch[0];
+  const watched = watch && watchable.find((a) => a.code === (watch.asset ?? asset?.code));
   const summary = (i: number) => !values ? '' : [
     OBJECTIVES[values.preferences.objective],
     `${configKindLabel(kind)} · ${asset?.name ?? ''}`,
     [limits.deficit_mw === undefined ? 'Whenever BOB’s plan calls for it' : `Portfolio short by >${limits.deficit_mw} MW${limits.deficit_minutes ? ` for ${limits.deficit_minutes} min` : ''}`,
-      ...values.watch.map((w) => `re-plan when ${asset?.watch_label?.toLowerCase() ?? w.metric} ${w.value}`)].join('; '),
+      ...values.watch.map((w) => `re-plan when ${watchLabel(w, asset?.name ?? '', names)}`)].join('; '),
     limitsSummary(limits).slice(0, 2).join(' · '),
     `${AUTONOMY[values.autonomy].label} · answer within ${values.approval.response_min ?? 10} min`,
     RECOVERY[values.preferences.recovery],
@@ -326,13 +330,17 @@ export default function AgentChat({ onClose, onComplete }: { onClose: () => void
                       )}
                     </>}
                     {kind !== 'battery_discharge' && <p className="text-[13px] text-[#525252]">BOB takes this action whenever its plan calls for it, within the limits you set next.</p>}
-                    {asset.watch_metric && (
+                    {watchable.length > 0 && (
                       <div role="radiogroup" aria-label="Watch condition" className="flex flex-col gap-2">
-                        <RadioCard id="no-watch" label="No watch condition" selected={!values.watch.length} onChange={() => setValues({ ...values, watch: [] })} />
-                        <RadioCard id="watch" label={`Re-plan when: ${asset.watch_label}`} selected={values.watch.length > 0} onChange={() => setValues({ ...values, watch: [{ metric: asset.watch_metric!, value: values.watch[0]?.value ?? (asset.watch_metric === 'soc_below_pct' ? 30 : 5) }] })} />
-                        {values.watch.length > 0 && (
-                          <div className="bg-[#f4f4f4] border border-[#e0e0e0] p-4 rounded-[2px]">
-                            <NumInput label={asset.watch_label ?? 'Threshold'} value={values.watch[0].value} min={0} max={asset.watch_metric === 'soc_below_pct' ? 100 : asset.capacity_mw} step={asset.watch_metric === 'soc_below_pct' ? 5 : 1} unit={asset.watch_metric === 'soc_below_pct' ? '%' : 'MW'} onChange={(v) => setValues({ ...values, watch: [{ ...values.watch[0], value: v }] })} />
+                        <RadioCard id="no-watch" label="No watch condition" selected={!watch} onChange={() => setValues({ ...values, watch: [] })} />
+                        {watchable.map((a) => (
+                          <RadioCard key={a.code} id={`watch-${a.code}`} label={`Re-plan on ${a.name}: ${a.watch_label}`} selected={watched?.code === a.code}
+                            onChange={() => setValues({ ...values, watch: [{ metric: a.watch_metric!, value: a.watch_metric === 'soc_below_pct' ? 30 : 5, asset: a.code === asset.code ? null : a.code }] })} />
+                        ))}
+                        {watch && watched && (
+                          <div className="bg-[#f4f4f4] border border-[#e0e0e0] p-4 rounded-[2px] flex flex-col gap-3">
+                            <NumInput label={watched.watch_label ?? 'Threshold'} value={watch.value} min={0} max={watch.metric === 'soc_below_pct' ? 100 : watched.capacity_mw} step={watch.metric === 'soc_below_pct' ? 5 : 1} unit={watch.metric === 'soc_below_pct' ? '%' : 'MW'} onChange={(v) => setValues({ ...values, watch: [{ ...watch, value: v }] })} />
+                            <p className="text-[13px] text-[#525252]">When {watchLabel(watch, asset.name, names)}, BOB re-plans and may {configKindLabel(kind).toLowerCase()} on {asset.name} within the limits you set next.</p>
                           </div>
                         )}
                       </div>

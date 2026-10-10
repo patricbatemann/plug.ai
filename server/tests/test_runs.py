@@ -159,7 +159,7 @@ def test_configure_test_activate_watch_and_pause(client: TestClient, db: Session
     blocked = client.post("/api/sites/KUP-SOLAR-001/configs", json=draft, headers=auth_headers)
     assert blocked.status_code == 422 and blocked.json()["detail"].startswith("Protected boundary")
 
-    market = {**draft, "asset": "IC-KUP", "kind": "grid_import", "limits": {"max_mw": 10}}
+    market = {**draft, "asset": "IC-KUP", "kind": "grid_import", "limits": {"max_mw": 10}, "watch": []}
     assert "configured once" in client.post("/api/sites/KUP-SOLAR-001/configs", json=market,
                                             headers=auth_headers).json()["detail"]
     offered = client.get("/api/sites/KUP-SOLAR-001/config-options", headers=auth_headers).json()
@@ -167,10 +167,16 @@ def test_configure_test_activate_watch_and_pause(client: TestClient, db: Session
     draft["limits"].update(reserve_pct=50, max_mwh=3)
     assert "duration cap" in client.post("/api/sites/KUP-SOLAR-001/configs", json=draft, headers=auth_headers).json()["detail"]
     draft["limits"]["max_minutes"] = 30
+    # A trigger may follow another asset, but only a reading that asset has.
+    wrong = {**draft, "watch": [{"metric": "soc_below_pct", "value": 40, "asset": "SOL-KUP"}]}
+    assert "no reading" in client.post("/api/sites/KUP-SOLAR-001/configs", json=wrong, headers=auth_headers).json()["detail"]
     draft["preferences"] = {"recovery": "request_import", "notify": ["sms"]}
     saved = client.post("/api/sites/KUP-SOLAR-001/configs", json=draft, headers=auth_headers).json()
     assert saved["current"] is False and saved["active"]["autonomy"] == "auto"
     assert saved["preferences"] == {"objective": "reliability", "recovery": "request_import", "notify": ["sms"]}
+    gap = {**draft, "watch": [{"metric": "output_below_forecast_mw", "value": 5, "asset": "SOL-KUP"}]}
+    assert client.post("/api/sites/KUP-SOLAR-001/configs", json=gap, headers=auth_headers).json()["watch"] == gap["watch"]
+    saved = client.post("/api/sites/KUP-SOLAR-001/configs", json=draft, headers=auth_headers).json()
     assert client.post(f"/api/configs/{saved['id']}/activate", headers=auth_headers).status_code == 409
     tested = client.post(f"/api/configs/{saved['id']}/test", headers=auth_headers).json()
     assert len(tested["tests"]) == 3 and all(t["passed"] for t in tested["tests"].values())
@@ -271,7 +277,7 @@ def test_bob_decides_within_bounds_falls_back_to_rules_and_chat_never_breaches_l
     drafts = db.scalar(select(func.count()).select_from(ActionConfig))
     unchanged = dict.fromkeys(("name", "autonomy", "max_mw", "auto_max_mw", "reserve_pct", "min_price_inr_mwh",
                                "max_minutes", "max_mwh", "deficit_mw", "deficit_minutes", "remove_limits",
-                               "objective", "recovery", "notify", "response_min", "watch_threshold"))
+                               "objective", "recovery", "notify", "response_min", "watch_threshold", "watch_asset"))
     asks = lambda text, **change: lambda messages: text if messages[-1]["role"] == "tool" else (  # noqa: E731
         "draft_action_config", {**unchanged, "asset": "BESS-01", "kind": "battery_discharge", "remove_watch": False,
                                 **change})

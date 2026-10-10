@@ -101,8 +101,25 @@ def market_asset(db: Session, portfolio_id: int, kind: str) -> Asset | None:
                      .where(Asset.portfolio_id == portfolio_id, ActionConfig.kind == kind).limit(1))
 
 
+def watched(db: Session, own: Asset, w: dict) -> Asset | None:
+    """The asset a watch condition follows: another asset of the portfolio, or the action's own."""
+    if not w.get("asset"):
+        return own
+    return db.scalar(select(Asset).where(Asset.portfolio_id == own.portfolio_id, Asset.code == w["asset"]))
+
+
+def check_watch(db: Session, asset: Asset, watch: list[dict]) -> None:
+    for w in watch:
+        target = watched(db, asset, w)
+        if target is None:
+            raise ValueError(f"No asset {w['asset']} to watch")
+        if WATCH_METRICS.get(target.kind, (None,))[0] != w["metric"]:
+            raise ValueError(f"{target.name} has no reading for {w['metric'].replace('_', ' ')}")
+
+
 def save_draft(db: Session, site: Site, asset: Asset, kind: str, values: dict[str, Any], protected: dict) -> ActionConfig:
     validate(asset, kind, values["limits"], protected)
+    check_watch(db, asset, values["watch"])
     holder = market_asset(db, asset.portfolio_id, kind) if kind in policy.MARKET else None
     if holder is not None and holder.id != asset.id:
         raise ValueError(f"Market trades are configured once for the portfolio, on {holder.name}")
@@ -190,9 +207,10 @@ def watch_hits(db: Session, run: Run, block: int, forecast_p50: dict[str, float]
     hits = []
     for config, asset in configs:
         for w in config.watch:
-            value = watch_value(w["metric"], asset, rows.get(asset.id), forecast_p50)
+            target = watched(db, asset, w)
+            value = watch_value(w["metric"], target, rows.get(target.id), forecast_p50) if target else None
             if value is not None and crossed(w["metric"], value, w["value"]):
-                hits.append(f"{asset.name}: {watch_label(w)}")
+                hits.append(f"{target.name}: {watch_label(w)}")
     # Once per crossing: a condition already reported for the previous block is not news.
     reported = " ".join(db.scalars(select(Cycle.trigger_detail).where(
         Cycle.run_id == run.id, Cycle.block == block, Cycle.trigger == "watch")))

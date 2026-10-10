@@ -131,7 +131,8 @@ def watch_status(run_id: int, site: Site = Depends(current_site), db: Session = 
         if not c.current:
             continue
         for w in c.watch:
-            value = configs.watch_value(w["metric"], asset, rows.get(asset.id), p50)
-            out.append(WatchStatus(asset=asset.name, label=configs.watch_label(w), value=value,
+            target = configs.watched(db, asset, w)
+            value = configs.watch_value(w["metric"], target, rows.get(target.id), p50) if target else None
+            out.append(WatchStatus(asset=target.name if target else w["asset"], label=configs.watch_label(w), value=value,
                                    met=value is not None and configs.crossed(w["metric"], value, w["value"])))
     return out

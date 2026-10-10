@@ -6,6 +6,7 @@ from pydantic import BaseModel, Field
 class WatchCondition(BaseModel):
     metric: Literal["soc_below_pct", "output_below_forecast_mw", "demand_above_mw"]
     value: float
+    asset: str | None = None  # the asset whose reading it follows; none means the action's own asset
 
 
 class Preferences(BaseModel):

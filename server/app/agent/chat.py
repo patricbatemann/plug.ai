@@ -40,7 +40,10 @@ Setting up an action: an action is one kind of decision on one asset (find codes
 kept as a configuration: autonomy, MW limits, the approver's response time, an optional watch condition \
 and preferences. A battery discharge can also keep a reserve, cap continuous discharge (max_minutes) and \
 the energy within it (max_mwh), and start only while the whole portfolio's load exceeds its renewable \
-output by deficit_mw for deficit_minutes. Durations count in 15-minute blocks. The objective, recovery and \
+output by deficit_mw for deficit_minutes. Durations count in 15-minute blocks. A watch condition makes BOB re-plan the \
+moment a reading crosses a threshold, and may follow another asset: a battery discharge can be re-planned \
+when the solar array falls short of forecast (watch_asset). For "when X crosses Y, do Z", draft Z's action \
+with the watch on X at Y; a limit that should change with it (such as a reserve) gets the same value. The objective, recovery and \
 notify preferences are recorded for people; they do not change dispatch. When the operator asks for an \
 action, call draft_action_config with only the fields they asked for, then always test_action_config on \
 the draft, then say what the draft does and that they activate it from the draft card. You never activate. \
@@ -102,7 +105,11 @@ class DraftActionConfig(BaseModel):
         "What operators should do if the asset fails mid-action; recorded for people"))
     notify: list[Literal["sms", "email", "push", "slack"]] | None = Field(description="Channels; recorded for people")
     response_min: int | None = Field(description="Minutes an approver has to respond")
-    watch_threshold: float | None = Field(description="Re-plan and flag when the asset's watch metric crosses this")
+    watch_threshold: float | None = Field(description=(
+        "Re-plan when the watched asset's reading crosses this: a battery's charge %, a plant's MW below forecast, "
+        "a load's MW demand"))
+    watch_asset: str | None = Field(description=(
+        "The asset whose reading to watch when it is not the action's own, e.g. the solar array for a battery action"))
     remove_watch: bool
 
 
@@ -294,13 +301,15 @@ def _tools(db: Session, run: Run, cards: list[dict]) -> dict[str, Tool]:
         values["autonomy"] = a.autonomy or values["autonomy"]
         if a.response_min is not None:
             values["approval"]["response_min"] = a.response_min
-        metric = configs.WATCH_METRICS.get(x.kind, (None,))[0]
+        target = asset(a.watch_asset) if a.watch_asset else x
+        metric = configs.WATCH_METRICS.get(target.kind, (None,))[0]
         if a.remove_watch:
             values["watch"] = []
         elif a.watch_threshold is not None:
             if metric is None:
-                raise ValueError(f"{x.name} has no watch condition")
-            values["watch"] = [{"metric": metric, "value": a.watch_threshold}]
+                raise ValueError(f"{target.name} has no reading to watch")
+            values["watch"] = [{"metric": metric, "value": a.watch_threshold,
+                                "asset": None if target is x else target.code}]
         portfolio = db.get(Portfolio, site.portfolio_id)
         try:
             saved = configs.save_draft(db, site, x, a.kind, values, portfolio.protected)

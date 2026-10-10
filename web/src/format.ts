@@ -1,4 +1,4 @@
-import type { Preferences, SiteStatus } from './api/client'
+import type { ConfigValues, Preferences, SiteStatus } from './api/client'
 
 const number = new Intl.NumberFormat('en-IN', { maximumFractionDigits: 1 })
 
@@ -99,6 +99,16 @@ export function limitsSummary(limits: Record<string, number>): string[] {
     out.push(`Discharges only while portfolio load exceeds renewables by more than ${limits.deficit_mw} MW${limits.deficit_minutes ? ` for ${limits.deficit_minutes} min` : ''}`)
   return out
 }
+
+const WATCH: Record<string, (value: number) => string> = {
+  soc_below_pct: (v) => `charge falls below ${v} %`,
+  output_below_forecast_mw: (v) => `output falls more than ${v} MW below forecast`,
+  demand_above_mw: (v) => `demand rises above ${v} MW`,
+}
+
+/** A watch condition in words, naming the watched asset (the action's own asset when none is named). */
+export const watchLabel = (w: ConfigValues['watch'][number], owner: string, names: Record<string, string> = {}) =>
+  `${w.asset ? names[w.asset] ?? w.asset : owner} ${WATCH[w.metric](w.value)}`
 
 /** A site's state in one badge: approvals first, then trouble, then normal. */
 export function siteBadge(s: SiteStatus): { label: string; tone: 'green' | 'amber' | 'red'; count?: number } {

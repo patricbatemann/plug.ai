@@ -9,7 +9,8 @@ import ReactMarkdown from "react-markdown"
 import remarkGfm from "remark-gfm"
 import { Link } from "react-router"
 import { runApi, type ChatCard, type ChatItem } from "./api/client"
-import { configKindLabel, inr, limitsSummary } from "./format"
+import { configKindLabel, inr, limitsSummary, watchLabel } from "./format"
+import { useSite } from "./site"
 import { SITE } from "./data"
 
 export interface BobMessage {
@@ -94,6 +95,7 @@ export type BobChatState = ReturnType<typeof useBobChat>
 
 /** What a tool produced alongside BOB's answer: a draft to review, its tests, a refusal, a what-if. */
 function BobCard({ card }: { card: ChatCard }) {
+  const names = Object.fromEntries((useSite().info?.assets ?? []).map((a) => [a.code, a.name]))
   const box = "mt-3 rounded-[2px] border p-3 text-[13px]"
   const journey = (step: string, id: number, site: string) => `/${step}?config=${id}&site=${site}`
   switch (card.type) {
@@ -101,7 +103,7 @@ function BobCard({ card }: { card: ChatCard }) {
       return (
         <div className={`${box} border-[#a6c8ff] bg-[#edf5ff]`}>
           <p className="font-semibold text-[#161616]">Draft · {configKindLabel(card.kind)} · {card.asset_name} · version {card.version}</p>
-          <ul className="mt-1 list-disc pl-5 text-[#525252]">{limitsSummary(card.limits).map((line) => <li key={line}>{line}</li>)}</ul>
+          <ul className="mt-1 list-disc pl-5 text-[#525252]">{[...card.watch.map((w) => `Re-plans when ${watchLabel(w, card.asset_name, names)}`), ...limitsSummary(card.limits)].map((line) => <li key={line}>{line}</li>)}</ul>
           <Link to={journey("review", card.config_id, card.site)} className="mt-2 inline-flex min-h-9 items-center bg-[#0f62fe] px-3 font-semibold text-white hover:bg-[#0043ce]">Review and activate</Link>
         </div>
       )

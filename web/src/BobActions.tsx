@@ -4,7 +4,7 @@ import { useQuery, useQueryClient } from "@tanstack/react-query"
 import { configApi, runApi, type ActionOut, type ConfigOut } from "./api/client"
 import { useProfile } from "./auth/user"
 import { SITE } from "./data"
-import { AUTONOMY, actionLabel, configKindLabel, limitsSummary, mw, simTime, statusOf } from "./format"
+import { AUTONOMY, actionLabel, configKindLabel, limitsSummary, mw, simTime, statusOf, watchLabel } from "./format"
 import { useCurrentRun } from "./runs/useCurrentRun"
 import { useSite } from "./site"
 
@@ -18,14 +18,10 @@ const STATUS_TAG: Record<ConfigOut["status"], string> = {
   draft: "bg-[#f4f4f4] text-[#525252]",
 }
 
-const WATCH: Record<string, (value: number) => string> = {
-  soc_below_pct: (v) => `Battery charge below ${v} %`,
-  output_below_forecast_mw: (v) => `Output more than ${v} MW below forecast`,
-  demand_above_mw: (v) => `Demand above ${v} MW`,
-}
-
-const triggers = (c: ConfigOut) =>
-  c.watch.length ? c.watch.map((w) => WATCH[w.metric](w.value)) : ["Whenever BOB's plan calls for this action"]
+const triggers = (c: ConfigOut, names: Record<string, string>) =>
+  c.watch.length
+    ? c.watch.map((w) => `BOB re-plans when ${watchLabel(w, c.asset_name, names)}`)
+    : ["Whenever BOB's plan calls for this action"]
 
 const rules = (c: ConfigOut) => [
   AUTONOMY[c.autonomy].label,
@@ -41,7 +37,8 @@ export default function BobActions({
   onAddAction: () => void
 }) {
   const profile = useProfile()
-  const { siteName } = useSite()
+  const { siteName, info } = useSite()
+  const names = Object.fromEntries((info?.assets ?? []).map((a) => [a.code, a.name]))
   const queryClient = useQueryClient()
   const run = useCurrentRun().data
   const configs = useQuery({ queryKey: ["configs", SITE.id], queryFn: () => configApi.list(SITE.id) }).data ?? []
@@ -275,7 +272,7 @@ export default function BobActions({
                       Trigger conditions
                     </h3>
                     <ul className="space-y-2">
-                      {triggers(c).map((trigger) => (
+                      {triggers(c, names).map((trigger) => (
                         <li key={trigger} className="flex gap-3 text-xs leading-5">
                           <span aria-hidden="true" className="text-[#198038]">
                             ✓

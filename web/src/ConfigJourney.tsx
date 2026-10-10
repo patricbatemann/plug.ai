@@ -1,7 +1,7 @@
 import { useState, type ReactNode } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { configApi, type ConfigOut, type ConfigValues } from './api/client';
-import { AUTONOMY, NOTIFY, OBJECTIVES, RECOVERY } from './format';
+import { AUTONOMY, NOTIFY, OBJECTIVES, RECOVERY, watchLabel } from './format';
 
 const assetPathPrefix = '/assets';
 const imgBrainCog = `${assetPathPrefix}/71557.svg`;
@@ -23,9 +23,10 @@ const LIMITS: Array<[string, string, string]> = [
 ];
 
 /** What the configuration says, as label/value rows, so a draft can be compared with the version in force. */
-function describe(v: ConfigValues, keys = Object.keys(v.limits)): Array<[string, string]> {
+function describe(v: ConfigValues, owner: string, names: Record<string, string>, keys = Object.keys(v.limits)): Array<[string, string]> {
   return [
     ['Autonomy', AUTONOMY[v.autonomy].label],
+    ['Re-plans when', v.watch.map((w) => watchLabel(w, owner, names)).join('; ') || 'Its plan calls for it'],
     ...LIMITS.filter(([key]) => keys.includes(key))
       .map(([key, label, unit]): [string, string] => [label, v.limits[key] === undefined ? '—' : `${v.limits[key]} ${unit}`]),
     ['Approver answers within', `${v.approval.response_min ?? 10} min`],
@@ -33,6 +34,11 @@ function describe(v: ConfigValues, keys = Object.keys(v.limits)): Array<[string,
     ['If the asset fails', RECOVERY[v.preferences.recovery]],
     ['Notify', v.preferences.notify.map((n) => NOTIFY[n]).join('; ') || 'Nobody'],
   ];
+}
+
+function useNames(site: string): Record<string, string> {
+  const assets = useQuery({ queryKey: ['config-options', site], queryFn: () => configApi.options(site) }).data?.assets ?? [];
+  return Object.fromEntries(assets.map((a) => [a.code, a.name]));
 }
 
 function useConfig(id: number, site: string): ConfigOut | undefined {
@@ -88,9 +94,10 @@ function Missing({ site, onClose }: { site: string; onClose: () => void }) {
 
 export function ReviewConfig({ id, site, onEdit, onTest, onClose }: { id: number; site: string; onEdit: (config: ConfigOut) => void; onTest: () => void; onClose: () => void }) {
   const config = useConfig(id, site);
+  const names = useNames(site);
   if (!config) return <Missing site={site} onClose={onClose} />;
   const keys = [...new Set([...Object.keys(config.limits), ...Object.keys(config.active?.limits ?? {})])];
-  const before = config.active ? Object.fromEntries(describe(config.active, keys)) : {};
+  const before = config.active ? Object.fromEntries(describe(config.active, config.asset_name, names, keys)) : {};
   return (
     <Frame site={site} stage={2} status="Ready to test" onClose={onClose}>
       <div>
@@ -98,7 +105,7 @@ export function ReviewConfig({ id, site, onEdit, onTest, onClose }: { id: number
         <p className="text-[#525252] text-[14px]">{config.name} · {config.asset_name} · draft version {config.version}. {config.active ? 'Changes from the version in force are highlighted.' : 'Nothing is in force for this action yet.'}</p>
       </div>
       <div className="bg-white border border-[#e0e0e0] rounded-[2px] px-5 py-4">
-        {describe(config, keys).map(([label, value]) => {
+        {describe(config, config.asset_name, names, keys).map(([label, value]) => {
           const changed = config.active && before[label] !== value;
           return (
             <div key={label} className="flex items-start justify-between gap-4 py-1.5 border-b border-[#f4f4f4] last:border-0">
@@ -165,6 +172,7 @@ export function TestConfig({ id, site, onEdit, onActivate, onClose }: { id: numb
 
 export function ActivateConfig({ id, site, onDone, onClose }: { id: number; site: string; onDone: () => void; onClose: () => void }) {
   const config = useConfig(id, site);
+  const names = useNames(site);
   const queryClient = useQueryClient();
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
@@ -188,13 +196,13 @@ export function ActivateConfig({ id, site, onDone, onClose }: { id: number; site
         <h1 className="font-bold text-[#1f2937] text-[22px] mb-1">{active ? 'Configuration active' : 'Confirm activation'}</h1>
         <p className="text-[#525252] text-[14px]">
           {active
-            ? `Version ${config.version} of “${config.name}” is in force. BOB plans ${config.asset_name}’s discharge within it from the next block.`
+            ? `Version ${config.version} of “${config.name}” is in force. BOB plans ${config.asset_name} within it from the next block.`
             : `Version ${config.version} replaces the version in force for ${config.asset_name}. BOB plans within it from the next block.`}
         </p>
       </div>
       {error && <p role="alert" className="border-l-4 border-[#da1e28] bg-[#fff1f1] p-4 text-[13px] text-[#161616]">{error}</p>}
       <div className="bg-white border border-[#e0e0e0] rounded-[2px] px-5 py-4">
-        {describe(config).map(([label, value]) => (
+        {describe(config, config.asset_name, names).map(([label, value]) => (
           <div key={label} className="flex items-start justify-between gap-4 py-1.5 border-b border-[#f4f4f4] last:border-0">
             <p className="text-[#525252] text-[13px]">{label}</p>
             <p className="font-medium text-[#161616] text-[13px] text-right">{value}</p>
