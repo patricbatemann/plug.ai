@@ -8,18 +8,14 @@ import LiveOverview from './LiveOverview';
 import AIRecommendations from './AIRecommendations';
 import ConnectData from './ConnectData';
 import AgentChat from './AgentChat';
-import ReviewChanges from './ReviewChanges';
-import TestSimulation from './TestSimulation';
-import ActivationFlow from './ActivationFlow';
+import { ActivateConfig, ReviewConfig, TestConfig } from './ConfigJourney';
 import ActiveMonitoring from './ActiveMonitoring';
 import ApprovalReview from './ApprovalReview';
 import AskBob from './AskBob';
 import LoginScreen from './LoginScreen';
-import type { ActionConfig } from './AgentChat';
 import { signOut, tokenStore } from './api/client';
 import { useProfile } from './auth/user';
 import { createBrowserRouter, RouterProvider, useLocation, useNavigate } from 'react-router';
-import { OperationsProvider, useOperations } from './Operations';
 import OperationalPanels, { JourneyNavigation } from './OperationalPanels';
 import { usePortfolio, type SiteRow, type Tone } from './portfolio';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
@@ -179,16 +175,15 @@ function OperationalRoute() {
 }
 const router = createBrowserRouter([{ path: '*', Component: OperationalRoute }]);
 const queryClient = new QueryClient();
-export default function App() { return <QueryClientProvider client={queryClient}><OperationsProvider><RouterProvider router={router} /></OperationsProvider></QueryClientProvider>; }
+export default function App() { return <QueryClientProvider client={queryClient}><RouterProvider router={router} /></QueryClientProvider>; }
 
 function Screens({ onLogout }: { onLogout?: () => void }) {
   const [activeFilter, setActiveFilter] = useState<'all' | 'bob' | 'user'>('all');
   const navigate = useNavigate();
-  const view = useLocation().pathname.slice(1) || 'dashboard';
+  const location = useLocation();
+  const view = location.pathname.slice(1) || 'dashboard';
   const setView = (next: string) => navigate(next === 'dashboard' ? '/' : `/${next}`);
-  const operations = useOperations();
   const profile = useProfile();
-  const { state } = operations;
   const [transactionSearch, setTransactionSearch] = useState('');
   const [siteSearch, setSiteSearch] = useState('');
   const [statusFilter, setStatusFilter] = useState('all');
@@ -220,33 +215,23 @@ function Screens({ onLogout }: { onLogout?: () => void }) {
     });
 
   const visibleTransactions = transactionRows.filter(row => (activeFilter === 'all' || (activeFilter === 'bob') === row.initIsBot) && `${row.id} ${row.type} ${row.initiator}`.toLowerCase().includes(transactionSearch.toLowerCase()));
-  const actionConfig = state.config;
-  const setActionConfig = (config: ActionConfig) => operations.setState(current => ({ ...current, config }));
+  const configId = Number(new URLSearchParams(location.search).get('config'));
+  const journey = (next: string) => navigate(`/${next}?config=${configId}`);
 
   if (view === 'askBob') return <AskBob />;
   if (['protected', 'workOrder', 'actionDetails', 'transaction'].includes(view)) return <OperationalPanels page={view} />;
 
-  if (['review', 'test', 'activate'].includes(view) && state.confirmed.length !== 7) return <AgentChat onClose={() => setView('bob')} onComplete={(config) => { setActionConfig(config); setView('review'); }} />;
 
   if (view === 'approval') return <ApprovalReview onBack={() => setView('monitoring')} />;
 
   if (view === 'monitoring') return <ActiveMonitoring onBack={() => setView('siteDetail')} onApprovalReview={() => setView('approval')} />;
 
-  if (view === 'activate' && actionConfig) {
-    if (!operations.testsPassed) return <TestSimulation config={actionConfig} onBack={() => setView('review')} onComplete={() => { operations.setState(current => ({ ...current, stage: 'Ready to activate' })); setView('activate'); }} />;
-    return <ActivationFlow config={actionConfig} onBack={() => setView('test')} onActivated={() => setView('monitoring')} />;
-  }
-
-  if (view === 'test' && actionConfig) {
-    return <TestSimulation config={actionConfig} onBack={() => setView('review')} onComplete={() => { if (state.activated && JSON.stringify(state.activeConfig) === JSON.stringify(actionConfig) && ['Active', 'Executing', 'Completed'].includes(state.stage)) { setView('monitoring'); return; } operations.setState(current => ({ ...current, stage: 'Ready to activate' })); setView('activate'); }} onConfigure={() => setView('agentChat')} onConnectData={() => setView('connectData')} onExit={() => setView('siteDetail')} />;
-  }
-
-  if (view === 'review' && actionConfig) {
-    return <ReviewChanges config={actionConfig} onBack={() => setView('agentChat')} onEdit={(step) => { operations.edit(step); setView('agentChat'); }} onProceedToTest={() => setView('test')} />;
-  }
+  if (view === 'activate') return <ActivateConfig id={configId} onDone={() => setView('monitoring')} onClose={() => setView('bob')} />;
+  if (view === 'test') return <TestConfig id={configId} onEdit={() => setView('agentChat')} onActivate={() => journey('activate')} onClose={() => setView('bob')} />;
+  if (view === 'review') return <ReviewConfig id={configId} onEdit={() => setView('agentChat')} onTest={() => journey('test')} onClose={() => setView('bob')} />;
 
   if (view === 'agentChat' || view === 'bobSetup' || view === 'bob/setup') {
-    return <AgentChat onClose={() => setView('bob')} onComplete={(cfg) => { setActionConfig(cfg); setView('review'); }} />;
+    return <AgentChat onClose={() => setView('bob')} onComplete={(id) => navigate(`/review?config=${id}`)} />;
   }
 
   if (view === 'login') {

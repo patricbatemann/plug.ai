@@ -1,9 +1,10 @@
 import { Link, useLocation, useSearchParams } from "react-router"
 import { useTransactions } from "./portfolio"
-import { useOperations } from "./Operations"
-import { CONFIG_STEPS, SITE } from "./data"
+import { SITE } from "./data"
+import { AUTONOMY, limitsSummary } from "./format"
+import { useSite } from "./site"
 import { useQuery } from "@tanstack/react-query"
-import { documentApi } from "./api/client"
+import { documentApi, portfolioApi } from "./api/client"
 import { simDateTime } from "./format"
 import { useCurrentRun } from "./runs/useCurrentRun"
 
@@ -41,7 +42,8 @@ export function JourneyNavigation() {
 }
 
 export default function OperationalPanels({ page }: { page: string }) {
-  const { state, edit } = useOperations()
+  const { configs, floorPct } = useSite()
+  const ceiling = useQuery({ queryKey: ["portfolio"], queryFn: portfolioApi.get }).data?.protected.approval_above_mw
   const [params] = useSearchParams()
   const transaction = useTransactions().find(
     (row) => row.id === params.get("id"),
@@ -50,10 +52,10 @@ export default function OperationalPanels({ page }: { page: string }) {
     <main className="min-h-[80dvh] bg-[#f4f4f4] p-4 text-[#161616] md:p-8 font-['IBM Plex Sans:Regular']">
       <div className="mx-auto max-w-4xl space-y-5">
         <Link
-          to={state.activated ? "/monitoring" : "/bob"}
+          to="/bob"
           className="inline-flex min-h-11 items-center text-sm text-[#0f62fe]"
         >
-          ← Back to {state.activated ? "active monitoring" : "BOB actions"}
+          ← Back to BOB actions
         </Link>
         <h1 className="text-2xl font-semibold">
           {page === "askBob"
@@ -103,79 +105,38 @@ export default function OperationalPanels({ page }: { page: string }) {
         )}
         {page === "protected" && (
           <section className="space-y-4 border-l-4 border-[#da1e28] bg-white p-6">
-            <h2 className="font-semibold">
-              Unsafe request blocked — effective policy unchanged
-            </h2>
-            <p className="text-sm">
-              The 30% emergency floor is immutable. Discharge stops at the
-              configured reserve (at least 55%). Automatic output cannot exceed
-              6 MW; equipment output cannot exceed 8 MW, even with approval.
-            </p>
-            <details className="border border-[#e0e0e0] p-4">
-              <summary className="min-h-11 cursor-pointer font-semibold">
-                Inspect rule and safety evidence
-              </summary>
-              <p className="text-sm leading-6">
-                Start only above 60% SOC after a deficit above 3 MW persists for
-                5 minutes. Stop at the first reserve, 30-minute, or 3 MWh
-                boundary. High temperature, maintenance, abnormal health,
-                unavailable battery, telemetry older than two minutes, or failed
-                checks block execution. Administrator approval expires after 10
-                minutes and never overrides safety.
-              </p>
-            </details>
+            <h2 className="font-semibold">Limits BOB cannot cross</h2>
+            <ul className="list-disc space-y-1 pl-5 text-sm">
+              {floorPct != null && <li>No battery is discharged below the organisation’s {floorPct}% floor, whatever a configuration says.</li>}
+              {ceiling != null && <li>Any action above {ceiling} MW always needs a person’s approval.</li>}
+              <li>Every action passes an independent safety check before it is sent; an approval never overrides it.</li>
+            </ul>
+            {configs.map((c) => (
+              <div key={c.id} className="border border-[#e0e0e0] p-4 text-sm">
+                <p className="font-semibold">{c.name} · {c.status}</p>
+                <ul className="list-disc pl-5">{[AUTONOMY[c.autonomy].label, ...limitsSummary(c.limits)].map((line) => <li key={line}>{line}</li>)}</ul>
+              </div>
+            ))}
             <div className="flex flex-wrap gap-4">
-              <Link
-                to="/agentChat"
-                onClick={() => edit(3)}
-                className="bg-[#0f62fe] px-4 py-3 text-sm text-white"
-              >
-                Choose a safe alternative
-              </Link>
-              <Link
-                to="/bob"
-                className="border border-[#8d8d8d] px-4 py-3 text-sm"
-              >
-                Cancel request
-              </Link>
+              <Link to="/agentChat" className="bg-[#0f62fe] px-4 py-3 text-sm text-white">Change the discharge limits</Link>
+              <Link to="/bob" className="border border-[#8d8d8d] px-4 py-3 text-sm">Back</Link>
             </div>
           </section>
         )}
         {page === "actionDetails" && (
           <section className="space-y-4 border border-[#e0e0e0] bg-white p-5">
-            <h2 className="font-semibold">Support demand using Battery 1</h2>
-            <p className="text-sm">
-              {state.stage} · Battery 1 ·{" "}
-              {state.activated
-                ? "Effective policy shown below; edits create a proposed revision."
-                : "Proposed configuration; activation required."}
-            </p>
-            {CONFIG_STEPS.map((label, step) => (
-              <div
-                key={label}
-                className="flex flex-wrap justify-between gap-3 border-b border-[#e0e0e0] py-3 text-sm"
-              >
-                <span>{label}</span>
-                <Link
-                  to="/agentChat"
-                  onClick={() => edit(step)}
-                  className="text-[#0f62fe]"
-                >
-                  Edit {label}
-                </Link>
+            <h2 className="font-semibold">Configured actions at {SITE.name}</h2>
+            {configs.map((c) => (
+              <div key={c.id} className="flex flex-wrap justify-between gap-3 border-b border-[#e0e0e0] py-3 text-sm">
+                <div>
+                  <p className="font-semibold">{c.name}</p>
+                  <p>{c.asset_name} · version {c.version} · {c.status}{c.current ? '' : ' (draft)'}</p>
+                  <p className="text-[#525252]">{limitsSummary(c.limits).join(' · ')}</p>
+                </div>
+                {c.kind === 'battery_discharge' && <Link to="/agentChat" className="text-[#0f62fe]">Edit</Link>}
               </div>
             ))}
-            <pre className="overflow-auto bg-[#f4f4f4] p-4 text-xs">
-              {JSON.stringify(state.activeConfig ?? state.config, null, 2)}
-            </pre>
-            <div className="flex flex-wrap items-center gap-3 pt-2">
-              <Link
-                to="/protected"
-                className="inline-flex min-h-11 items-center text-sm text-[#0f62fe]"
-              >
-                View protected boundary
-              </Link>
-            </div>
+            <Link to="/protected" className="inline-flex min-h-11 items-center text-sm text-[#0f62fe]">View protected boundary</Link>
           </section>
         )}
         {page === "workOrder" && <WorkOrders />}

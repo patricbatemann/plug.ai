@@ -1,4 +1,4 @@
-import type { SiteStatus } from './api/client'
+import type { Preferences, SiteStatus } from './api/client'
 
 const number = new Intl.NumberFormat('en-IN', { maximumFractionDigits: 1 })
 
@@ -106,4 +106,23 @@ export function siteBadge(s: SiteStatus): { label: string; tone: 'green' | 'ambe
   if (s.status === 'Battery unavailable') return { label: 'Battery unavailable', tone: 'red' }
   if (s.status === 'Below forecast') return { label: 'Below forecast', tone: 'amber' }
   return { label: 'Operating normally', tone: 'green' }
+}
+
+export const OBJECTIVES: Record<Preferences['objective'], string> = {
+  reliability: 'Maintain supply reliability',
+  cost: 'Reduce grid purchase cost',
+  peak: 'Avoid peak grid demand',
+  renewable: 'Maximize renewable energy use',
+}
+
+export const RECOVERY: Record<Preferences['recovery'], string> = {
+  notify_and_hold: 'Notify and hold current state',
+  request_import: 'Request grid import approval',
+}
+
+export const NOTIFY: Record<Preferences['notify'][number], string> = {
+  sms: 'SMS — Operations team',
+  email: 'Email — Site managers',
+  push: 'Push — Plug.ai mobile app',
+  slack: 'Slack — operations channel',
 }

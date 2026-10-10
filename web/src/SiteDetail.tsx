@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import BobToggle from './BobToggle';
-import { SITE, BATTERY_POLICY } from './data';
+import { SITE } from './data';
 import { useSite } from './site';
 import { simDateTime } from './format';
 import { Link } from 'react-router';

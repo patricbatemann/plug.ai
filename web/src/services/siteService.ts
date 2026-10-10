@@ -1,5 +1,4 @@
 import siteData from '../mock/siteDetails.json';
-import telemetryData from '../mock/telemetry.json';
 
 export interface SiteInfo {
   id: string;
@@ -50,8 +49,4 @@ export function getSiteAssets(siteId: string = 'KUP-SOLAR-001'): SiteAsset[] {
 
 export function getMonitoringFeeds(siteId: string = 'KUP-SOLAR-001'): MonitoringFeed[] {
   return siteData.monitoringFeeds;
-}
-
-export function getOperationalSnapshots() {
-  return telemetryData.snapshots;
 }
