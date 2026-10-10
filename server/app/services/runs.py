@@ -12,7 +12,7 @@ from app.models.portfolio import ActionConfig, Asset, Line, Node, Portfolio
 from app.models.run import POLICIES, Forecast, MaintenanceTask, Run, Study, WorldEvent
 from app.sim import forecast
 from app.services import configs, policy
-from app.services.dispatch import bob_inputs, latest_forecasts, plan_block, plan_bob, settle_block
+from app.services.dispatch import bob_inputs, latest_forecasts, plan_block, plan_bob, readings, settle_block
 from app.sim.plant import LineSpec
 from app.sim.presets import PRESETS
 from app.sim.world import BLOCK_MIN, BLOCKS_PER_DAY, AssetSpec, EventSpec, World
@@ -187,7 +187,8 @@ class RunContext:
 
 
 def _store_forecasts(db: Session, ctx: "RunContext", block: int, horizon: int = forecast.HORIZON) -> list[forecast.Issue]:
-    issues = forecast.issue(ctx.world(revealed_only=True), block, ctx.assets, ctx.run.config, horizon)
+    issues = forecast.issue(ctx.world(revealed_only=True), block, ctx.assets, ctx.run.config, horizon,
+                            readings(db, ctx, ctx.run, block))
     db.add_all(
         Forecast(run_id=ctx.run.id, issued_block=block, series=i.series,
                  asset_id=ctx.asset_ids[i.asset_code] if i.asset_code else None, p10=i.p10, p50=i.p50, p90=i.p90)

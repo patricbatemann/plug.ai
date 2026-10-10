@@ -14,7 +14,7 @@ from sqlalchemy.orm import Session
 from app.agent import extract, llm
 from app.core.config import settings
 from app.models.portfolio import ActionConfig, Asset
-from app.models.run import Action, AgentCall, AssetBlock, Cycle, MaintenanceTask, Run
+from app.models.run import Action, AgentCall, AssetBlock, Cycle, Forecast, MaintenanceTask, Run
 from app.seed import seed
 from app.services import policy
 from app.services.portfolio import get_portfolio
@@ -84,6 +84,14 @@ def test_run_controls_events_and_live_overview(
     sites = {s["code"]: s for s in client.get(f"{url}/sites", headers=auth_headers).json()}
     assert sites["KUP-SOLAR-001"]["battery_mw"] == round(sum(b["mw"] for b in live["batteries"]), 1)
     assert sites["SRC-IND-009"]["net_mw"] < 0  # load only: it draws from the network
+    # BOB was not told of the cloud bank. Nellore's feed shows it and pulls Nellore's forecast down, and BOB
+    # re-plans on the surprise; Kuppam's feed is not connected, so its forecast does not move.
+    p50 = lambda issued, code: db.scalar(select(Forecast.p50).join(Asset, Asset.id == Forecast.asset_id).where(  # noqa: E731
+        Forecast.run_id == run["id"], Forecast.issued_block == issued, Asset.code == code))
+    assert p50(26, "SOL-NEL")[0] < 0.7 * p50(25, "SOL-NEL")[1]
+    assert p50(26, "SOL-KUP")[0] > 0.8 * p50(25, "SOL-KUP")[1]
+    assert "Nellore solar array" in live["replanned"] and "below forecast" in live["replanned"]
+    assert "Kuppam" not in live["replanned"]
 
     summary = client.get(f"{url}/summary", headers=auth_headers).json()
     assert summary["block"] == 26
@@ -98,7 +106,8 @@ def test_run_controls_events_and_live_overview(
     assert client.get(url.replace(f"/{run['id']}", "/current"), headers=auth_headers).json()["mode"] == decision["mode"]
     actions = client.get(f"{url}/actions?limit=5", headers=auth_headers).json()
     assert len(actions) == 5
-    assert {a["status"] for a in actions} <= {"acked", "verified", "rejected"}
+    # Covering the lost solar takes a trade above BOB's automatic limit: it asks, and trades what it may meanwhile.
+    assert {a["status"] for a in actions} <= {"acked", "verified", "rejected", "awaiting_approval"}
 
 
 def test_events_replan_and_gated_actions_wait_for_approval(

@@ -47,6 +47,31 @@ def _soc(ctx, run: Run, previous: dict[int, AssetBlock], code: str) -> float:
     return asset.params["energy_mwh"] * run.config["initial_soc_pct"][code] / 100
 
 
+def connected(db: Session, run: Run) -> set[str]:
+    """Codes of the assets at sites with a connected telemetry API."""
+    return set(db.scalars(select(Asset.code).join(DataSource, DataSource.site_id == Asset.site_id)
+                          .where(Asset.portfolio_id == run.portfolio_id, DataSource.kind == "api")))
+
+
+def readings(db: Session, ctx, run: Run, block: int) -> dict[str, float]:
+    """What connected sites' feeds report for a settled block: each asset's available MW. Assets
+    out for maintenance are left out; BOB already knows why they read zero."""
+    rows, down, linked = _previous(db, run, "bob", block), maintenance.down(db, run, "bob", block), connected(db, run)
+    return {a.code: rows[ctx.asset_ids[a.code]].available_mw for a in ctx.assets
+            if a.code in linked and ctx.asset_ids[a.code] in rows and ctx.asset_ids[a.code] not in down}
+
+
+def surprises(db: Session, ctx, run: Run, block: int, made_for: dict) -> list[str]:
+    """Connected plants whose output in a settled block came in well off the forecast made for it."""
+    out = []
+    capacity = {a.code: a.capacity for a in ctx.assets}
+    for code, mw in readings(db, ctx, run, block).items():
+        f = made_for.get(("re_avail", code))
+        if f is not None and abs(gap := mw - f.p50[0]) > max(2.0, 0.1 * capacity[code]):
+            out.append(f"{ctx.names[code]} {abs(gap):.1f} MW {'above' if gap > 0 else 'below'} forecast")
+    return out
+
+
 def _discharged_today(db: Session, ctx, run: Run, t0: int) -> dict[str, float]:
     rows = db.execute(select(AssetBlock.asset_id, AssetBlock.actual_mw).where(
         AssetBlock.run_id == run.id, AssetBlock.policy == "bob", AssetBlock.block >= t0 - t0 % 96,
@@ -143,9 +168,8 @@ def bob_inputs(db: Session, ctx, truth: World, run: Run, t0: int, forecasts: dic
     line_limit = dict(ctx.line_limits)
     kind_of = {a.code: a.kind for a in ctx.assets}
     # BOB commands only the assets of sites whose telemetry it receives; market trades are the portfolio's.
-    connected = {"portfolio", *db.scalars(select(Asset.code).join(DataSource, DataSource.site_id == Asset.site_id)
-                                          .where(Asset.portfolio_id == run.portfolio_id, DataSource.kind == "api"))}
-    allowed = {k: v for k, v in policy.allowed(db, run.portfolio_id).items() if k.split(":")[1] in connected}
+    linked = connected(db, run) | {"portfolio"}
+    allowed = {k: v for k, v in policy.allowed(db, run.portfolio_id).items() if k.split(":")[1] in linked}
     for k in knowledge(db, ctx, run):
         begin, end = _blocks(run, k, t0)
         now = slice(max(begin, 0), min(end, horizon))
@@ -346,22 +370,25 @@ def latest_forecasts(db: Session, ctx, run: Run, t0: int) -> dict:
 
 def plan_block(db: Session, ctx, truth: World, run: Run, t0: int) -> None:
     forecasts = latest_forecasts(db, ctx, run, t0)
-    hits = []
-    if t0 > 0:  # watch conditions on the block just settled, against the forecast made for it
+    hits, gaps = [], []
+    if t0 > 0:  # the block just settled, against the forecast made for it: watch conditions and surprises
         made_for = latest_forecasts(db, ctx, run, t0 - 1)
         hits = configs.watch_hits(db, run, t0 - 1, {code: f.p50[0] for (series, code), f in made_for.items()
                                                     if series == "re_avail"})
+        gaps = surprises(db, ctx, run, t0 - 1, made_for)
     now = run.sim_start_at + t0 * BLOCK_SPAN
-    plan_bob(db, ctx, truth, run, t0, forecasts, now, trigger="watch" if hits else "tick",
-             detail="; ".join(hits)[:200])
+    plan_bob(db, ctx, truth, run, t0, forecasts, now, trigger="watch" if hits else "telemetry" if gaps else "tick",
+             detail="; ".join(hits + gaps)[:200])
     plan_baseline(db, ctx, truth, run, t0, forecasts)
     if t0 < run.live_from_block:
         return  # proposals need someone to answer them: none before the demo opens
     known = storms(run, knowledge(db, ctx, run), t0)
     if t0 % 4 == 0:  # hourly
         maintenance.review(db, ctx, run, t0, forecasts, known, now)
-    expected = {b: {code: f.p50[0] for (series, code), f in latest_forecasts(db, ctx, run, b).items()
-                    if series == "re_avail"} for b in (t0 - 1, t0 - 2) if b >= 1}
+    # Damage shows against what the weather allows, not against forecasts the feeds have already pulled down.
+    weather = ctx.world(revealed_only=True)
+    expected = {b: {a.code: float(weather.available[a.code][b]) for a in ctx.assets if a.kind in ("solar", "wind")}
+                for b in (t0 - 1, t0 - 2) if b >= 1}
     maintenance.inspect(db, ctx, run, t0, known, expected, now)
 
 

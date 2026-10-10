@@ -93,8 +93,8 @@ def review(db: Session, ctx, run: Run, t0: int, forecasts: dict, storms: list[tu
 
 def inspect(db: Session, ctx, run: Run, t0: int, storms: list[tuple[str, int, int]], expected: dict,
             now: datetime) -> None:
-    """Propose an inspection once per asset: after a storm, when output stays below 85 % of the
-    forecast for two blocks; and after a battery trip. `expected` maps block → {code: forecast MW}."""
+    """Propose an inspection once per asset: after a storm, when output stays below 85 % of what the
+    weather allows for two blocks; and after a battery trip. `expected` maps block → {code: MW}."""
     asked = set(db.scalars(select(Action.asset_id).where(Action.run_id == run.id,
                                                          Action.kind == "inspection_dispatch")))
     asked |= down(db, run, "bob", t0 - 1) | down(db, run, "bob", t0 - 2)  # low output there is the job
@@ -112,7 +112,7 @@ def inspect(db: Session, ctx, run: Run, t0: int, storms: list[tuple[str, int, in
             if asset_id not in asked and len(ratios) == 2 and max(ratios) < PR_LIMIT:
                 asked.add(asset_id)
                 _propose(db, run, t0, "inspection_dispatch", asset_id,
-                         f"After the storm, {ctx.names[a.code]} gives {max(ratios):.0%} of forecast output: "
+                         f"After the storm, {ctx.names[a.code]} gives {max(ratios):.0%} of expected output: "
                          f"send a crew to inspect for damage.", now + RESPONSE, {}, f"{a.code}:storm")
     for e in ctx.events:
         if e.kind == "bess_trip" and e.fired_at and ctx.asset_ids[e.payload["asset"]] not in asked:

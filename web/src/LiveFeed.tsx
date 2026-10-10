@@ -78,9 +78,16 @@ export default function LiveFeed({ onConnect }: { onConnect: () => void }) {
             ))}
           </div>
           {live.connected ? (
-            <p className="text-[#8a3ffc] text-[13px] font-semibold">
-              BOB this block: {live.bob_now.length ? live.bob_now.join("; ") : "holding, no change at this site"}.
-            </p>
+            <div className="flex flex-col gap-1">
+              <p className="text-[#8a3ffc] text-[13px] font-semibold">
+                BOB this block: {live.bob_now.length ? live.bob_now.join("; ") : "holding, no change at this site"}.
+              </p>
+              {live.replanned && (
+                <p className="text-[#525252] text-[12px]">
+                  Last re-plan on news, <span className="font-mono">{live.replanned}</span>
+                </p>
+              )}
+            </div>
           ) : (
             <div className="flex flex-wrap gap-3 items-center">
               <p className="text-[#525252] text-[13px]">

@@ -116,6 +116,7 @@ export interface SiteLive {
   alerts: Alert[]
   bob_now: string[]
   connected: boolean
+  replanned: string | null
   chart: ChartPoint[]
   sources: Array<{ label: string; mw: number }>
   uses: Array<{ label: string; mw: number }>

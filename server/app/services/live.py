@@ -212,6 +212,7 @@ def site_live(db: Session, run: Run, site: Site, now: datetime) -> SiteLive:
     uses.append(FlowItem(label="Sent to the network", mw=max(supplied - used, 0)))
 
     cloud = float(truth.cloud[node][b])
+    news = db.scalar(select(Cycle).where(Cycle.run_id == run.id, Cycle.trigger != "tick").order_by(Cycle.id.desc()).limit(1))
     return SiteLive(
         sim_time=now_sim, as_of=time_of(b + 1), block=b,
         weather=Weather(
@@ -224,6 +225,7 @@ def site_live(db: Session, run: Run, site: Site, now: datetime) -> SiteLive:
         grid_mw=round(grid, 2) if has("interconnection") else None,
         alerts=alerts, bob_now=doing(run, b + 1, db).get(site.name, []), chart=chart,
         connected=any(s.kind == "api" for s in site_sources(db, site)),
+        replanned=f"{time_of(news.block).astimezone(IST):%H:%M}: {news.trigger_detail or news.trigger}" if news else None,
         sources=[FlowItem(label=f.label, mw=round(f.mw, 2)) for f in sources],
         uses=[FlowItem(label=f.label, mw=round(f.mw, 2)) for f in uses],
     )

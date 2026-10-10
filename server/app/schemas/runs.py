@@ -217,6 +217,7 @@ class SiteLive(BaseModel):
     alerts: list[Alert]
     bob_now: list[str]  # what BOB is doing at the site in the block in progress
     connected: bool  # BOB commands the site's assets only while its telemetry API is connected
+    replanned: str | None  # BOB's latest re-plan on news (an event, a watch hit, a surprise in the feed): when and why
     chart: list[ChartPoint]
     sources: list[FlowItem]
     uses: list[FlowItem]

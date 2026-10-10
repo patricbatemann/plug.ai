@@ -1,5 +1,6 @@
 """Forecasts: what BOB can know. Built from a World that contains only revealed events,
-plus an error that grows with lead time and is fixed by the seed."""
+plus an error that grows with lead time and is fixed by the seed, and pulled toward the
+latest readings from connected sites' feeds (a nowcast)."""
 
 import math
 from dataclasses import dataclass
@@ -11,6 +12,7 @@ from app.sim.world import AssetSpec, World, ar1
 
 HORIZON = 96  # blocks: 24 hours
 Z90 = 1.2816  # P10/P90 distance from P50 in standard deviations
+FADE = 0.9  # per block: a reading's pull on the forecast halves in about 1.5 hours
 
 
 @dataclass
@@ -31,10 +33,19 @@ def _band(known: np.ndarray, scale: np.ndarray, sigma: np.ndarray, z: np.ndarray
 
 
 def issue(known: World, block: int, assets: list[AssetSpec], config: dict[str, Any],
-          horizon: int = HORIZON) -> list[Issue]:
-    """Forecasts issued at the end of `block` for the next `horizon` blocks."""
+          horizon: int = HORIZON, observed: dict[str, float] | None = None) -> list[Issue]:
+    """Forecasts issued at the end of `block` for the next `horizon` blocks. `observed` is each
+    connected asset's reading for `block`: what something unannounced, such as a cloud bank, did."""
     span = slice(block + 1, block + 1 + horizon)
     hours = np.arange(1, horizon + 1) * 0.25
+    fade = FADE ** np.arange(1, horizon + 1)
+
+    def nowcast(a: AssetSpec) -> np.ndarray:
+        values = known.available[a.code][span]
+        expected = float(known.available[a.code][block])
+        if observed is None or a.code not in observed or expected < 0.01 * a.capacity:
+            return values
+        return values * (1 + (min(observed[a.code] / expected, 2.0) - 1) * fade)
     noise = config["noise"]
     phi = 0.9
 
@@ -48,13 +59,13 @@ def issue(known: World, block: int, assets: list[AssetSpec], config: dict[str, A
     issues = []
     for a in assets:
         if a.kind in ("solar", "wind"):
-            values = known.available[a.code][span]
+            values = nowcast(a)
             # Solar is certain to be zero at night; elsewhere the error scales with capacity.
             scale = a.capacity * (known.irradiance[a.node][span] > 0 if a.kind == "solar" else np.ones(horizon))
             band = _band(values, scale, sigma("re_avail"), error(a.code), a.capacity)
             issues.append(Issue("re_avail", a.code, *band))
         elif a.kind == "consumer":
-            values = known.available[a.code][span]
+            values = nowcast(a)
             band = _band(values, values, sigma("load"), error(a.code), a.capacity * 1.3)
             issues.append(Issue("load", a.code, *band))
     for series, values in (("rtm_price", known.rtm[span]), ("dam_price", known.dam[span])):
